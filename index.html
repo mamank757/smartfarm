@@ -1248,8 +1248,7 @@
                 let finalConfidence = (1 - akumulasiSalah) * 100;
                 if (finalConfidence > 99.9) finalConfidence = 99.9;
                 conf = finalConfidence.toFixed(1);
-            }
-            else if (currentMode === 'malai') {
+            }else if (currentMode === 'malai') {
                 const listM = document.getElementById('listMalai');
                 let totalBulirFotoIni = out.count || 0; 
                 
@@ -1285,30 +1284,46 @@
                     
                     const varietas = document.getElementById('jenisVarietas').value;
                     let berat1000Butir = 27; 
-                    let persenBernas = 0.85; 
+                    let persenBernas = 0.82; // Kalibrasi 1: Menurunkan ekspektasi persentase total bernas riil kanopi
                     let namaVarietas = "Umur Sedang (Standar)";
                     
                     if (varietas === 'genjah') { 
                         berat1000Butir = 25.5; 
-                        persenBernas = 0.88;   
+                        persenBernas = 0.84;   
                         namaVarietas = "Umur Genjah";
                     } else if (varietas === 'dalam') { 
                         berat1000Butir = 29.0; 
-                        persenBernas = 0.80;   
+                        persenBernas = 0.78;   
                         namaVarietas = "Umur Dalam / Lokal";
                     }
 
                     let malaiPerRumpunInput = parseInt(document.getElementById('malaiPerRumpun').value) || 16;
                     const totalRumpunHa = rumpunPerMeter * 10000;
+                    
+                    // KALKULASI BIOLOGIS DASAR (Gram)
                     const totalBeratGram = totalRumpunHa * malaiPerRumpunInput * (rataBulir * persenBernas) * (berat1000Butir / 1000);
-                    const hasilTonPerHa = totalBeratGram / 1000000;
+                    
+                    // KALKULASI TON/HA KASAR
+                    let hasilTonPerHa = totalBeratGram / 1000000;
 
-                    document.getElementById('resLabel').innerText = "Kalkulasi Hasil Panen Akurat";
+                    // =========================================================================
+                    // KALIBRASI UTAMA: Memasukkan Faktor Koreksi Luas Efektif & Mekanis Lapangan
+                    // =========================================================================
+                    const FAKTOR_KOREKSI_LAHAN_EFEKTIF = 0.85; // Memotong 15% untuk luasan pematang sawah, selokan, dan galengan
+                    const FAKTOR_LOSSES_PANEN = 0.90;          // Memotong 10% untuk gabah tercecer saat rontok dan potong
+                    
+                    // Eksekusi Hasil Taksiran Akhir Riil Masuk Karung
+                    let hasilRiilTonPerHa = hasilTonPerHa * FAKTOR_KOREKSI_LAHAN_EFEKTIF * FAKTOR_LOSSES_PANEN;
+
+                    document.getElementById('resLabel').innerText = "Kalkulasi Hasil Panen Kalibrasi";
                     document.getElementById('resUbinanTeks').innerHTML = `
                         📊 <b>Rata-rata Cacah Bulir AI:</b> ${rataBulir.toFixed(1)} bulir per malai.<br>
                         ⚙️ <b>Sistem Lahan:</b> ${namaMetode} (${rumpunPerMeter} rumpun/m²) | ${malaiPerRumpunInput} malai/rumpun.<br>
                         🌾 <b>Karakteristik:</b> ${namaVarietas} (Bobot G1000: ${berat1000Butir}g | Faktor Bernas: ${(persenBernas*100)}%)<br>
-                        <h3 style="color:var(--accent-green); margin:10px 0 0 0; font-size:1.2rem;">🌾 Estimasi Riil Lahan: ${hasilTonPerHa.toFixed(2)} Ton/Ha</h3>
+                        <div style="margin-top:8px; font-size:0.75rem; opacity:0.7; border-top:1px dashed #444; padding-top:5px;">
+                            ⚠️ <i>Sudah dipotong faktor luasan pematang (-15%) & susut tercecer panen (-10%).</i>
+                        </div>
+                        <h3 style="color:var(--accent-green); margin:10px 0 0 0; font-size:1.2rem;">🌾 Estimasi Riil Lahan: ${hasilRiilTonPerHa.toFixed(2)} Ton/Ha</h3>
                     `;
                     hasilSampelBulir = []; 
                 } else {
