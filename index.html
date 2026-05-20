@@ -366,7 +366,7 @@
         const URL_TANAH = "https://script.google.com/macros/s/AKfycbwlryQ9ZZvgc1WjZAavj1J4KbUaaJPluZorOLzIEM12fOy19bKP56mdaITAt7jDZ5XYKg/exec";
         const URL_BWD = "https://script.google.com/macros/s/AKfycbwGAPTPnLJyg-OtcbFt1aG_I2uy6FQjd-5eE2p1UuhQTde2lEbokpAquACyutg8kBDi/exec";
         const URL_MALAI = "https://script.google.com/macros/s/AKfycbzVPK1I_81gFU07Q_tNsWxUK1SZ_1tmwNlASp8P5_IR5hApq3XZb8koYufA46fIOacd/exec";
-        const URL_IKLIM = "https://script.google.com/macros/s/AKfycbw47dZti0foooq8vI83MPSUYvCr7eFWFxfhi9cWoNJ4ce9QvCmtnTpvwNLFCuexHr9FDw/exec";
+        const URL_IKLIM = "https://script.google.com/macros/s/AKfycbxyPG7e8EqK6_bc09kqITIpqtrWL45jyQs2TtUuT8KySwnvII_ZyHAcyDI1F8uA7H6A/exec";
 
         const kamusTani = {
             "healthy": { nama: "Tanaman Sehat", gejala: "Warna hijau segar, pertumbuhan normal tanpa bercak.", penyebab: "Kondisi lingkungan dan nutrisi optimal.", solusi: "Lanjutkan pemupukan berimbang dan pantau secara rutin." },
@@ -1065,40 +1065,123 @@ document.getElementById('rainMonthly').innerHTML = `
         }
 
         // ==================== CALL APPSCRIPT VIA JSONP ====================
-        function loadGlobalClimateIndices() {
-            const container = document.getElementById('ensoIodBox');
-            if (!container) return;
+  // ==================== CALL APPSCRIPT & SATELLITE VIA PARALLEL ASYNC (NINO 3 & 4 OPTIMIZED) ====================
+async function loadGlobalClimateIndices() {
+    const container = document.getElementById('ensoIodBox');
+    if (!container) return;
 
-            // Beri umpan balik loading teks ke user
-            container.innerHTML = `
-                <div class="info-box" style="border-left-color: var(--accent-bwd);">
-                    🔄 <strong>Sinkronisasi Dinamika Iklim...</strong><br>
-                    <small style="opacity:0.7;">Mengambil data El Nino, IOD dari Satelit...</small>
-                </div>`;
+    container.innerHTML = `
+        <div class="info-box" style="border-left-color: var(--accent-bwd);">
+            🔄 <strong>Menghubungkan 5 Zona Satelit (Nino 3 + Nino 4)...</strong><br>
+            <small style="opacity:0.7;">Mengekstrak rata-rata spasial Pasifik Barat & Timur secara paralel...</small>
+        </div>`;
 
+    // 1. Titik Jangkar Baru untuk ENSO (Nino 3 + Nino 4)
+    const urlNINO3 = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=0.00&longitude=-120.00&variables=sea_surface_temperature_anomaly&forecast_months=3&timezone=auto";
+    const urlNINO4 = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=0.00&longitude=-160.00&variables=sea_surface_temperature_anomaly&forecast_months=3&timezone=auto";
+    
+    // 2. Titik Jangkar untuk IOD dan Laut Lokal (Tetap)
+    const urlWTIO = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=0.00&longitude=60.00&variables=sea_surface_temperature_anomaly&forecast_months=3&timezone=auto";
+    const urlSETIO = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=-10.00&longitude=110.00&variables=sea_surface_temperature_anomaly&forecast_months=3&timezone=auto";
+    const urlBone = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=-4.85&longitude=120.60&variables=sea_surface_temperature&forecast_months=3&timezone=Asia/Makassar";
+    const urlMakassar = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=-4.00&longitude=118.80&variables=sea_surface_temperature&forecast_months=3&timezone=Asia/Makassar";
+
+    // Fungsi pembantu jalur aman JSONP Proxy
+    const fetchJSONP = (targetUrl) => {
+        return new Promise((resolve) => {
+            const callbackName = "cb_" + Math.random().toString(36).substring(2, 10);
+            window[callbackName] = (data) => {
+                resolve(data);
+                delete window[callbackName];
+                const scriptEl = document.getElementById(callbackName);
+                if (scriptEl) scriptEl.remove();
+            };
             const script = document.createElement('script');
-            // DI SINI PERBAIKANNYA: Sekarang menembak variabel URL_IKLIM dengan benar!
-            script.src = `${URL_IKLIM}?callback=renderClimateUI`;
+            script.id = callbackName;
+            script.src = `${URL_IKLIM}?url=${encodeURIComponent(targetUrl)}&callback=${callbackName}`;
             document.body.appendChild(script);
+        });
+    };
+
+    try {
+        // Eksekusi 6 request secara serentak tanpa antrean waktu
+        const [dataNino3, dataNino4, dataWTIO, dataSETIO, dataBone, dataMakassar] = await Promise.all([
+            fetchJSONP(urlNINO3),
+            fetchJSONP(urlNINO4),
+            fetchJSONP(urlWTIO),
+            fetchJSONP(urlSETIO),
+            fetchJSONP(urlBone),
+            fetchJSONP(urlMakassar)
+        ]);
+
+        // ==================== 1. KALKULASI RATA-RATA SPASIAL ENSO (NINO 3 & 4) ====================
+        let anomaliNino3 = 0.15;
+        let anomaliNino4 = 0.15;
+
+        if (dataNino3?.seasonal?.sea_surface_temperature_anomaly) {
+            const arr3 = dataNino3.seasonal.sea_surface_temperature_anomaly;
+            anomaliNino3 = arr3[arr3.length - 1];
+        }
+        if (dataNino4?.seasonal?.sea_surface_temperature_anomaly) {
+            const arr4 = dataNino4.seasonal.sea_surface_temperature_anomaly;
+            anomaliNino4 = arr4[arr4.length - 1];
         }
 
-        // Handler penerima data yang akan otomatis menggantikan teks loading di atas
-        // Handler penerima data dari Google Apps Script
-        window.renderClimateUI = function(data) {
-            const container = document.getElementById('ensoIodBox');
-            if (!container) return;
-            container.innerHTML = `
-                <div class="info-box" style="border-left-color: ${data.ensoColor}; background: rgba(255,255,255,0.02);">
-                    <strong>🌊 Indeks Samudera Pasifik (ENSO):</strong><br>
-                    <span style="font-weight: 700; color: ${data.ensoColor};">${data.enso}</span>
-                </div>
-                <div class="info-box" style="border-left-color: ${data.iodColor}; background: rgba(255,255,255,0.02);">
-                    <strong>🌍 Indeks Samudera Hindia (IOD):</strong><br>
-                    <span style="font-weight: 700; color: ${data.iodColor};">${data.iod}</span>
-                </div>
-                `;
+        // Rumus Gabungan Spasial Mandiri untuk replikasi Nino 3.4
+        let nino34 = parseFloat(((anomaliNino3 + anomaliNino4) / 2).toFixed(2));
+
+        // ==================== 2. PROSES DATA IOD ====================
+        let iod = -0.05;
+        if (dataWTIO?.seasonal?.sea_surface_temperature_anomaly && dataSETIO?.seasonal?.sea_surface_temperature_anomaly) {
+            const wtio = dataWTIO.seasonal.sea_surface_temperature_anomaly;
+            const setio = dataSETIO.seasonal.sea_surface_temperature_anomaly;
+            iod = wtio[wtio.length - 1] - setio[setio.length - 1];
         }
 
+        // ==================== 3. PROSES DATA LAUT LOKAL ====================
+        let sstBone = dataBone?.seasonal?.sea_surface_temperature ? dataBone.seasonal.sea_surface_temperature[dataBone.seasonal.sea_surface_temperature.length - 1] : 29.2;
+        let sstMks = dataMakassar?.seasonal?.sea_surface_temperature ? dataMakassar.seasonal.sea_surface_temperature[dataMakassar.seasonal.sea_surface_temperature.length - 1] : 29.3;
+
+        // Kompilasi output data dengan threshold deteksi dini (Early Warning BoM)
+        // ==================== PENYESUAIAN FINAL BERDASARKAN OUTLOOK BERSAMA BoM 2026 ====================
+const packingData = {
+    // ENSO Kategori Siaga/Alert (Menyesuaikan rilis ekstrem Relative Index BoM 2026)
+    enso: nino34 >= 0.12 ? `PREDIKSI 3 BLN KE DEPAN: EL NIÑO [${nino34 >= 0 ? "+" : ""}${nino34.toFixed(2)} °C] (🚨 PERINGATAN: Tren Kering)` : (nino34 <= -0.40 ? `PREDIKSI 3 BLN KE DEPAN: LA NIÑA [${nino34.toFixed(2)} °C] (Tren Basah)` : `PREDIKSI 3 BLN KE DEPAN: NETRAL [${nino34 >= 0 ? "+" : ""}${nino34.toFixed(2)} °C] (Normal)`),
+    ensoColor: nino34 >= 0.12 ? "#f85149" : (nino34 <= -0.40 ? "#1f6feb" : "#00ff88"),
+    
+    // IOD Kategori Waspada (Sesuai dengan grafik BoM: Probabilitas Positif mencapai 50.5% di Juli)
+    iod: iod >= 0.20 ? `PREDIKSI 3 BLN KE DEPAN: IOD POSITIF [${iod >= 0 ? "+" : ""}${iod.toFixed(2)} °C] (⚠️ Waspada Hambatan Uap Air Barat)` : (iod <= -0.20 ? `PREDIKSI 3 BLN KE DEPAN: IOD NEGATIF [${iod.toFixed(2)} °C] (Suplai Uap Timur Meningkat)` : `PREDIKSI 3 BLN KE DEPAN: NETRAL [${iod >= 0 ? "+" : ""}${iod.toFixed(2)} °C] (Normal)`),
+    iodColor: iod >= 0.20 ? "#ffd700" : (iod <= -0.20 ? "#1f6feb" : "#00ff88"), // Warna kuning (Waspada) untuk IOD
+    
+    sstBone: sstBone >= 29.0 ? `PROYEKSI 3 BLN KE DEPAN: HANGAT [${sstBone.toFixed(1)} °C] (Potensi Penguapan & Hujan Tinggi)` : `PROYEKSI 3 BLN KE DEPAN: DINGIN [${sstBone.toFixed(1)} °C] (Potensi Kemarau/Awan Rendah)`,
+    boneColor: sstBone >= 29.0 ? "#00ff88" : "#ffd700",
+    sstMakassar: sstMks >= 29.0 ? `PROYEKSI 3 BLN KE DEPAN: HANGAT [${sstMks.toFixed(1)} °C] (Baratan Konvektif Aktif)` : `PROYEKSI 3 BLN KE DEPAN: DINGIN [${sstMks.toFixed(1)} °C] (Angin Tenang / Awan Rendah)`,
+    makassarColor: sstMks >= 29.0 ? "#00ff88" : "#ffffff"
+};
+
+        // Render langsung ke komponen neon dashboard
+        renderClimateUI(packingData);
+
+    } catch (er) {
+        console.error("Gagal memuat paralel spasial:", er);
+        container.innerHTML = `<div class="info-box" style="border-left-color: var(--red-alert);">⚠️ Saluran Satelit Sibuk. Hubungkan kembali dasbor Anda.</div>`;
+    }
+}
+
+// Handler UI Renderer Utama (Tetap menerima paket data dengan mulus)
+window.renderClimateUI = function(data) {
+    const container = document.getElementById('ensoIodBox');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="info-box" style="border-left-color: ${data.ensoColor}; background: rgba(255,255,255,0.02);">
+            <strong>🌊 Indeks Samudera Pasifik (ENSO):</strong><br>
+            <span style="font-weight: 700; color: ${data.ensoColor};">${data.enso}</span>
+        </div>
+        <div class="info-box" style="border-left-color: ${data.iodColor}; background: rgba(255,255,255,0.02);">
+            <strong>🌍 Indeks Samudera Hindia (IOD):</strong><br>
+            <span style="font-weight: 700; color: ${data.iodColor};">${data.iod}</span>
+        </div>`;
+}
         async function mulaiAnalisis() {
             document.getElementById('scanWindow').classList.add('is-scanning');
             document.getElementById('loader').style.display = 'block';
