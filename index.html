@@ -556,21 +556,11 @@
         let hasilSampelBulir = []; 
         let isGpsSynced = false; 
          
-        const URL_DAUN = "https://script.google.com/macros/s/AKfycbyCYh65h_3lT4iWr97_RHJNZmaPTSHDp_uFPy_pAP_rvC5BxYHI1n3dn5iwrnNcER1X/exec";
+        const URL_DAUN = "https://script.google.com/macros/s/AKfycbwXLBWE3MN4K5h7tlNCLTHMBuh04xDn5kDuA7hi__YwB0_2QF6WcjuYzjoggffjtvT8XA/exec";
         const URL_TANAH = "https://script.google.com/macros/s/AKfycbwlryQ9ZZvgc1WjZAavj1J4KbUaaJPluZorOLzIEM12fOy19bKP56mdaITAt7jDZ5XYKg/exec";
         const URL_BWD = "https://script.google.com/macros/s/AKfycbwGAPTPnLJyg-OtcbFt1aG_I2uy6FQjd-5eE2p1UuhQTde2lEbokpAquACyutg8kBDi/exec";
         const URL_MALAI = "https://script.google.com/macros/s/AKfycbzVPK1I_81gFU07Q_tNsWxUK1SZ_1tmwNlASp8P5_IR5hApq3XZb8koYufA46fIOacd/exec";
         const URL_IKLIM = "https://script.google.com/macros/s/AKfycbxyPG7e8EqK6_bc09kqITIpqtrWL45jyQs2TtUuT8KySwnvII_ZyHAcyDI1F8uA7H6A/exec";
-
-         const kamusTani = {
-            "healthy": { nama: "Tanaman Sehat", gejala: "Warna hijau segar, pertumbuhan normal tanpa bercak.", penyebab: "Kondisi lingkungan dan nutrisi optimal.", solusi: "Lanjutkan pemupukan berimbang and pantau secara rutin." },
-            "bacterial_leaf_blight": { nama: "HDB - Hawar Daun Bakteri (Kresek)", gejala: "Garis kuning/oranye di sepanjang pinggir daun yang mengering. Penyakit ini dinamai kresek karena daun yang terserang akan berubah warna menjadi cokelat kekuningan, menggulung, dan mengering seperti kertas kresek.", penyebab: "Bakteri Xanthomonas oryzae yang sangat cepat berkembang biak pada lingkungan dengan tingkat kelembapan tinggi pada musim hujan, dan tanaman padi kelebihan pemupukan Nitrogen.", solusi: "Gunakan bakterisida, pastikan sirikulasi air sawah lancar, kurangi Urea.", merek: "Kuproxat 345 SC, Nordox 56 WP, Blast 200 SC, Biopatek (Hayati)", aplikasi: "Waktu Aplikasi: Sebaiknya diaplikasikan segera setelah muncul gejala awal atau sebagai langkah pencegahan dengan interval 7–10 hari." },
-            "brown_spot": { nama: "Bercak Cokelat (Brown Spot)", gejala: "Bintik cokelat bulat atau oval merata di permukaan daun.", penyebab: "Jamur Bipolaris oryzae. Sering terjadi karena ketidakseimbangan nutrisi tanah and kelembapan udara yang tinggi serta suhu hangat sangat mendukung penyebaran jamur.", solusi: "Cukupi kebutuhan Kalium dan pastikan drainase lancar.", merek: "Amistar Top 325 SC, Tandem 325 SC, atau alternatif lain seperti WUZ, Vitro, dan Torbinol.", aplikasi: "Jika serangan sudah terjadi, gunakan fungisida yang tepat, seperti yang mengandung bahan aktif kombinasi Azoksistrobin dan Difenokonazol." },
-            "leaf_blast": { nama: "Penyakit Blast", gejala: "Bercak cokelat berbentuk belah ketupat dengan pusat abu-abu.", penyebab: "Jamur patogen Pyricularia oryzae yang berkembang pesat pada kelembapan tinggi, suhu malam yang sejuk, dan pemupukan nitrogen berlebih.", solusi: "Semprot fungisida sistemik (Trisiklazol), kurangi dosis Nitrogen.", merek: "Blast 200 SC (bahan aktif trisiklazol), Envoy 80 WP, dan Amistar Top 325 SC.", aplikasi: "1. Fase Vegetatif (Blast Daun): Semprot sejak dini saat gejala awal bercak cokelat berbentuk belah ketupat muncul, atau lakukan tindakan pencegahan jika lingkungan lembap. 2. Fase Bunting hingga Awal Keluar Malai (Blast Leher): Sangat krusial untuk mencegah leher malai membusuk (potong leher)." },
-            "leaf_scald": { nama: "Luka Daun (Leaf Scald)", gejala: "Bercak besar berbentuk perahu yang mengering di ujung daun.", penyebab: "Jamur Microdochium oryzae berkembang sangat cepat dalam kondisi Kelembapan Tinggi, Pemupukan Nitrogen Berlebih dan Jarak Tanam Terlalu Rapat.", solusi: "Gunakan varietas tahan dan atur jarak tanam jangan terlalu rapat.", merek: "Dithane M-45 80 WP (Bahan Aktif Mankozeb), Score 250 EC (Difenokonazol-Sistemik), Amistar Top 325 SC (Kombinasi Azoksistrobin + Difenokonazol).", aplikasi: "Pada kondisi serangan yang parah, gunakan fungisida yang diterpkan untuk penyakit jamur daun (misalnya berbahan aktif mankozeb atau difenokonazol)." },
-            "narrow_brown_spot": { nama: "Bercak Cokelat Sempit", gejala: "Garis-garis cokelat sempit searah dengan tulang daun.", penyebab: "Jamur Cercospora oryzae (Cercospora janseana) yang mudah berkembang saat suhu lingkungan rendah dengan kelembapan tinggi dan tanaman kekurangan Kalium.", solusi: "Tambah dosis pupuk Kalium dan perbaiki sistem pengairan.", merek: "Score 250 EC dan Manic 62,5 WG (Difenokonazol), Qiutane 80 WP. (Mankozeb + Trisiklazol), DKAztrozol Plus 375 SC (Azoksistrobin + Difenokonazol).", aplikasi: "Penyakit bercak coklat sempit pada padi (disebabkan oleh jamur Cercospora oryzae) dapat dikendalikan secara efektif menggunakan fungisida berbahan aktif seperti difenokonazol, propikonazol, atau mankozeb." },
-            "unlabeled": { nama: "Objek Tidak Dikenali", gejala: "-", penyebab: "-", solusi: "Pastikan foto DAUN fokus, dekat, dan cahaya terang." }
-        };
 
         const kamusTanah = {
             "alluvial": { "nama": "Tanah Alluvial", "penjelasan": "Tanah yang terbentuk dari endapan material sedimen (lumpur, pasir, kerikil) yang terbawa aliran sungai. Ditemukan di dataran rendah atau delta. Sangat subur dan kaya unsur hara.", "pH": "6.0 - 7.0", "organik": "Sedang", "npk": "Tinggi", "subur": "Sangat Subur", "tanaman": "Padi, Jagung, Sayuran", "saran": "Ideal untuk Padi. Jaga sirkulasi air agar mineral tetap terjaga." },
@@ -975,21 +965,56 @@
             document.getElementById('boxBWD').style.display = currentMode === 'bwd' ? 'block' : 'none';
             document.getElementById('boxMalai').style.display = currentMode === 'malai' ? 'block' : 'none';
             
-            let label = "unlabeled", conf = 0;
+            let conf = 0;
 
             if (currentMode === 'daun') {
-                if (out.classification_result) {
-                    const res = out.classification_result;
-                    label = (res.top || "unlabeled").toLowerCase().replace(/ /g, "_");
-                    conf = ((res.confidence || 0) * 100).toFixed(1);
+                if (out.error) {
+                    document.getElementById('resLabel').innerText = "Gagal Deteksi";
+                    document.getElementById('resGejala').innerText = out.error;
+                    document.getElementById('resPenyebab').innerText = "-";
+                    document.getElementById('resSolusi').innerText = "-";
+                    document.getElementById('resMerek').innerText = "-";
+                    document.getElementById('resAplikasi').innerText = "-";
+                    document.getElementById('resConf').innerText = "Tingkat Keyakinan: 0%";
+                    return;
                 }
-                const info = kamusTani[label] || kamusTani.unlabeled;
-                document.getElementById('resLabel').innerText = info.nama;
-                document.getElementById('resGejala').innerText = info.gejala;
-                document.getElementById('resPenyebab').innerText = info.penyebab || "-";
-                document.getElementById('resSolusi').innerText = info.solusi;
-                document.getElementById('resMerek').innerText = info.merek || "-";
-                document.getElementById('resAplikasi').innerText = info.aplikasi || "-";
+
+                const hasil = out.mapped_result;
+                
+                if (hasil) {
+                    if (hasil.nama_ilmiah && hasil.nama_ilmiah !== "-") {
+                        document.getElementById('resLabel').innerHTML = `${hasil.nama}<br><small style="font-size: 0.75rem; font-style: italic; color: #8b949e; font-weight: 400;">${hasil.nama_ilmiah}</small>`;
+                    } else {
+                        document.getElementById('resLabel').innerText = hasil.nama;
+                    }
+
+                    document.getElementById('resGejala').innerHTML = hasil.gejala;
+
+                    let warnaKepaparan = hasil.tingkat_keparahan === "Sangat Tinggi" || hasil.tingkat_keparahan === "Tinggi" ? "var(--red-alert)" : "var(--accent-soil)";
+                    let keparahanText = hasil.tingkat_keparahan && hasil.tingkat_keparahan !== "-" ? `<span style="color: ${warnaKepaparan}; font-weight: 700;">[Risiko: ${hasil.tingkat_keparahan}]</span><br>` : "";
+                    document.getElementById('resPenyebab').innerHTML = keparahanText + (hasil.penyebab || "-");
+
+                    document.getElementById('resSolusi').innerHTML = hasil.solusi;
+                    document.getElementById('resMerek').innerHTML = hasil.merek || "-";
+                    
+                    let formatAplikasi = hasil.aplikasi ? hasil.aplikasi.replace(/\n/g, "<br>") : "-"; 
+                    if (hasil.catatan && hasil.catatan !== "-" && hasil.catatan !== "") {
+                        document.getElementById('resAplikasi').innerHTML = `
+                            ${formatAplikasi}<br><br>
+                            <div style="border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 8px; margin-top: 5px; color: #ff7675; font-size: 0.75rem;">
+                                💡 <b>Catatan Lapangan:</b> ${hasil.catatan}
+                            </div>
+                        `;
+                    } else {
+                        document.getElementById('resAplikasi').innerHTML = formatAplikasi;
+                    }
+
+                    conf = (out.akurasi && parseFloat(out.akurasi) > 0) ? out.akurasi : "85.0";
+                } else {
+                    document.getElementById('resLabel').innerText = "❌ Gagal Membaca Data Apps Script";
+                    document.getElementById('resGejala').innerText = "Pastikan Anda sudah Deploy ulang Apps Script.";
+                    conf = 0;
+                }
             } 
             else if (currentMode === 'tanah') {
                 let foundBlock = null;
