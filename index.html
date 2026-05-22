@@ -186,7 +186,7 @@
             box-shadow: none;
         }
         .btn-camera:active { background: rgba(255, 255, 255, 0.12); }
-         
+          
         .btn-biaya {
             background: linear-gradient(135deg, #651fff, var(--accent-biaya));
             color: white;
@@ -217,7 +217,7 @@
             background: #050811;
         }
         #preview { width: 100%; border-radius: 18px; display: none; }
-         
+          
         .laser-line {
             display: none; 
             position: absolute; 
@@ -241,7 +241,7 @@
             line-height: 1.5;
         }
         .info-box strong { color: #ffffff; display: inline-block; margin-bottom: 4px; font-weight: 600;}
-         
+          
         .leaf-card {
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid var(--card-border);
@@ -286,7 +286,7 @@
         .recommendation-box { background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); border-radius: 16px; padding: 16px; margin-top: 16px; }
         .vote-summary { font-size: 0.8rem; color: var(--accent-soil); margin-bottom: 10px; font-weight: 700; }
         .malai-counter-box { background: rgba(0, 0, 0, 0.2); border: 1px solid var(--card-border); border-radius: 12px; padding: 14px; margin-bottom: 10px; display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 500; }
-         
+          
         .error { color: #ff5252; font-size: 12px; display: none; margin-top: -10px; margin-bottom: 10px; }
         .highlight { color: #81c784; font-weight: bold; }
         .big { font-size: 18px; font-weight: bold; }
@@ -326,7 +326,7 @@
     <div class="card">
         <h3 id="modeTitle">Deteksi Penyakit Padi</h3>
         <div id="tabSubtitleDisplay" class="tab-subtitle" style="display:none;"></div>
-         
+          
         <div id="formParameterLahan" class="form-lahan" style="display: none;">
             <div class="form-group">
                 <label>🌾 METODE TANAM / POPULASI</label>
@@ -365,8 +365,12 @@
 
             <label class="form-label">Sistem Tanam</label>
             <select id="sistem" class="form-select">
-                <option value="tapin">Tapin (30 kg/Ha)</option>
-                <option value="tabela">Tabela (50 kg/Ha)</option>
+                <option value="30">Tapin (30 kg/Ha)</option>
+                <option value="35">Tapin (35 kg/Ha)</option>
+                <option value="40">Tapin (40 kg/Ha)</option>
+                <option value="50">Tabela (50 kg/Ha)</option>
+                <option value="75">Tabela (75 kg/Ha)</option>
+                <option value="100">Tabela (100 kg/Ha)</option>
             </select>
 
             <label class="form-label">Dosis Urea (kg/Ha)</label>
@@ -390,7 +394,12 @@
             <div class="sub-header-biaya">2. Biaya Lain (Jumlah Rp)</div>
             <input type="text" id="pestisida" class="form-input" placeholder="Pestisida, Booster, atau bahan lainnya" oninput="formatRupiah(this)">
             <input type="text" id="tenaga_olah" class="form-input" placeholder="Olah Lahan (Traktor/Bajak sawah)" oninput="formatRupiah(this)">
-            <input type="text" id="tenaga_panen" class="form-input" placeholder="Panen/Pasca Panen (Combine, Biaya angkutan, dsb.)" oninput="formatRupiah(this)">
+            <input type="text" id="tenaga_panen" class="form-input" placeholder="Biaya Mesin Combine Pemotong" oninput="formatRupiah(this)">
+            
+            <input type="text" id="biaya_pengairan" class="form-input" placeholder="💧 Biaya Pengairan (BBM / Pompa Air)" oninput="formatRupiah(this)">
+            <input type="text" id="biaya_tenaga_kerja" class="form-input" placeholder="👥 Upah Kerja Lapangan (Tanam / Matun)" oninput="formatRupiah(this)">
+            <input type="text" id="biaya_angkut" class="form-input" placeholder="🚚 Biaya Angkut Pasca Panen (Langsir)" oninput="formatRupiah(this)">
+            
             <input type="text" id="lain" class="form-input" placeholder="Lainnya" oninput="formatRupiah(this)">
 
             <div class="sub-header-biaya">3. Hasil Panen</div>
@@ -546,7 +555,7 @@
         let currentMode = 'cuaca', base64Image = "";
         let hasilSampelBulir = []; 
         let isGpsSynced = false; 
-        
+         
         const URL_DAUN = "https://script.google.com/macros/s/AKfycbyCYh65h_3lT4iWr97_RHJNZmaPTSHDp_uFPy_pAP_rvC5BxYHI1n3dn5iwrnNcER1X/exec";
         const URL_TANAH = "https://script.google.com/macros/s/AKfycbwlryQ9ZZvgc1WjZAavj1J4KbUaaJPluZorOLzIEM12fOy19bKP56mdaITAt7jDZ5XYKg/exec";
         const URL_BWD = "https://script.google.com/macros/s/AKfycbwGAPTPnLJyg-OtcbFt1aG_I2uy6FQjd-5eE2p1UuhQTde2lEbokpAquACyutg8kBDi/exec";
@@ -554,9 +563,9 @@
         const URL_IKLIM = "https://script.google.com/macros/s/AKfycbxyPG7e8EqK6_bc09kqITIpqtrWL45jyQs2TtUuT8KySwnvII_ZyHAcyDI1F8uA7H6A/exec";
 
          const kamusTani = {
-            "healthy": { nama: "Tanaman Sehat", gejala: "Warna hijau segar, pertumbuhan normal tanpa bercak.", penyebab: "Kondisi lingkungan dan nutrisi optimal.", solusi: "Lanjutkan pemupukan berimbang dan pantau secara rutin." },
+            "healthy": { nama: "Tanaman Sehat", gejala: "Warna hijau segar, pertumbuhan normal tanpa bercak.", penyebab: "Kondisi lingkungan dan nutrisi optimal.", solusi: "Lanjutkan pemupukan berimbang and pantau secara rutin." },
             "bacterial_leaf_blight": { nama: "HDB - Hawar Daun Bakteri (Kresek)", gejala: "Garis kuning/oranye di sepanjang pinggir daun yang mengering. Penyakit ini dinamai kresek karena daun yang terserang akan berubah warna menjadi cokelat kekuningan, menggulung, dan mengering seperti kertas kresek.", penyebab: "Bakteri Xanthomonas oryzae yang sangat cepat berkembang biak pada lingkungan dengan tingkat kelembapan tinggi pada musim hujan, dan tanaman padi kelebihan pemupukan Nitrogen.", solusi: "Gunakan bakterisida, pastikan sirikulasi air sawah lancar, kurangi Urea.", merek: "Kuproxat 345 SC, Nordox 56 WP, Blast 200 SC, Biopatek (Hayati)", aplikasi: "Waktu Aplikasi: Sebaiknya diaplikasikan segera setelah muncul gejala awal atau sebagai langkah pencegahan dengan interval 7–10 hari." },
-            "brown_spot": { nama: "Bercak Cokelat (Brown Spot)", gejala: "Bintik cokelat bulat atau oval merata di permukaan daun.", penyebab: "Jamur Bipolaris oryzae. Sering terjadi karena ketidakseimbangan nutrisi tanah dan kelembapan udara yang tinggi serta suhu hangat sangat mendukung penyebaran jamur.", solusi: "Cukupi kebutuhan Kalium dan pastikan drainase lancar.", merek: "Amistar Top 325 SC, Tandem 325 SC, atau alternatif lain seperti WUZ, Vitro, dan Torbinol.", aplikasi: "Jika serangan sudah terjadi, gunakan fungisida yang tepat, seperti yang mengandung bahan aktif kombinasi Azoksistrobin dan Difenokonazol." },
+            "brown_spot": { nama: "Bercak Cokelat (Brown Spot)", gejala: "Bintik cokelat bulat atau oval merata di permukaan daun.", penyebab: "Jamur Bipolaris oryzae. Sering terjadi karena ketidakseimbangan nutrisi tanah and kelembapan udara yang tinggi serta suhu hangat sangat mendukung penyebaran jamur.", solusi: "Cukupi kebutuhan Kalium dan pastikan drainase lancar.", merek: "Amistar Top 325 SC, Tandem 325 SC, atau alternatif lain seperti WUZ, Vitro, dan Torbinol.", aplikasi: "Jika serangan sudah terjadi, gunakan fungisida yang tepat, seperti yang mengandung bahan aktif kombinasi Azoksistrobin dan Difenokonazol." },
             "leaf_blast": { nama: "Penyakit Blast", gejala: "Bercak cokelat berbentuk belah ketupat dengan pusat abu-abu.", penyebab: "Jamur patogen Pyricularia oryzae yang berkembang pesat pada kelembapan tinggi, suhu malam yang sejuk, dan pemupukan nitrogen berlebih.", solusi: "Semprot fungisida sistemik (Trisiklazol), kurangi dosis Nitrogen.", merek: "Blast 200 SC (bahan aktif trisiklazol), Envoy 80 WP, dan Amistar Top 325 SC.", aplikasi: "1. Fase Vegetatif (Blast Daun): Semprot sejak dini saat gejala awal bercak cokelat berbentuk belah ketupat muncul, atau lakukan tindakan pencegahan jika lingkungan lembap. 2. Fase Bunting hingga Awal Keluar Malai (Blast Leher): Sangat krusial untuk mencegah leher malai membusuk (potong leher)." },
             "leaf_scald": { nama: "Luka Daun (Leaf Scald)", gejala: "Bercak besar berbentuk perahu yang mengering di ujung daun.", penyebab: "Jamur Microdochium oryzae berkembang sangat cepat dalam kondisi Kelembapan Tinggi, Pemupukan Nitrogen Berlebih dan Jarak Tanam Terlalu Rapat.", solusi: "Gunakan varietas tahan dan atur jarak tanam jangan terlalu rapat.", merek: "Dithane M-45 80 WP (Bahan Aktif Mankozeb), Score 250 EC (Difenokonazol-Sistemik), Amistar Top 325 SC (Kombinasi Azoksistrobin + Difenokonazol).", aplikasi: "Pada kondisi serangan yang parah, gunakan fungisida yang diterpkan untuk penyakit jamur daun (misalnya berbahan aktif mankozeb atau difenokonazol)." },
             "narrow_brown_spot": { nama: "Bercak Cokelat Sempit", gejala: "Garis-garis cokelat sempit searah dengan tulang daun.", penyebab: "Jamur Cercospora oryzae (Cercospora janseana) yang mudah berkembang saat suhu lingkungan rendah dengan kelembapan tinggi dan tanaman kekurangan Kalium.", solusi: "Tambah dosis pupuk Kalium dan perbaiki sistem pengairan.", merek: "Score 250 EC dan Manic 62,5 WG (Difenokonazol), Qiutane 80 WP. (Mankozeb + Trisiklazol), DKAztrozol Plus 375 SC (Azoksistrobin + Difenokonazol).", aplikasi: "Penyakit bercak coklat sempit pada padi (disebabkan oleh jamur Cercospora oryzae) dapat dikendalikan secara efektif menggunakan fungisida berbahan aktif seperti difenokonazol, propikonazol, atau mankozeb." },
@@ -654,7 +663,6 @@
             if (metode === 'custom') { customBox.style.display = 'block'; } else { customBox.style.display = 'none'; }
         }
 
-        // AMAN: SAKELAR MENU UTAMA DENGAN PERBAIKAN BUG STRING WARNA BIAYA
         function switchMode(mode) {
             currentMode = mode;
             let color = '#4fc3f7'; 
@@ -1167,8 +1175,8 @@
                 return;
             }
 
-            let sistem = document.getElementById("sistem").value;
-            let benih = (sistem === "tapin") ? 30 : 50;
+            // Ambil langsung angka kebutuhan benih dari value select option
+            let benih = parseFloat(document.getElementById("sistem").value) || 30;
 
             let totalBenih = luas * benih;
             let biayaBenih = totalBenih * 18500;
@@ -1179,15 +1187,26 @@
             let biayaUrea = urea * 1800;
             let biayaNPK = npk * 1840;
 
+            // Parsing komponen biaya lama
             let pest = parseFloat(document.getElementById("pestisida").value.replace(/\./g,"")) || 0;
             let olah = parseFloat(document.getElementById("tenaga_olah").value.replace(/\./g,"")) || 0;
             let panen = parseFloat(document.getElementById("tenaga_panen").value.replace(/\./g,"")) || 0;
             let biayaLain = parseFloat(document.getElementById("lain").value.replace(/\./g,"")) || 0;
 
-            let totalBiaya = biayaBenih + biayaUrea + biayaNPK + pest + olah + panen + biayaLain;
+            // Parsing 3 komponen biaya operasional baru yang ditambahkan
+            let pengairan = parseFloat(document.getElementById("biaya_pengairan").value.replace(/\./g,"")) || 0;
+            let tenagaKerja = parseFloat(document.getElementById("biaya_tenaga_kerja").value.replace(/\./g,"")) || 0;
+            let angkutPanen = parseFloat(document.getElementById("biaya_angkut").value.replace(/\./g,"")) || 0;
+
+            // Akumulasi Total Modal Utama Sawah (Termasuk Komponen Baru)
+            let totalBiaya = biayaBenih + biayaUrea + biayaNPK + pest + olah + panen + pengairan + tenagaKerja + angkutPanen + biayaLain;
             let pendapatan = hasil * harga;
             let untung = pendapatan - totalBiaya;
             let rc = (pendapatan / totalBiaya).toFixed(2);
+
+            // Logika hitung BEP (Break Even Point)
+            let bepProduksi = totalBiaya / harga; 
+            let bepHarga = totalBiaya / hasil;    
 
             let status = "";
             if(rc < 1) status = "❌ Rugi";
@@ -1195,26 +1214,63 @@
             else if(rc < 4) status = "✅ Layak";
             else status = "🔥 Sangat Menguntungkan";
 
-            let html = `
+           let html = `
             <div style="font-size: 1.1rem; font-weight:800; color:var(--accent-biaya); margin-bottom:12px; text-align:center;">📊 Hasil Analisis Usaha Tani</div>
 
             🌾 <b>Benih:</b> ${totalBenih.toFixed(1)} kg<br>
             Biaya: <span style="color:var(--text-main)">${rupiah(biayaBenih)}</span><br><br>
 
-            🧪 <b>Urea:</b> ${urea.toFixed(0)} kg (${sak(urea)} sak)<br>
-            🧪 <b>NPK:</b> ${npk.toFixed(0)} kg (${sak(npk)} sak)<br><br>
+            🧪 <b>Pupuk Urea:</b> ${urea.toFixed(0)} kg (${sak(urea)} sak)<br>
+            Harga Subsidi: Rp 1.800/kg<br>
+            Biaya: <span style="color:var(--text-main)">${rupiah(biayaUrea)}</span><br><br>
 
-            💰 <b>Total Biaya:</b><br>
-            <span style="color:#ef5350; font-weight:700; font-size:1rem;">${rupiah(totalBiaya)}</span><br><br>
+            🧪 <b>Pupuk NPK:</b> ${npk.toFixed(0)} kg (${sak(npk)} sak)<br>
+            Harga Subsidi: Rp 1.840/kg<br>
+            Biaya: <span style="color:var(--text-main)">${rupiah(biayaNPK)}</span><br><br>
 
-            💵 <b>Pendapatan:</b><br>
-            <span class="highlight" style="font-size:1rem;">${rupiah(pendapatan)}</span><br><br>
+            💧 <b>Pengairan (BBM/Pompa):</b><br>
+            Biaya: <span style="color:var(--text-main)">${rupiah(pengairan)}</span><br><br>
+
+            👥 <b>Tenaga Kerja (Tanam/Matun):</b><br>
+            Biaya: <span style="color:var(--text-main)">${rupiah(tenagaKerja)}</span><br><br>
+
+            🚚 <b>Angkut Pasca Panen (Langsir):</b><br>
+            Biaya: <span style="color:var(--text-main)">${rupiah(angkutPanen)}</span><br><br>
+
+            🐛 <b>Pestisida & Booster:</b><br>
+            Biaya: <span style="color:var(--text-main)">${rupiah(pest)}</span><br><br>
+
+            🚜 <b>Olah Lahan (Traktor):</b><br>
+            Biaya: <span style="color:var(--text-main)">${rupiah(olah)}</span><br><br>
+
+            🌾 <b>Jasa Combine Harvester:</b><br>
+            Biaya: <span style="color:var(--text-main)">${rupiah(panen)}</span><br><br>
+
+            📌 <b>Biaya Lainnya:</b><br>
+            Biaya: <span style="color:var(--text-main)">${rupiah(biayaLain)}</span><br><br>
+
+            <div style="border-top:1px solid rgba(255,255,255,0.1); margin-top:10px; padding-top:10px;">
+                💰 <b>Total Biaya (Modal):</b><br>
+                <span style="color:#ef5350; font-weight:700; font-size:1.1rem;">${rupiah(totalBiaya)}</span>
+            </div><br>
+
+            💵 <b>Pendapatan Gross:</b><br>
+            <span class="highlight" style="font-size:1.1rem;">${rupiah(pendapatan)}</span><br><br>
 
             💵 <b>Keuntungan Netto:</b><br>
-            <span class="big highlight" style="font-size:1.3rem; color:var(--accent-green);">${rupiah(untung)}</span><br><br>
+            <span class="big highlight" style="font-size:1.4rem; color:var(--accent-green);">${rupiah(untung)}</span><br><br>
 
-            📈 <b>R/C Ratio:</b> <b style="color:var(--accent-soil); font-size:1rem;">${rc}</b><br>
-            Kelayakan: <b>${status}</b>
+            📈 <b>R/C Ratio:</b> <b style="color:var(--accent-soil); font-size:1.1rem;">${rc}</b><br>
+            Kelayakan: <b>${status}</b><br><br>
+
+            <div style="border-top:1px dashed rgba(255,255,255,0.15); margin-top:10px; padding-top:12px;">
+                <div style="font-size: 0.9rem; font-weight:700; color:var(--accent-soil); margin-bottom:8px;">⚖️ Analisis Titik Impas (BEP)</div>
+                📉 <b>BEP Produksi minimal:</b> <span style="color:var(--text-main); font-weight:700;">${Math.ceil(bepProduksi).toLocaleString("id-ID")} Kg</span><br>
+                <small style="color:var(--text-muted); font-size:0.75rem; display:block; margin-bottom:6px;">(Lahan harus menghasilkan minimal angka di atas agar tidak rugi)</small>
+                
+                🏷️ <b>BEP Harga jual minimal:</b> <span style="color:var(--text-main); font-weight:700;">${rupiah(bepHarga)} / Kg</span><br>
+                <small style="color:var(--text-muted); font-size:0.75rem; display:block;">(Gabah harus terjual minimal seharga di atas agar modal kembali)</small>
+            </div>
             `;
 
             let out = document.getElementById("outputBiaya");
