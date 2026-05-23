@@ -564,7 +564,7 @@
         let isGpsSynced = false; 
          
         const URL_DAUN = "https://script.google.com/macros/s/AKfycbwCRdyOUC5IHnAsqY350uP0JjsP-uhK_YKlF-h11D95DqSMVv9Uwpr1WSbzx4NvxlHUKA/exec";
-        const URL_GULMA = "https://script.google.com/macros/s/AKfycbwoNjIk2-rYevDZU_5CVbpW4HUYU6AETdpeZp8Nz6VvYwWuU0l0Kt9kh6HWpuBlW4lBfA/exec";
+        const URL_GULMA = "https://script.google.com/macros/s/AKfycbzx4mJLBt_TxdAgx4MlAjRkSheVLUlRgZe3Dw-4wSltO4BpedU5vpes4d5UyICBAns-9w/exec";
         const URL_TANAH = "https://script.google.com/macros/s/AKfycbwlryQ9ZZvgc1WjZAavj1J4KbUaaJPluZorOLzIEM12fOy19bKP56mdaITAt7jDZ5XYKg/exec";
         const URL_BWD = "https://script.google.com/macros/s/AKfycbwGAPTPnLJyg-OtcbFt1aG_I2uy6FQjd-5eE2p1UuhQTde2lEbokpAquACyutg8kBDi/exec";
         const URL_MALAI = "https://script.google.com/macros/s/AKfycbzVPK1I_81gFU07Q_tNsWxUK1SZ_1tmwNlASp8P5_IR5hApq3XZb8koYufA46fIOacd/exec";
@@ -978,6 +978,9 @@
             
             let conf = 0;
 
+            // ==========================================
+            // LOGIKA TAB DAUN / PENYAKIT (KEMBALI ASLI)
+            // ==========================================
             if (currentMode === 'daun') {
                 if (out.error) {
                     document.getElementById('resLabel').innerText = "Gagal Deteksi";
@@ -991,7 +994,6 @@
                 }
 
                 const hasil = out.mapped_result;
-                
                 if (hasil) {
                     if (hasil.nama_ilmiah && hasil.nama_ilmiah !== "-") {
                         document.getElementById('resLabel').innerHTML = `${hasil.nama}<br><small style="font-size: 0.75rem; font-style: italic; color: #8b949e; font-weight: 400;">${hasil.nama_ilmiah}</small>`;
@@ -1002,7 +1004,7 @@
                     document.getElementById('resGejala').innerHTML = hasil.gejala;
 
                     let warnaKepaparan = hasil.tingkat_keparahan === "Sangat Tinggi" || hasil.tingkat_keparahan === "Tinggi" ? "var(--red-alert)" : "var(--accent-soil)";
-                    let keparahanText = hasil.tingkat_keparahan && html.tingkat_keparahan !== "-" ? `<span style="color: ${warnaKepaparan}; font-weight: 700;">[Risiko: ${hasil.tingkat_keparahan}]</span><br>` : "";
+                    let keparahanText = hasil.tingkat_keparahan && hasil.tingkat_keparahan !== "-" ? `<span style="color: ${warnaKepaparan}; font-weight: 700;">[Risiko: ${hasil.tingkat_keparahan}]</span><br>` : "";
                     document.getElementById('resPenyebab').innerHTML = keparahanText + (hasil.penyebab || "-");
 
                     document.getElementById('resSolusi').innerHTML = hasil.solusi;
@@ -1027,7 +1029,9 @@
                     conf = 0;
                 }
             } 
-            // PERBAIKAN LOGIKA GULMA: ANTI SINKRONISASI 0% & ANTI DUPLIKAT BERULANG
+            // ==========================================
+            // LOGIKA TAB GULMA (TAMBAHAN MENU TANPA DUPLIKASI BUG)
+            // ==========================================
             else if (currentMode === 'gulma') {
                 if (out.error) {
                     document.getElementById('resLabel').innerText = "Gagal Identifikasi";
@@ -1050,6 +1054,7 @@
                     return;
                 }
 
+                // Cari akurasi terkuat dari daftar bingkai yang masuk
                 let akurasiTertinggi = 0;
                 daftarGulma.forEach(g => {
                     let nilaiAkurasi = parseFloat(g.akurasi) || 0;
@@ -1058,8 +1063,9 @@
                     }
                 });
                 
-                conf = akurasiTertinggi.toFixed(1); 
+                conf = akurasiTertinggi.toFixed(1); // Set nilai ke variabel conf global agar tidak jadi 0%
 
+                // Satukan jika ada nama spesies gulma yang terdeteksi ganda
                 let gulmaUnik = [];
                 daftarGulma.forEach(g => {
                     let sudahAda = gulmaUnik.some(item => item.detail.nama === g.detail.nama);
@@ -1083,19 +1089,15 @@
                             <div style="font-size: 0.75rem; color: var(--accent-green); font-weight: 800; margin-bottom: 10px; letter-spacing: 0.5px;">
                                 🌱 SPESIES KE-${index + 1} (Akurasi Terkuat: ${gulma.akurasi}%)
                             </div>
-                            
                             <div class="info-box" style="border-left-color: #00ff9d; margin-top: 5px;">
                                 <strong>🌱 Nama Gulma:</strong><br>${gulma.detail.nama}
                             </div>
-                            
                             <div class="info-box" style="border-left-color: ${boxColor};">
                                 <strong>📊 Karakteristik Daun:</strong><br>${gulma.detail.karakteristik}
                             </div>
-                            
                             <div class="info-box" style="border-left-color: var(--text-muted);">
                                 <strong>📖 Deskripsi:</strong><br>${gulma.detail.deskripsi}
                             </div>
-                            
                             <div class="info-box" style="border-left-color: #b388ff;">
                                 <strong>🔬 Pengendalian Kimiawi (Rekomendasi PPL):</strong><br>${gulma.detail.kimiawi}
                             </div>
@@ -1103,6 +1105,9 @@
                     `;
                 });
             }
+            // ==========================================
+            // LOGIKA TAB TANAH (KEMBALI ASLI)
+            // ==========================================
             else if (currentMode === 'tanah') {
                 let foundBlock = null;
                 if (out.predictions && out.predictions.predicted_classes) { foundBlock = out.predictions; } 
@@ -1130,6 +1135,8 @@
                     const info = kamusTanah[finalKey] || kamusTanah.unlabeled;
 
                     document.getElementById('resLabel').innerText = finalKey === "unlabeled" ? "Objek Kurang Jelas" : info.nama;
+                    conf = topValue.toFixed(1); setTimeout(() => { drawTriangle(finalKey); }, 80);
+                    
                     const tableResult = document.querySelector("#boxTanah table");
                     tableResult.innerHTML = `
                         <tr><td>Kesuburan</td><td class="row-val">${info.subur || "Sedang"}</td></tr>
@@ -1140,17 +1147,18 @@
 
                     document.getElementById('resPenjelasan').innerText = info.penjelasan;
                     document.getElementById('resSaranTanah').innerText = info.saran;
-                    conf = topValue.toFixed(1); setTimeout(() => { drawTriangle(finalKey); }, 80);
                 }
             } 
+            // ==========================================
+            // LOGIKA TAB UJI UREA / BWD (KEMBALI ASLI)
+            // ==========================================
             else if (currentMode === 'bwd') {
                 const bwdContainer = document.getElementById('boxBWD');
                 let listTempHTML = '';
                 const colors = out.leafColors || out.leaf_colors || []; const dets = Array.isArray(out.detections) ? out.detections : (out.detections?.predictions || []);
                 if (colors.length === 0) { 
-                    bwdContainer.innerHTML = `<div id="leafList"></div><div class="info-box" style="border-left-color: var(--red-alert);">⚠️ Daun tidak terdeteksi. Silakan coba lagi.</div>`; 
-                    conf = 0;
-                    document.getElementById('resConf').innerText = `Tingkat Keyakinan: ${conf}%`; 
+                    bwdContainer.innerHTML = `<div class="info-box" style="border-left-color: var(--red-alert);">⚠️ Daun tidak terdeteksi. Silakan coba lagi.</div>`; 
+                    document.getElementById('resConf').innerText = `Tingkat Keyakinan: 0%`; 
                     return; 
                 }
 
@@ -1183,6 +1191,9 @@
                 let finalConfidence = (1 - akumulasiSalah) * 100; if (finalConfidence > 99.9) finalConfidence = 99.9;
                 conf = finalConfidence.toFixed(1);
             }
+            // ==========================================
+            // LOGIKA TAB PANEN / MALAI (KEMBALI ASLI)
+            // ==========================================
             else if (currentMode === 'malai') {
                 const listM = document.getElementById('listMalai'); let totalBulirFotoIni = out.count || 0; 
                 if (hasilSampelBulir.length < 3) { hasilSampelBulir.push(totalBulirFotoIni); }
@@ -1225,6 +1236,8 @@
                     document.getElementById('resUbinanTeks').innerHTML = `⏳ <b>Antrean Sampel:</b> Baru terkumpul <b>${hasilSampelBulir.length} dari 3</b> foto sampel.<br>Silakan ambil foto sampel malai berikutnya lalu klik analisis kembali.`;
                 }
             }
+
+            // Eksekusi akhir penulisan keyakinan global bawaan asli Anda
             document.getElementById('resConf').innerText = `Tingkat Keyakinan: ${conf}%`;
         }
 
