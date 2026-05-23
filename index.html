@@ -15,7 +15,7 @@
             --accent-bwd: #38b6ff;
             --accent-malai: #ff5e7e;
             --accent-biaya: #b388ff;
-            --accent-gulma: #0ea5e9;
+            --accent-gulma: #e0f2fe;
             --text-main: #f1f5f9;
             --text-muted: #94a3b8;
             --red-alert: #ff4a5a;
@@ -59,38 +59,38 @@
             margin: 6px 0 0 0;
         }
 
+        /* PERBAIKAN TAB: PAS LEBAR SATU LAYAR HAPE */
         .tab-container {
-    display: flex; 
-    flex-wrap: wrap; /* KUNCI UTAMA: Mengizinkan tab turun rapi jika layar sangat kecil */
-    background: rgba(13, 20, 38, 0.8); 
-    padding: 6px; 
-    border-radius: 14px;
-    margin-bottom: 20px; 
-    width: 100%; 
-    max-width: 480px; 
-    border: 1px solid var(--card-border); 
-    gap: 4px;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
-    box-sizing: border-box;
-}
- 
-.tab-btn {
-    flex: 1 1 calc(25% - 4px); /* Mengatur basis lebar agar pas dibagi rata per baris */
-    min-width: 55px; /* Batas minimal agar tulisan tidak saling tabrakan */
-    padding: 8px 2px; 
-    border: none; 
-    background: none; 
-    color: var(--text-muted);
-    cursor: pointer; 
-    font-weight: 700; 
-    border-radius: 10px; 
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); 
-    font-size: 0.55rem; /* Sedikit dikecilkan agar aman di layar HP jadul/kecil */
-    letter-spacing: 0.2px;
-    text-align: center;
-    white-space: normal; /* Mengizinkan teks panjang (Cth: BIAYA TANI) patah jadi 2 baris jika tidak muat */
-    word-wrap: break-word;
-}
+            display: flex; 
+            flex-wrap: wrap; 
+            background: rgba(13, 20, 38, 0.8); 
+            padding: 4px; 
+            border-radius: 14px;
+            margin-bottom: 20px; 
+            width: 100%; 
+            max-width: 480px; 
+            border: 1px solid var(--card-border); 
+            gap: 4px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+        }
+         
+        .tab-btn {
+            flex: 1 1 calc(25% - 4px); 
+            min-width: 55px; 
+            padding: 10px 2px; 
+            border: none; 
+            background: none; 
+            color: var(--text-muted);
+            cursor: pointer; 
+            font-weight: 700; 
+            border-radius: 10px; 
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); 
+            font-size: 0.55rem;
+            letter-spacing: 0.2px;
+            text-align: center;
+            white-space: normal;
+            word-wrap: break-word;
+        }
          
         .tab-btn.active { background: #38b6ff; color: #000000; }
         .tab-btn.active.daun-mode { background: #ff4a5a; color: #ffffff; }
@@ -336,10 +336,10 @@
             <div class="form-group">
                 <label>🌾 METODE TANAM / POPULASI</label>
                 <select id="metodeTanam" onchange="updateEstimasiKepadatan()">
-                    <option value="tapin">Tanam Pindah (±25 rumpun/m²)</option>
+                    <option value="tapin">Tapin (±25 rumpun/m²)</option>
                     <option value="legowo">Jajar Legowo 2:1 atau 4:1 (±33 rumpun/m²)</option>
-                    <option value="tabela_larikan">Tanam Benih Langsung Larikan / Drum Seeder (±40 rumpun/m²)</option>
-                    <option value="tabela_hambur">Tanam Benih Langsung Hambur Langsung / Sere (±60 rumpun/m²)</option>
+                    <option value="tabela_larikan">Tabela Larikan / Drum Seeder (±40 rumpun/m²)</option>
+                    <option value="tabela_hambur">Tabela Hambur Langsung / Sere (±60 rumpun/m²)</option>
                     <option value="custom">atau Input Kepadatan...</option>
                 </select>
             </div>
@@ -370,12 +370,12 @@
 
             <label class="form-label">Sistem Tanam</label>
             <select id="sistem" class="form-select">
-                <option value="30">Tanam Pindah (30 kg/Ha)</option>
-                <option value="35">Tanam Pindah (35 kg/Ha)</option>
-                <option value="40">Tanam Pindah (40 kg/Ha)</option>
-                <option value="50">Tanam Benih Langsung (50 kg/Ha)</option>
-                <option value="75">Tanam Benih Langsung (75 kg/Ha)</option>
-                <option value="100">Tanam Benih Langsung (100 kg/Ha)</option>
+                <option value="30">Tapin (30 kg/Ha)</option>
+                <option value="35">Tapin (35 kg/Ha)</option>
+                <option value="40">Tapin (40 kg/Ha)</option>
+                <option value="50">Tabela (50 kg/Ha)</option>
+                <option value="75">Tabela (75 kg/Ha)</option>
+                <option value="100">Tabela (100 kg/Ha)</option>
             </select>
 
             <label class="form-label">Dosis Urea (kg/Ha)</label>
@@ -411,7 +411,7 @@
             <input type="number" id="hasil" class="form-input" placeholder="Produksi (Kg) Cth. 6 Ton: 6000">
             <input type="text" id="harga" class="form-input" placeholder="Harga Gabah (Rp) Cth: 6.500" oninput="formatRupiah(this)">
 
-            <button class="btn-main btn-biaya" onclick="hitungBiayaTani()">🚀 Tampilkan Analisis Usaha</button>
+            <button class="btn-main btn-biaya" onclick="hitungBiayaTani()">🚀 Hitung Analisis Usaha</button>
 
             <div class="info-box" id="outputBiaya" style="display:none; border-left-color: var(--accent-biaya);"></div>
         </div>
@@ -453,7 +453,8 @@
             </div>
 
             <div id="boxBWD" style="display:none;">
-                </div>
+                <div id="leafList"></div>
+            </div>
 
             <div id="boxMalai" style="display:none;">
                 <div id="listMalai"></div>
@@ -470,7 +471,7 @@
                     <div style="font-size: 2.5rem; margin-bottom: 12px;">🛰️</div>
                     <h4 style="margin: 0; color: var(--text-main); font-size: 1.1rem; font-weight: 700;">Akses Lokasi / Lahan Sawah</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin: 10px 0 24px; line-height: 1.5;">
-                        Kami memerlukan koordinat GPS untuk mengambil data cuaca langsung dari satelit.
+                        Kami memerlukan koordinat GPS untuk mengambil data cuaca langsung dari satelit di titik sawah Anda saat ini.
                     </p>
                     <button class="btn-main btn-live" onclick="aktifkanGPS()">SINKRONKAN GPS & SATELIT</button>
                 </div>
@@ -494,43 +495,43 @@
                         <table style="width: 100%; margin-top: 8px; border: none;">
                             <tr>
                                 <td style="border: none; padding: 8px 0;">🌧️ Curah Hujan</td>
-                                <td class="row-val" id="rainNow" style="color: var(--text-main);">-</td>
+                                <td class="row-val"><span id="rainNow">-</span></td>
                             </tr>
                             <tr>
                                 <td style="border: none; padding: 8px 0;">📊 Akumulasi 30 Hari</td>
-                                <td class="row-val" id="rainMonthly" style="color: var(--accent-bwd);">-</td>
+                                <td class="row-val"><span id="rainMonthly">-</span></td>
                             </tr>
                             <tr>
                                 <td style="border: none; padding: 8px 0;">🌡️ Suhu Udara</td>
-                                <td class="row-val" id="suhuNow" style="color: var(--text-main);">-</td>
+                                <td class="row-val"><span id="suhuNow">-</span></td>
                             </tr>
                             <tr>
                                 <td style="border: none; padding: 8px 0;">💧 Kelembapan</td>
-                                <td class="row-val" id="humidityNow" style="color: var(--text-main);">-</td>
+                                <td class="row-val"><span id="humidityNow">-</span></td>
                             </tr>
                             <tr>
                                 <td style="border: none; padding: 8px 0;">💨 Kecepatan Angin</td>
-                                <td class="row-val" id="windNow" style="color: var(--text-main);">-</td>
+                                <td class="row-val"><span id="windNow">-</span></td>
                             </tr>
                             <tr>
                                 <td style="border: none; padding: 8px 0;">⏲️ Tekanan Udara</td>
-                                <td class="row-val" id="pressNow" style="color: var(--text-main);">-</td>
+                                <td class="row-val"><span id="pressNow">-</span></td>
                             </tr>
                             <tr>
                                 <td style="border: none; padding: 8px 0;">☁️ Suhu Udara Atas (850hPa)</td>
-                                <td class="row-val" id="tempUpper" style="color: var(--accent-bwd);">-</td>
+                                <td class="row-val"><span id="tempUpper">-</span></td>
                             </tr>
                             <tr>
                                 <td style="border: none; padding: 8px 0;">💧 Dew Point Spread</td>
-                                <td class="row-val" id="dpSpread" style="color: var(--text-main);">-</td>
+                                <td class="row-val"><span id="dpSpread">-</span></td>
                             </tr>
                             <tr>
                                 <td style="border: none; padding: 8px 0;">⚡ Energi Badai (CAPE)</td>
-                                <td class="row-val" id="capeVal" style="color: var(--accent-soil);">-</td>
+                                <td class="row-val"><span id="capeVal">-</span></td>
                             </tr>
                             <tr>
                                 <td style="border: none; padding: 8px 0;">🧭 Arah Angin</td>
-                                <td class="row-val" id="windDir" style="color: var(--accent-soil);">-</td>
+                                <td class="row-val"><span id="windDir">-</span></td>
                             </tr>
                         </table>
                     </div>
@@ -563,7 +564,7 @@
         let isGpsSynced = false; 
          
         const URL_DAUN = "https://script.google.com/macros/s/AKfycbwCRdyOUC5IHnAsqY350uP0JjsP-uhK_YKlF-h11D95DqSMVv9Uwpr1WSbzx4NvxlHUKA/exec";
-        const URL_GULMA = "https://script.google.com/macros/s/AKfycbzx4mJLBt_TxdAgx4MlAjRkSheVLUlRgZe3Dw-4wSltO4BpedU5vpes4d5UyICBAns-9w/exec";
+        const URL_GULMA = "https://script.google.com/macros/s/AKfycbwoNjIk2-rYevDZU_5CVbpW4HUYU6AETdpeZp8Nz6VvYwWuU0l0Kt9kh6HWpuBlW4lBfA/exec";
         const URL_TANAH = "https://script.google.com/macros/s/AKfycbwlryQ9ZZvgc1WjZAavj1J4KbUaaJPluZorOLzIEM12fOy19bKP56mdaITAt7jDZ5XYKg/exec";
         const URL_BWD = "https://script.google.com/macros/s/AKfycbwGAPTPnLJyg-OtcbFt1aG_I2uy6FQjd-5eE2p1UuhQTde2lEbokpAquACyutg8kBDi/exec";
         const URL_MALAI = "https://script.google.com/macros/s/AKfycbzVPK1I_81gFU07Q_tNsWxUK1SZ_1tmwNlASp8P5_IR5hApq3XZb8koYufA46fIOacd/exec";
@@ -580,7 +581,7 @@
             "peat": { "nama": "Tanah Gambut (Peat)", "penjelasan": "Tanah yang terbentuk dari akumulasi sisa-sisa tumbuhan yang membusuk tidak sempurna di area rawa. Memiliki kandungan bahan organik sangat tinggi namun tingkat keasamannya ekstrem.", "pH": "3.0 - 5.0", "organik": "Sangat Tinggi", "npk": "Rendah", "subur": "Rendah", "tanaman": "Kopi, Nanas, Sawit", "saran": "Berikan Dolomit dosis tinggi & buat parit drainase agar tanah tidak selalu tergenang." },
             "red": { "nama": "Tanah Merah", "penjelasan": "Tanah yang mengalami pelapukan lanjut and pencucian hara. Warna merah berasal dari kandungan besi oksida yang tinggi. Teksturnya remah namun miskin akan hara organik.", "pH": "4.5 - 5.5", "organik": "Rendah", "npk": "Rendah", "subur": "Kurang", "tanaman": "Singkong, Karet", "saran": "Beri pupuk Fosfat (SP-36) dosis ekstra & pupuk kandang untuk memperbaiki kesuburan." },
             "sandy": { "nama": "Tanah Berpasir", "penjelasan": "Tanah dengan partikel kasar yang tidak dapat menahan air dan unsur hara dengan baik. Teksturnya remah dan sangat mudah diolah, namun sangat cepat kering di musim kemarau.", "pH": "5.5 - 7.0", "organik": "Rendah", "npk": "Rendah", "subur": "Rendah", "tanaman": "Kelapa, Semangka", "saran": "Wajib tambah kompos/pupuk kandang tiap musim untuk meningkatkan daya ikat air tanah." },
-            "sandy_loam": { "nama": "Lempung Berpasir", "penjelasan": "Tanah dengan campuran pasir (50-70%) dan liat/debu (30-50%). Tekstur lebih padat dari pasir murni, mampu menahan air dan hara lebih baik, namun tetap cepat kering dan mudah diolah.", "pH": "5.0 - 7.5", "organik": "Sedang-Rendah", "npk": "Sedang", "subur": "Sedang", "tanaman": "Jagung, Kacang Tanah, Ubi Kayu, Cabe", "saran": "Tambahkan pupuk organik 10-20 ton/ha per musim, irigasi teratur, serta mulsa untuk mengurangi evaporasi." },
+            "sandy_loam": { "nama": "Lempung Berpasir", "penjelasan": "Tanah dengan campuran pasir (50-70%) and liat/debu (30-50%). Tekstur lebih padat dari pasir murni, mampu menahan air dan hara lebih baik, namun tetap cepat kering dan mudah diolah.", "pH": "5.0 - 7.5", "organik": "Sedang-Rendah", "npk": "Sedang", "subur": "Sedang", "tanaman": "Jagung, Kacang Tanah, Ubi Kayu, Cabe", "saran": "Tambahkan pupuk organik 10-20 ton/ha per musim, irigasi teratur, serta mulsa untuk mengurangi evaporasi." },
             "yellow": { "nama": "Tanah Kuning", "penjelasan": "Tanah yang mirip dengan tanah merah namun memiliki hidrasi mineral besi yang berbeda. Biasanya terbentuk di lingkungan yang lebih lembap namun tetap memiliki tingkat kesuburan yang rendah.", "pH": "4.5 - 5.5", "organik": "Rendah", "npk": "Rendah", "subur": "Kurang", "tanaman": "Ubi Kayu, Karet", "saran": "Pakai mulsa agar tanah tidak cepat mengeras dan tererosi saat hujan lebat." },
             "unlabeled": { "nama": "Objek Tidak Dikenali", "penjelasan": "AI tidak dapat memastikan jenis tanah karena foto kurang jelas atau terhalang benda lain.", "saran": "Ambil foto kembali dengan cahaya terang. Pastikan tanah bersih dari sampah plastik atau daun kering." }
         };
@@ -632,7 +633,7 @@
 
         function hitungRisikoHamaPBP(suhu, kelembapan) {
             const hariBulan = dapatkanHariSiklusBulan(); let skorHama = 0; let analisisTeks = ""; let tindakanPPL = ""; let warnaStatus = "var(--accent-green)";
-            if (hariBulan >= 26 || hariBulan <= 3) { skorHama += 45; analisisTeks = "Diprediksi sedang puncak penerbangan ngengat dewasa untuk kawin dan peletakan telur massal di pesemaian/lahan."; tindakanPPL = "Pasang lampu perangkap (light trap) di pematang sawah malam ini untuk menangkap kaper sebelum bertelur. Semprot agens hayati Beauveria bassiana."; } else if (hariBulan >= 12 && hariBulan <= 17) { skorHama += 40; analisisTeks = "Diprediksi sedang puncak penetasan telur menjadi larva (ulat kecil). Ulat mulai merayap mencari batang padi."; tindakanPPL = "Kondisi kritis! Lakukan pengamatan intensif pada rumpun padi. Jika ditemukan kelompok telur atau gejala Sundep > 5%, segera aplikasikan insektisida sistemik."; } else { skorHama += 15; analisisTeks = "Diprediksi aktivitas ngengat sedang. Larva yang berada di dalam batang sedang berganti kulit (instar)."; tindakanPPL = "Lakukan pemupukan berimbang (jangan over Urea) dan jaga air sawah agar tidak terlalu menggenang tinggi."; }
+            if (hariBulan >= 26 || hariBulan <= 3) { skorHama += 45; analisisTeks = "Diprediksi sedang puncak penerbangan ngengat dewasa untuk kawin and peletakan telur massal di pesemaian/lahan."; tindakanPPL = "Pasang lampu perangkap (light trap) di pematang sawah malam ini untuk menangkap kaper sebelum bertelur. Semprot agens hayati Beauveria bassiana."; } else if (hariBulan >= 12 && hariBulan <= 17) { skorHama += 40; analisisTeks = "Diprediksi sedang puncak penetasan telur menjadi larva (ulat kecil). Ulat mulai merayap mencari batang padi."; tindakanPPL = "Kondisi kritis! Lakukan pengamatan intensif pada rumpun padi. Jika ditemukan kelompok telur atau gejala Sundep > 5%, segera aplikasikan insektisida sistemik."; } else { skorHama += 15; analisisTeks = "Diprediksi aktivitas ngengat sedang. Larva yang berada di dalam batang sedang berganti kulit (instar)."; tindakanPPL = "Lakukan pemupukan berimbang (jangan over Urea) and jaga air sawah agar tidak terlalu menggenang tinggi."; }
             if (kelembapan >= 80) skorHama += 25; if (suhu >= 24 && suhu <= 29) skorHama += 30;
             let tingkatRisiko = "RENDAH"; if (skorHama >= 75) { tingkatRisiko = "BAHAYA / TINGGI"; warnaStatus = "var(--red-alert)"; } else if (skorHama >= 45) { tingkatRisiko = "WASPADA / SEDANG"; warnaStatus = "var(--accent-soil)"; }
             return { skor: skorHama, level: tingkatRisiko, warna: warnaStatus, detail: analisisTeks, saran: tindakanPPL };
@@ -798,7 +799,7 @@
                     } else { document.getElementById('alamatDesa').innerText = "Koordinat luar batas server alamat"; }
                 } catch (e) { document.getElementById('alamatDesa').innerText = "Satelit Cuaca Aktif (Alamat Teks Batas Waktu)"; }
 
-                const urlArchive = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${getFormatTanggal(30)}&end_date=${getFormatTanggal(0)}&daily=precipitation_sum&timezone=auto`;
+                const urlArchive = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&past_days=30&daily=precipitation_sum&timezone=auto`;
                 const urlForecast = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=rain,temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_direction_10m,surface_pressure&hourly=precipitation_probability,precipitation,temperature_850hPa,cape&timezone=auto`;
                 const [resA, resF] = await Promise.all([fetch(urlArchive), fetch(urlForecast)]);
                 const dataArchive = await resA.json(); const dataForecast = await resF.json();
@@ -813,6 +814,12 @@
                 const cloudTemp = hourly.temperature_850hPa ? hourly.temperature_850hPa[activeIndex] : "-";
 
                 if(document.getElementById('dpSpread')) document.getElementById('dpSpread').innerText = `${dpSpread} °C`;
+                if(document.getElementById('suhuNow')) document.getElementById('suhuNow').innerText = `${cur.temperature_2m} °C`;
+                if(document.getElementById('humidityNow')) document.getElementById('humidityNow').innerText = `${cur.relative_humidity_2m}%`;
+                if(document.getElementById('windNow')) document.getElementById('windNow').innerText = `${cur.wind_speed_10m} km/jam`;
+                if(document.getElementById('pressNow')) document.getElementById('pressNow').innerText = `${cur.surface_pressure} hPa`;
+                if(document.getElementById('tempUpper')) document.getElementById('tempUpper').innerText = `${cloudTemp} °C`;
+
                 if(document.getElementById('capeVal')) {
                     let capeStatus = currentCape > 2500 ? "‼️ EKSTREM" : (currentCape > 1000 ? "⚠️ WASPADA" : "✅ STABIL");
                     document.getElementById('capeVal').innerHTML = `${currentCape} J/kg <br><small style="font-size:0.65rem;">Status: ${capeStatus}</small>`;
@@ -829,26 +836,19 @@
                     else { txtHujan.innerHTML = `🌤️ <b>Cerah / Berawan</b><br><small>(Skor Atmosfer: ${rainScore}/100)</small>`; elHujan.style.borderLeftColor = 'var(--accent-green)'; }
                 }
 
-                document.getElementById('suhuNow').innerText = `${cur.temperature_2m} °C`;
-                document.getElementById('humidityNow').innerText = `${cur.relative_humidity_2m}%`;
-
                 const rainCurrent = cur.rain || 0; const rainHourly = hourly.precipitation ? hourly.precipitation[0] : 0; const rainProb = hourly.precipitation_probability ? hourly.precipitation_probability[0] : 0;
                 let finalRain = rainCurrent; let rainStatus = "Cerah / Berawan";
                 if (rainCurrent > 0) { if (rainCurrent < 0.5) rainStatus = "Gerimis Tipis"; else if (rainCurrent >= 0.5 && rainCurrent < 2.0) rainStatus = "Hujan Ringan"; else rainStatus = "Hujan Lebat"; }
                 else if (rainHourly > 0.2 || rainProb > 80) { finalRain = rainHourly; rainStatus = "Potensi Gerimis Lokal"; }
-                document.getElementById('rainNow').innerHTML = `${finalRain > 0 ? finalRain.toFixed(1) + ' mm/jam' : '0.0 mm/jam'} <br><small style="font-size:0.65rem; color:var(--accent-soil);">${rainStatus}</small>`;
+                if(document.getElementById('rainNow')) document.getElementById('rainNow').innerHTML = `${finalRain > 0 ? finalRain.toFixed(1) + ' mm/jam' : '0.0 mm/jam'} <br><small style="font-size:0.65rem; color:var(--accent-soil);">${rainStatus}</small>`;
 
                 const dailyData = dataArchive.daily || {}; const listHujanHarian = dailyData.precipitation_sum || [];
                 const totalHujanBulanan = listHujanHarian.reduce((total, nilai) => total + (nilai || 0), 0);
                 let statusKarakteristikHujan = totalHujanBulanan > 200 ? "Kriteria Bulan Basah (Padi)" : (totalHujanBulanan >= 100 ? "Kriteria Bulan Lembab (Transisi)" : "Kriteria Bulan Kering (Palawija)");
-                document.getElementById('rainMonthly').innerHTML = `<b>${totalHujanBulanan.toFixed(1)} mm</b> <br><small style="font-size:0.65rem; color:#8b949e;">${statusKarakteristikHujan}</small>`;
-
-                document.getElementById('windNow').innerText = `${cur.wind_speed_10m} km/jam`;
-                document.getElementById('pressNow').innerText = `${cur.surface_pressure} hPa`;
-                document.getElementById('tempUpper').innerText = `${cloudTemp} °C`;
+                if(document.getElementById('rainMonthly')) document.getElementById('rainMonthly').innerHTML = `<b>${totalHujanBulanan.toFixed(1)} mm</b> <br><small style="font-size:0.65rem; color:#8b949e;">${statusKarakteristikHujan}</small>`;
 
                 const getDirection = (degree) => { const sectors = ["Utara", "Timur Laut", "Timur", "Tenggara", "Selatan", "Barat Daya", "Barat", "Barat Laut"]; return sectors[Math.round(degree / 45) % 8]; };
-                document.getElementById('windDir').innerHTML = `<div style="display:flex; align-items:center; justify-content: flex-end; gap:5px;"><span style="display:inline-block; transform:rotate(${cur.wind_direction_10m + 180}deg); transition: 1s ease;">⬆️</span><span>Dari ${getDirection(cur.wind_direction_10m)}</span></div>`;
+                if(document.getElementById('windDir')) document.getElementById('windDir').innerHTML = `<div style="display:flex; align-items:center; justify-content: flex-end; gap:5px;"><span style="display:inline-block; transform:rotate(${cur.wind_direction_10m + 180}deg); transition: 1s ease;">⬆️</span><span>Dari ${getDirection(cur.wind_direction_10m)}</span></div>`;
 
                 document.getElementById('resLabel').innerText = "Laporan Cuaca Lokasi Anda";
                 document.getElementById('resConf').innerText = "Terhubung dengan Satelit";
@@ -929,7 +929,7 @@
                     makassarColor: sstMks >= 29.0 ? "#00ff9d" : "#ffffff"
                 };
                 renderClimateUI(packingData);
-            } catch (er) { container.innerHTML = `<div class="info-box" style="border-left-color: var(--red-alert);">⚠️ Saluran Satelit Sibuk. Hubungkan kembali dasbor Anda.</div>`; }
+            } catch (er) { container.innerHTML = `<div class="info-box" style="border-left-color: var(--red-alert);">⚠️ Saluran Satelit Micro Spasial Sibuk. Silakan hubungkan kembali dasbor.</div>`; }
         }
 
         window.renderClimateUI = function(data) {
@@ -1002,7 +1002,7 @@
                     document.getElementById('resGejala').innerHTML = hasil.gejala;
 
                     let warnaKepaparan = hasil.tingkat_keparahan === "Sangat Tinggi" || hasil.tingkat_keparahan === "Tinggi" ? "var(--red-alert)" : "var(--accent-soil)";
-                    let keparahanText = hasil.tingkat_keparahan && hasil.tingkat_keparahan !== "-" ? `<span style="color: ${warnaKepaparan}; font-weight: 700;">[Risiko: ${hasil.tingkat_keparahan}]</span><br>` : "";
+                    let keparahanText = hasil.tingkat_keparahan && html.tingkat_keparahan !== "-" ? `<span style="color: ${warnaKepaparan}; font-weight: 700;">[Risiko: ${hasil.tingkat_keparahan}]</span><br>` : "";
                     document.getElementById('resPenyebab').innerHTML = keparahanText + (hasil.penyebab || "-");
 
                     document.getElementById('resSolusi').innerHTML = hasil.solusi;
@@ -1027,83 +1027,82 @@
                     conf = 0;
                 }
             } 
+            // PERBAIKAN LOGIKA GULMA: ANTI SINKRONISASI 0% & ANTI DUPLIKAT BERULANG
             else if (currentMode === 'gulma') {
-    if (out.error) {
-        document.getElementById('resLabel').innerText = "Gagal Identifikasi";
-        document.getElementById('containerListGulma').innerHTML = `<div class="info-box" style="border-left-color: var(--red-alert);"><strong>⚠️ Error:</strong><br>${out.error}</div>`;
-        conf = 0; // Set ke variabel global
-        return;
-    }
+                if (out.error) {
+                    document.getElementById('resLabel').innerText = "Gagal Identifikasi";
+                    document.getElementById('containerListGulma').innerHTML = `<div class="info-box" style="border-left-color: var(--red-alert);"><strong>⚠️ Error:</strong><br>${out.error}</div>`;
+                    conf = 0;
+                    document.getElementById('resConf').innerText = `Tingkat Keyakinan: ${conf}%`;
+                    return;
+                }
 
-    const container = document.getElementById('containerListGulma');
-    container.innerHTML = ""; // Bersihkan data lama
+                const container = document.getElementById('containerListGulma');
+                container.innerHTML = ""; 
 
-    const daftarGulma = out.results || [];
-    
-    if (daftarGulma.length === 0 || (daftarGulma.length === 1 && daftarGulma[0].raw_class === "unknown")) {
-        document.getElementById('resLabel').innerText = "Tidak Ada Gulma";
-        container.innerHTML = `<div class="info-box" style="border-left-color: var(--accent-soil);">Sampel foto tidak menunjukkan pola gulma yang masif. Pastikan foto dekat dan jelas.</div>`;
-        conf = 0; // Set ke variabel global
-        return;
-    }
+                const daftarGulma = out.results || [];
+                
+                if (daftarGulma.length === 0 || (daftarGulma.length === 1 && daftarGulma[0].raw_class === "unknown")) {
+                    document.getElementById('resLabel').innerText = "Tidak Ada Gulma";
+                    container.innerHTML = `<div class="info-box" style="border-left-color: var(--accent-soil);">Sampel foto tidak menunjukkan pola gulma yang masif. Pastikan foto dekat dan jelas.</div>`;
+                    conf = 0;
+                    document.getElementById('resConf').innerText = `Tingkat Keyakinan: ${conf}%`;
+                    return;
+                }
 
-    // 1. CARI AKURASI TERTINGGI DAN MASUKKAN KE VARIABEL GLOBAL 'conf'
-    let akurasiTertinggi = 0;
-    daftarGulma.forEach(g => {
-        let nilaiAkurasi = parseFloat(g.akurasi) || 0;
-        if (nilaiAkurasi > akurasiTertinggi) {
-            akurasiTertinggi = nilaiAkurasi;
-        }
-    });
-    
-    // Mengisi variabel conf agar tidak tertimpa 0% oleh fungsi paling bawah HTML
-    conf = akurasiTertinggi.toFixed(1); 
+                let akurasiTertinggi = 0;
+                daftarGulma.forEach(g => {
+                    let nilaiAkurasi = parseFloat(g.akurasi) || 0;
+                    if (nilaiAkurasi > akurasiTertinggi) {
+                        akurasiTertinggi = nilaiAkurasi;
+                    }
+                });
+                
+                conf = akurasiTertinggi.toFixed(1); 
 
-    // 2. LOGIKA FILTER DUPLIKASI
-    let gulmaUnik = [];
-    daftarGulma.forEach(g => {
-        let sudahAda = gulmaUnik.some(item => item.detail.nama === g.detail.nama);
-        if (!sudahAda) {
-            gulmaUnik.push(g);
-        } else {
-            let indexExisting = gulmaUnik.findIndex(item => item.detail.nama === g.detail.nama);
-            if (parseFloat(g.akurasi) > parseFloat(gulmaUnik[indexExisting].akurasi)) {
-                gulmaUnik[indexExisting].akurasi = g.akurasi;
+                let gulmaUnik = [];
+                daftarGulma.forEach(g => {
+                    let sudahAda = gulmaUnik.some(item => item.detail.nama === g.detail.nama);
+                    if (!sudahAda) {
+                        gulmaUnik.push(g);
+                    } else {
+                        let indexExisting = gulmaUnik.findIndex(item => item.detail.nama === g.detail.nama);
+                        if (parseFloat(g.akurasi) > parseFloat(gulmaUnik[indexExisting].akurasi)) {
+                            gulmaUnik[indexExisting].akurasi = g.akurasi;
+                        }
+                    }
+                });
+
+                document.getElementById('resLabel').innerText = `Teridentifikasi: ${gulmaUnik.length} Spesies Gulma`;
+
+                gulmaUnik.forEach((gulma, index) => {
+                    let boxColor = gulma.detail.karakteristik.includes("Sempit") ? "var(--accent-soil)" : (gulma.detail.karakteristik.includes("Teki") ? "var(--red-alert)" : "#0ea5e9");
+                    
+                    container.innerHTML += `
+                        <div style="margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.08); padding: 16px; border-radius: 18px; background: rgba(22, 30, 49, 0.4);">
+                            <div style="font-size: 0.75rem; color: var(--accent-green); font-weight: 800; margin-bottom: 10px; letter-spacing: 0.5px;">
+                                🌱 SPESIES KE-${index + 1} (Akurasi Terkuat: ${gulma.akurasi}%)
+                            </div>
+                            
+                            <div class="info-box" style="border-left-color: #00ff9d; margin-top: 5px;">
+                                <strong>🌱 Nama Gulma:</strong><br>${gulma.detail.nama}
+                            </div>
+                            
+                            <div class="info-box" style="border-left-color: ${boxColor};">
+                                <strong>📊 Karakteristik Daun:</strong><br>${gulma.detail.karakteristik}
+                            </div>
+                            
+                            <div class="info-box" style="border-left-color: var(--text-muted);">
+                                <strong>📖 Deskripsi:</strong><br>${gulma.detail.deskripsi}
+                            </div>
+                            
+                            <div class="info-box" style="border-left-color: #b388ff;">
+                                <strong>🔬 Pengendalian Kimiawi (Rekomendasi PPL):</strong><br>${gulma.detail.kimiawi}
+                            </div>
+                        </div>
+                    `;
+                });
             }
-        }
-    });
-
-    document.getElementById('resLabel').innerText = `Teridentifikasi: ${gulmaUnik.length} Spesies Gulma`;
-
-    // 3. RENDER DATA YANG UNIK
-    gulmaUnik.forEach((gulma, index) => {
-        let boxColor = gulma.detail.karakteristik.includes("Sempit") ? "var(--accent-soil)" : (gulma.detail.karakteristik.includes("Teki") ? "var(--red-alert)" : "#0ea5e9");
-        
-        container.innerHTML += `
-            <div style="margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.08); padding: 16px; border-radius: 18px; background: rgba(22, 30, 49, 0.4);">
-                <div style="font-size: 0.75rem; color: var(--accent-green); font-weight: 800; margin-bottom: 10px; letter-spacing: 0.5px;">
-                    🌱 SPESIES KE-${index + 1} (Akurasi Terkuat: ${gulma.akurasi}%)
-                </div>
-                
-                <div class="info-box" style="border-left-color: #00ff9d; margin-top: 5px;">
-                    <strong>🌱 Nama Gulma:</strong><br>${gulma.detail.nama}
-                </div>
-                
-                <div class="info-box" style="border-left-color: ${boxColor};">
-                    <strong>📊 Karakteristik Daun:</strong><br>${gulma.detail.karakteristik}
-                </div>
-                
-                <div class="info-box" style="border-left-color: var(--text-muted);">
-                    <strong>📖 Deskripsi:</strong><br>${gulma.detail.deskripsi}
-                </div>
-                
-                <div class="info-box" style="border-left-color: #b388ff;">
-                    <strong>🔬 Pengendalian Kimiawi (Rekomendasi PPL):</strong><br>${gulma.detail.kimiawi}
-                </div>
-            </div>
-        `;
-    });
-}
             else if (currentMode === 'tanah') {
                 let foundBlock = null;
                 if (out.predictions && out.predictions.predicted_classes) { foundBlock = out.predictions; } 
@@ -1131,8 +1130,6 @@
                     const info = kamusTanah[finalKey] || kamusTanah.unlabeled;
 
                     document.getElementById('resLabel').innerText = finalKey === "unlabeled" ? "Objek Kurang Jelas" : info.nama;
-                    document.getElementById('resConf').innerText = `Tingkat Keyakinan: ${topValue.toFixed(1)}%`;
-                    
                     const tableResult = document.querySelector("#boxTanah table");
                     tableResult.innerHTML = `
                         <tr><td>Kesuburan</td><td class="row-val">${info.subur || "Sedang"}</td></tr>
@@ -1151,8 +1148,9 @@
                 let listTempHTML = '';
                 const colors = out.leafColors || out.leaf_colors || []; const dets = Array.isArray(out.detections) ? out.detections : (out.detections?.predictions || []);
                 if (colors.length === 0) { 
-                    bwdContainer.innerHTML = `<div class="info-box" style="border-left-color: var(--red-alert);">⚠️ Daun tidak terdeteksi. Silakan coba lagi.</div>`; 
-                    document.getElementById('resConf').innerText = `Tingkat Keyakinan: 0%`; 
+                    bwdContainer.innerHTML = `<div id="leafList"></div><div class="info-box" style="border-left-color: var(--red-alert);">⚠️ Daun tidak terdeteksi. Silakan coba lagi.</div>`; 
+                    conf = 0;
+                    document.getElementById('resConf').innerText = `Tingkat Keyakinan: ${conf}%`; 
                     return; 
                 }
 
@@ -1377,7 +1375,7 @@
 
             <div style="border-top:1px dashed rgba(255,255,255,0.15); margin-top:10px; padding-top:12px;">
                 <div style="font-size: 0.9rem; font-weight:700; color:var(--accent-soil); margin-bottom:8px;">⚖️ Analisis Titik Impas (BEP)</div>
-                降低 <b>BEP Produksi minimal:</b> <span style="color:var(--text-main); font-weight:700;">${Math.ceil(bepProduksi).toLocaleString("id-ID")} Kg</span><br>
+                📉 <b>BEP Produksi minimal:</b> <span style="color:var(--text-main); font-weight:700;">${Math.ceil(bepProduksi).toLocaleString("id-ID")} Kg</span><br>
                 <small style="color:var(--text-muted); font-size:0.75rem; display:block; margin-bottom:6px;">(Lahan harus menghasilkan minimal angka di atas agar tidak rugi)</small>
                 
                 🏷️ <b>BEP Harga jual minimal:</b> <span style="color:var(--text-main); font-weight:700;">${rupiah(bepHarga)} / Kg</span><br>
