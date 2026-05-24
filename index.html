@@ -564,7 +564,7 @@
         let isGpsSynced = false; 
          
         const URL_DAUN = "https://script.google.com/macros/s/AKfycbwCRdyOUC5IHnAsqY350uP0JjsP-uhK_YKlF-h11D95DqSMVv9Uwpr1WSbzx4NvxlHUKA/exec";
-        const URL_GULMA = "https://script.google.com/macros/s/AKfycbzx4mJLBt_TxdAgx4MlAjRkSheVLUlRgZe3Dw-4wSltO4BpedU5vpes4d5UyICBAns-9w/exec";
+        const URL_GULMA = "https://script.google.com/macros/s/AKfycbxGBDW3g9NmpHoijkvtRC5onwV02EBDLCuszLPLu1tY8NMv74fpnKVKwc4LWQ_GQ-SGZg/exec";
         const URL_TANAH = "https://script.google.com/macros/s/AKfycbwlryQ9ZZvgc1WjZAavj1J4KbUaaJPluZorOLzIEM12fOy19bKP56mdaITAt7jDZ5XYKg/exec";
         const URL_BWD = "https://script.google.com/macros/s/AKfycbwGAPTPnLJyg-OtcbFt1aG_I2uy6FQjd-5eE2p1UuhQTde2lEbokpAquACyutg8kBDi/exec";
         const URL_MALAI = "https://script.google.com/macros/s/AKfycbzVPK1I_81gFU07Q_tNsWxUK1SZ_1tmwNlASp8P5_IR5hApq3XZb8koYufA46fIOacd/exec";
@@ -1030,7 +1030,7 @@
                 }
             } 
             // ==========================================
-            // LOGIKA TAB GULMA (TAMBAHAN MENU TANPA DUPLIKASI BUG)
+            // LOGIKA TAB GULMA (SISTEM ELIMINASI MORNING GLORY)
             // ==========================================
             else if (currentMode === 'gulma') {
                 if (out.error) {
@@ -1054,18 +1054,13 @@
                     return;
                 }
 
-                // Cari akurasi terkuat dari daftar bingkai yang masuk
-                let akurasiTertinggi = 0;
-                daftarGulma.forEach(g => {
-                    let nilaiAkurasi = parseFloat(g.akurasi) || 0;
-                    if (nilaiAkurasi > akurasiTertinggi) {
-                        akurasiTertinggi = nilaiAkurasi;
-                    }
+                // 1. FILTER UTAMA: Periksa apakah ada Genjer atau Monochoria di dalam array hasil
+                let adaModelBaru = daftarGulma.some(g => {
+                    let c = g.raw_class.toLowerCase();
+                    return c.includes("limnocharis") || c.includes("monochoria") || c.includes("flava") || c.includes("vaginalis");
                 });
-                
-                conf = akurasiTertinggi.toFixed(1); // Set nilai ke variabel conf global agar tidak jadi 0%
 
-                // Satukan jika ada nama spesies gulma yang terdeteksi ganda
+                // 2. Bersihkan duplikasi spesies
                 let gulmaUnik = [];
                 daftarGulma.forEach(g => {
                     let sudahAda = gulmaUnik.some(item => item.detail.nama === g.detail.nama);
@@ -1079,15 +1074,40 @@
                     }
                 });
 
+                // 3. ELEMINASI TOTAL: Jika ada Genjer/Monochoria, buang Morning Glory & Purslane dari list tampilan
+                if (adaModelBaru) {
+                    gulmaUnik = gulmaUnik.filter(g => {
+                        let c = g.raw_class.toLowerCase();
+                        return !c.includes("morning") && !c.includes("purslane");
+                    });
+                }
+
+                // Hitung ulang akurasi tertinggi setelah disaring
+                let akurasiTertinggi = 0;
+                gulmaUnik.forEach(g => {
+                    let nilaiAkurasi = parseFloat(g.akurasi) || 0;
+                    if (nilaiAkurasi > akurasiTertinggi) akurasiTertinggi = nilaiAkurasi;
+                });
+                
+                conf = akurasiTertinggi.toFixed(1);
+                document.getElementById('resConf').innerText = `Tingkat Keyakinan: ${conf}%`;
+
+                if (gulmaUnik.length === 0) {
+                    document.getElementById('resLabel').innerText = "Tidak Ada Gulma Utama";
+                    container.innerHTML = `<div class="info-box" style="border-left-color: var(--accent-soil);">Spesies model lama disembunyikan. Model baru tidak mencapai batas minimum deteksi visual.</div>`;
+                    return;
+                }
+
                 document.getElementById('resLabel').innerText = `Teridentifikasi: ${gulmaUnik.length} Spesies Gulma`;
 
+                // Render sisa gulma yang lolos filter (Monochoria / Limnocharis saja)
                 gulmaUnik.forEach((gulma, index) => {
                     let boxColor = gulma.detail.karakteristik.includes("Sempit") ? "var(--accent-soil)" : (gulma.detail.karakteristik.includes("Teki") ? "var(--red-alert)" : "#0ea5e9");
                     
                     container.innerHTML += `
                         <div style="margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.08); padding: 16px; border-radius: 18px; background: rgba(22, 30, 49, 0.4);">
                             <div style="font-size: 0.75rem; color: var(--accent-green); font-weight: 800; margin-bottom: 10px; letter-spacing: 0.5px;">
-                                🌱 SPESIES KE-${index + 1} (Akurasi Terkuat: ${gulma.akurasi}%)
+                                🌱 SPESIES UTAMA (Akurasi Terkuat: ${gulma.akurasi}%)
                             </div>
                             <div class="info-box" style="border-left-color: #00ff9d; margin-top: 5px;">
                                 <strong>🌱 Nama Gulma:</strong><br>${gulma.detail.nama}
