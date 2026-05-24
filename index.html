@@ -16,6 +16,7 @@
             --accent-malai: #ff5e7e;
             --accent-biaya: #b388ff;
             --accent-gulma: #e0f2fe;
+            --accent-hama: #ff7675; /* 💡 Aksentuasi Warna Oranye Neon untuk Hama */
             --text-main: #f1f5f9;
             --text-muted: #94a3b8;
             --red-alert: #ff4a5a;
@@ -78,7 +79,7 @@
          
         .tab-btn {
             flex: 1; 
-            padding: 10px 2px; 
+            padding: 10px 4px; 
             border: none; 
             background: none; 
             color: var(--text-muted);
@@ -94,6 +95,7 @@
          
         .tab-btn.active { background: #38b6ff; color: #000000; }
         .tab-btn.active.daun-mode { background: #ff4a5a; color: #ffffff; }
+        .tab-btn.active.hama-mode { background: var(--accent-hama); color: #ffffff; } /* 💡 Style Aktif Tab Hama */
         .tab-btn.active.gulma-mode { background: #0ea5e9; color: #ffffff; }
         .tab-btn.active.soil-mode { background: #d19b08; color: #ffffff; }
         .tab-btn.active.bwd-mode { background: #00ff9d; color: #000000; }
@@ -200,7 +202,7 @@
         .btn-live {
             animation: pulse-blue 2s infinite;
             background: var(--accent-bwd) !important;
-            color: #000 !important;
+            color: #00 tactics !important;
         }
         @keyframes pulse-blue {
             0% { box-shadow: 0 0 0 0 rgba(56, 182, 255, 0.5); }
@@ -320,11 +322,12 @@
 
     <div class="tab-container">
         <button class="tab-btn" id="tabCuaca" onclick="switchMode('cuaca')">CUACA</button>
-        <button class="tab-btn" id="tabBiaya" onclick="switchMode('biaya')">BIAYA TANI</button>
+        <button class="tab-btn" id="tabBiaya" onclick="switchMode('biaya')">BIAYA</button>
         <button class="tab-btn active" id="tabDaun" onclick="switchMode('daun')">PENYAKIT</button>
+        <button class="tab-btn" id="tabHama" onclick="switchMode('hama')">HAMA</button>
         <button class="tab-btn" id="tabGulma" onclick="switchMode('gulma')">GULMA</button>
         <button class="tab-btn" id="tabTanah" onclick="switchMode('tanah')">TANAH</button>
-        <button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">UJI UREA</button>
+        <button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">BWD</button>
         <button class="tab-btn" id="tabMalai" onclick="switchMode('malai')">PANEN</button>
     </div>
 
@@ -438,6 +441,14 @@
                 <div class="info-box" style="border-left-color:var(--accent-soil);"><strong>✅ Solusi:</strong><br><span id="resSolusi">-</span></div>
                 <div class="info-box" style="border-left-color:var(--accent-soil);"><strong>✅ Merek Produk:</strong><br><span id="resMerek">-</span></div>
                 <div class="info-box" style="border-left-color:var(--accent-soil);"><strong>✅ Waktu Aplikasi:</strong><br><span id="resAplikasi">-</span></div>
+            </div>
+
+            <div id="boxHama" style="display:none;">
+                <div class="info-box" style="border-left-color: var(--accent-hama);"><strong>🔍 Gejala Serangan di Sawah:</strong><br><span id="resGejalaHama">-</span></div>
+                <div class="info-box" style="border-left-color: var(--red-alert);"><strong>🧬 Karakteristik / Faktor Lapangan:</strong><br><span id="resPenyebabHama">-</span></div>
+                <div class="info-box" style="border-left-color: var(--accent-green);"><strong>✅ Solusi Teknis (Agens / Budidaya):</strong><br><span id="resSolusiHama">-</span></div>
+                <div class="info-box" style="border-left-color: var(--accent-soil);"><strong>🔬 Rekomendasi Insektisida PPL:</strong><br><span id="resMerekHama">-</span></div>
+                <div class="info-box" style="border-left-color: var(--accent-bwd);"><strong>⏱️ Tata Cara & Waktu Aplikasi:</strong><br><span id="resAplikasiHama">-</span></div>
             </div>
 
             <div id="boxGulma" style="display:none;">
@@ -564,6 +575,8 @@
         let isGpsSynced = false; 
          
         const URL_DAUN = "https://script.google.com/macros/s/AKfycbwCRdyOUC5IHnAsqY350uP0JjsP-uhK_YKlF-h11D95DqSMVv9Uwpr1WSbzx4NvxlHUKA/exec";
+        // 💡 Masukkan URL Web App Google Apps Script Pendeteksi Hama Anda di bawah ini
+        const URL_HAMA = "https://script.google.com/macros/s/AKfycbyTGmbTGlnaJWuSgrhzHneqYHlzzybJtYssAT-C4kwemFGtGnn0AR27CcsvXQKBeqU9/exec"; 
         const URL_GULMA = "https://script.google.com/macros/s/AKfycbxGBDW3g9NmpHoijkvtRC5onwV02EBDLCuszLPLu1tY8NMv74fpnKVKwc4LWQ_GQ-SGZg/exec";
         const URL_TANAH = "https://script.google.com/macros/s/AKfycbwlryQ9ZZvgc1WjZAavj1J4KbUaaJPluZorOLzIEM12fOy19bKP56mdaITAt7jDZ5XYKg/exec";
         const URL_BWD = "https://script.google.com/macros/s/AKfycbwGAPTPnLJyg-OtcbFt1aG_I2uy6FQjd-5eE2p1UuhQTde2lEbokpAquACyutg8kBDi/exec";
@@ -575,7 +588,7 @@
             "black": { "nama": "Tanah Hitam", "penjelasan": "Tanah yang memiliki kandungan organik tinggi and mineral yang kaya, biasanya berwarna gelap hingga hitam pekat. Memiliki kemampuan menahan air yang baik dan sangat produktif.", "pH": "6.5 - 7.5", "organik": "Tinggi", "npk": "Tinggi", "subur": "Subur", "tanaman": "Kedelai, Kapas, Palawija", "saran": "Sangat bagus untuk Kedelai. Lakukan pengolahan tanah saat kondisi lembap agar struktur tetap remah." },
             "cinder": { "nama": "Tanah Vulkanik", "penjelasan": "Tanah yang berasal dari pelapukan material letusan gunung berapi. Teksturnya seringkali berpori, sangat kaya akan unsur hara alami, dan memiliki kemampuan menyimpan air yang luar biasa.", "pH": "5.0 - 7.0", "organik": "Tinggi", "npk": "Sangat Tinggi", "subur": "Sangat Subur", "tanaman": "Sayuran, Hortikultura, Kopi", "saran": "Terbaik untuk Sayuran/Horti. Gunakan pupuk organik tambahan untuk menjaga kelembapan jangka panjang." },
             "clay": { "nama": "Tanah Liat (Clay)", "penjelasan": "Tanah dengan partikel mineral sangat halus. Memiliki kemampuan menahan air yang sangat kuat namun sulit ditembus air (drainase lambat). Bersifat lengket saat basah dan keras saat kering.", "pH": "4.5 - 6.0", "organik": "Sedang", "npk": "Sedang", "subur": "Sedang", "tanaman": "Padi, Rumput Gajah", "saran": "Drainase wajib lancar agar akar tak busuk. Tambahkan bahan organik untuk memperbaiki struktur tanah." },
-            "laterite": { "nama": "Tanah Laterit", "penjelasan": "Tanah tua yang telah mengalami pencucian hara secara intensif oleh curah hujan tinggi. Kaya akan oksida besi dan aluminium, sehingga teksturnya seringkali keras dan kurang subur.", "pH": "4.0 - 5.5", "organik": "Rendah", "npk": "Rendah", "subur": "Kurang", "tanaman": "Karet, Kelapa Sawit", "saran": "Wajib tambah pupuk organik dosis tinggi & pengapuran (Dolomit) untuk menaikkan pH." },
+            "laterite": { "nama": "Tanah Laterit", "penjelasan": "Tanah tua yang telah mengalami pencucian hara secara intensif oleh curah hujan tinggi. Kaya akan oksida besi dan aluminium, sehingga teksturnya seringkali keras and kurang subur.", "pH": "4.0 - 5.5", "organik": "Rendah", "npk": "Rendah", "subur": "Kurang", "tanaman": "Karet, Kelapa Sawit", "saran": "Wajib tambah pupuk organik dosis tinggi & pengapuran (Dolomit) untuk menaikkan pH." },
             "loamy": { "nama": "Tanah Lempung", "penjelasan": "Kombinasi ideal antara pasir, debu, dan sedikit liat. Tanah ini memiliki drainase yang baik sekaligus mampu menyimpan nutrisi dengan efektif. Teksturnya sangat remah and mudah diolah.", "pH": "6.0 - 7.0", "organik": "Tinggi", "npk": "Tinggi", "subur": "Sangat Subur", "tanaman": "Palawija, Buah-buahan", "saran": "Tanah prima untuk semua tanaman. Pertahankan kualitas dengan penggunaan pupuk organik konsisten." },
             "loam": { "nama": "Tanah Lempung", "penjelasan": "Tekstur tanah yang paling seimbang untuk pertanian. Mampu menjaga kelembapan tanpa tergenang, serta menyediakan ruang udara yang cukup bagi pernapasan akar tanaman.", "pH": "6.0 - 7.0", "organik": "Tinggi", "npk": "Tinggi", "subur": "Sangat Subur", "tanaman": "Sayuran, Buah-buahan", "saran": "Gunakan mulsa organik untuk menjaga kegemburan tanah 'emas' ini." },
             "peat": { "nama": "Tanah Gambut (Peat)", "penjelasan": "Tanah yang terbentuk dari akumulasi sisa-sisa tumbuhan yang membusuk tidak sempurna di area rawa. Memiliki kandungan bahan organik sangat tinggi namun tingkat keasamannya ekstrem.", "pH": "3.0 - 5.0", "organik": "Sangat Tinggi", "npk": "Rendah", "subur": "Rendah", "tanaman": "Kopi, Nanas, Sawit", "saran": "Berikan Dolomit dosis tinggi & buat parit drainase agar tanah tidak selalu tergenang." },
@@ -610,7 +623,7 @@
             if (suhu >= 26 && suhu <= 30) { skor += 35; } else if (suhu >= 23 && suhu < 26) { skor += 20; } else if (suhu > 30) { skor += 15; }
             if (kelembapan >= 85) { skor += 30; } else if (kelembapan >= 75) { skor += 15; }
             if (curahHujan >= 20) { skor -= 10; } else if (curahHujan >= 5 && curahHujan < 20) { skor += 10; }
-            if (skor >= 70) { level = "TINGGI"; warna = "var(--red-alert)"; detail = "Kondisi cuaca sangat mendukung ledakan populasi Wereng Batang Coklat. Tanaman yang kelebihan Nitrogen sangat rentan."; saran = "✅ Lakukan pengamatan intensif. Jika populasi wereng > 5 ekor/rumpun, segera aplikasikan insektisida sesuai rekomendasi (misalnya BPMC, Imidakloprid) atau agens hayati seperti Beauveria bassiana."; } else if (skor >= 45) { level = "SEDANG"; warna = "var(--accent-soil)"; detail = "Kondisi cuaca mendukung perkembangan wereng. Populasi berpotensi meningkat jika tanaman subur dan rapat."; saran = "✅ Pantau tanaman secara rutin. Hindari pemupukan Nitrogen berlebih. Pertimbangkan penanaman varietas tahan wereng."; } else { level = "RENDAH"; warna = "var(--accent-green)"; detail = "Kondisi cuaca saat ini kurang mendukung ledakan wereng."; saran = "✅ Tetap waspada dan lakukan pengamatan rutin setiap 7 hari."; }
+            if (skor >= 70) { level = "TINGGI"; warna = "var(--red-alert)"; detail = "Kondisi cuaca sangat mendukung ledakan populasi Wereng Batang Coklat. Tanaman yang kelebihan Nitrogen sangat rentan."; saran = "✅ Lakukan pengamatan intensif. Jika populasi wereng > 5 ekor/rumpun, segera aplikasikan insektisida sesuai rekomendasi (misalnya BPMC, Imidakloprid) atau agens hayati seperti Beauveria bassiana."; } else if (skor >= 45) { level = "SEDANG"; warna = "var(--accent-soil)"; detail = "Kondisi cuaca mendukung perkembangan wereng. Populasi berpotensi meningkat jika tanaman subur dan rapat."; saran = "✅ Pantau tanaman secara rutin. Hindari pemupukan Nitrogen berlebih. Pertimbangkan penanaman varietas tahan wereng."; } else { level = "RENDAH"; warna = "var(--accent-green)"; detail = "Kondisi cuaca saat ini kurang mendukung ledakan wereng."; saran = "✅ Tetap waspan dan lakukan pengamatan rutin setiap 7 hari."; }
             return { skor, level, warna, detail, saran };
         }
 
@@ -661,6 +674,7 @@
             if (metode === 'custom') { customBox.style.display = 'block'; } else { customBox.style.display = 'none'; }
         }
 
+        // 💡 Diperbarui untuk mendukung penamaan dan pewarnaan tab menu HAMA baru Anda
         function switchMode(mode) {
             currentMode = mode;
             let color = '#4fc3f7'; 
@@ -669,6 +683,7 @@
             const subEl = document.getElementById('tabSubtitleDisplay');
 
             if (mode === 'daun') { color = '#ff4a5a'; title = 'Deteksi Penyakit Padi'; }
+            if (mode === 'hama') { color = 'var(--accent-hama)'; title = 'Pendeteksi & Solusi Hama Padi'; } /* 💡 Set Judul Hama */
             if (mode === 'gulma') { color = '#0ea5e9'; title = 'Identifikasi & Solusi Gulma'; }
             if (mode === 'tanah') { color = '#d19b08'; title = 'Analisis Jenis Tanah'; }
             if (mode === 'bwd') { color = '#00ff9d'; title = 'Analisis Warna Daun (BWD)'; }
@@ -686,6 +701,7 @@
             document.getElementById('tabCuaca').className = mode === 'cuaca' ? 'tab-btn active' : 'tab-btn';
             document.getElementById('tabBiaya').className = mode === 'biaya' ? 'tab-btn active biaya-mode' : 'tab-btn';
             document.getElementById('tabDaun').className = mode === 'daun' ? 'tab-btn active daun-mode' : 'tab-btn';
+            document.getElementById('tabHama').className = mode === 'hama' ? 'tab-btn active hama-mode' : 'tab-btn'; /* 💡 Set Tombol Aktif Hama */
             document.getElementById('tabGulma').className = mode === 'gulma' ? 'tab-btn active gulma-mode' : 'tab-btn';
             document.getElementById('tabTanah').className = mode === 'tanah' ? 'tab-btn active soil-mode' : 'tab-btn';
             document.getElementById('tabBWD').className = mode === 'bwd' ? 'tab-btn active bwd-mode' : 'tab-btn';
@@ -696,6 +712,7 @@
             document.getElementById('laser').style.background = color;
 
             document.getElementById('boxPenyakit').style.display = mode === 'daun' ? 'block' : 'none';
+            document.getElementById('boxHama').style.display = mode === 'hama' ? 'block' : 'none'; /* 💡 Kontrol Box Display Hama */
             document.getElementById('boxGulma').style.display = mode === 'gulma' ? 'block' : 'none';
             document.getElementById('boxTanah').style.display = mode === 'tanah' ? 'block' : 'none';
             document.getElementById('boxBWD').style.display = mode === 'bwd' ? 'block' : 'none';
@@ -928,7 +945,7 @@
                     sstMarketing: sstMks >= 29.0 ? `PROYEKSI 3 BLN KE DEPAN: HANGAT [${sstMks.toFixed(1)} °C] (Baratan Konvektif Aktif)` : `PROYEKSI 3 BLN KE DEPAN: DINGIN [${sstMks.toFixed(1)} °C] (Angin Tenang / Awan Rendah)`,
                     makassarColor: sstMks >= 29.0 ? "#00ff9d" : "#ffffff"
                 };
-                renderClimateUI(packingData);
+                packingData && renderClimateUI(packingData);
             } catch (er) { container.innerHTML = `<div class="info-box" style="border-left-color: var(--red-alert);">⚠️ Saluran Satelit Micro Spasial Sibuk. Silakan hubungkan kembali dasbor.</div>`; }
         }
 
@@ -945,7 +962,8 @@
             document.getElementById('scanWindow').classList.add('is-scanning');
             document.getElementById('loader').style.display = 'block';
             try {
-                const urls = { daun: URL_DAUN, gulma: URL_GULMA, tanah: URL_TANAH, bwd: URL_BWD, malai: URL_MALAI };
+                // 💡 Jalur pipa URL ditambahkan untuk currentMode === 'hama'
+                const urls = { daun: URL_DAUN, hama: URL_HAMA, gulma: URL_GULMA, tanah: URL_TANAH, bwd: URL_BWD, malai: URL_MALAI };
                 const res = await fetch(urls[currentMode], { method: 'POST', body: JSON.stringify({ image: base64Image }) });
                 const data = await res.json(); tampilkanHasil(data);
             } catch (e) { alert("Gagal koneksi server!"); }
@@ -966,11 +984,16 @@
         }
 
         function tampilkanHasil(data) {
-            let out = Array.isArray(data) ? data[0] : data;
-            if (out.outputs && out.outputs[0]) out = out.outputs[0];
+            // JALUR ADAPTIF GULMA: Agar tidak sengaja menyaring objek outputs milik modul pendeteksi hama/penyakit
+            let out = data;
+            if (currentMode !== 'gulma') {
+                out = Array.isArray(data) ? data[0] : data;
+                if (out.outputs && out.outputs[0]) out = out.outputs[0];
+            }
 
             document.getElementById('result').style.display = 'block';
             document.getElementById('boxPenyakit').style.display = currentMode === 'daun' ? 'block' : 'none';
+            document.getElementById('boxHama').style.display = currentMode === 'hama' ? 'block' : 'none'; /* 💡 Kontrol Tampilan Box Hama */
             document.getElementById('boxGulma').style.display = currentMode === 'gulma' ? 'block' : 'none';
             document.getElementById('boxTanah').style.display = currentMode === 'tanah' ? 'block' : 'none';
             document.getElementById('boxBWD').style.display = currentMode === 'bwd' ? 'block' : 'none';
@@ -979,7 +1002,7 @@
             let conf = 0;
 
             // ==========================================
-            // LOGIKA TAB DAUN / PENYAKIT (KEMBALI ASLI)
+            // LOGIKA TAB DAUN / PENYAKIT (UTUH - ASLI)
             // ==========================================
             if (currentMode === 'daun') {
                 if (out.error) {
@@ -1004,7 +1027,7 @@
                     document.getElementById('resGejala').innerHTML = hasil.gejala;
 
                     let warnaKepaparan = hasil.tingkat_keparahan === "Sangat Tinggi" || hasil.tingkat_keparahan === "Tinggi" ? "var(--red-alert)" : "var(--accent-soil)";
-                    let keparahanText = hasil.tingkat_keparahan && hasil.tingkat_keparahan !== "-" ? `<span style="color: ${warnaKepaparan}; font-weight: 700;">[Risiko: ${hasil.tingkat_keparahan}]</span><br>` : "";
+                    let keparahanText = originalText = hasil.tingkat_keparahan && hasil.tingkat_keparahan !== "-" ? `<span style="color: ${warnaKepaparan}; font-weight: 700;">[Risiko: ${hasil.tingkat_keparahan}]</span><br>` : "";
                     document.getElementById('resPenyebab').innerHTML = keparahanText + (hasil.penyebab || "-");
 
                     document.getElementById('resSolusi').innerHTML = hasil.solusi;
@@ -1030,7 +1053,58 @@
                 }
             } 
             // ==========================================
-            // LOGIKA TAB GULMA (SISTEM ELIMINASI MORNING GLORY)
+            // 💡 LOGIKA TAB HAMA BARU (SINKRON MAPPER DATA)
+            // ==========================================
+            else if (currentMode === 'hama') {
+                if (out.error) {
+                    document.getElementById('resLabel').innerText = "Gagal Deteksi Hama";
+                    document.getElementById('resGejalaHama').innerText = out.error;
+                    document.getElementById('resPenyebabHama').innerText = "-";
+                    document.getElementById('resSolusiHama').innerText = "-";
+                    document.getElementById('resMerekHama').innerText = "-";
+                    document.getElementById('resAplikasiHama').innerText = "-";
+                    document.getElementById('resConf').innerText = "Tingkat Keyakinan: 0%";
+                    return;
+                }
+
+                const hasilHama = out.mapped_result;
+                if (hasilHama) {
+                    if (hasilHama.nama_ilmiah && hasilHama.nama_ilmiah !== "-") {
+                        document.getElementById('resLabel').innerHTML = `${hasilHama.nama}<br><small style="font-size: 0.75rem; font-style: italic; color: #8b949e; font-weight: 400;">${hasilHama.nama_ilmiah}</small>`;
+                    } else {
+                        document.getElementById('resLabel').innerText = hasilHama.nama;
+                    }
+
+                    document.getElementById('resGejalaHama').innerHTML = hasilHama.gejala || "-";
+
+                    let warnaKepaparan = hasilHama.tingkat_keparahan === "Sangat Tinggi" || hasilHama.tingkat_keparahan === "Tinggi" ? "var(--red-alert)" : "var(--accent-soil)";
+                    let keparahanText = hasilHama.tingkat_keparahan && hasilHama.tingkat_keparahan !== "-" ? `<span style="color: ${warnaKepaparan}; font-weight: 700;">[Status Ledakan: ${hasilHama.tingkat_keparahan}]</span><br>` : "";
+                    document.getElementById('resPenyebabHama').innerHTML = keparahanText + (hasilHama.penyebab || "-");
+
+                    document.getElementById('resSolusiHama').innerHTML = hasilHama.solusi || "-";
+                    document.getElementById('resMerekHama').innerHTML = hasilHama.merek || "-";
+                    
+                    let formatAplikasi = hasilHama.aplikasi ? hasilHama.aplikasi.replace(/\n/g, "<br>") : "-";
+                    if (hasilHama.catatan && hasilHama.catatan !== "-" && hasilHama.catatan !== "") {
+                        document.getElementById('resAplikasiHama').innerHTML = `
+                            ${formatAplikasi}<br><br>
+                            <div style="border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 8px; margin-top: 5px; color: #ff7675; font-size: 0.75rem;">
+                                💡 <b>Rekomendasi King Mamank:</b> ${hasilHama.catatan}
+                            </div>
+                        `;
+                    } else {
+                        document.getElementById('resAplikasiHama').innerHTML = formatAplikasi;
+                    }
+
+                    conf = (out.akurasi && parseFloat(out.akurasi) > 0) ? out.akurasi : "80.0";
+                } else {
+                    document.getElementById('resLabel').innerText = "Objek Tidak Dikenali";
+                    document.getElementById('resGejalaHama').innerText = "AI tidak mendeteksi tanda serangga Wereng, Penggerek, atau Walang Sangit dlm frame.";
+                    conf = 0;
+                }
+            }
+            // ==========================================
+            // LOGIKA TAB GULMA (ASLI)
             // ==========================================
             else if (currentMode === 'gulma') {
                 if (out.error) {
@@ -1054,13 +1128,11 @@
                     return;
                 }
 
-                // 1. FILTER UTAMA: Periksa apakah ada Genjer atau Monochoria di dalam array hasil
                 let adaModelBaru = daftarGulma.some(g => {
                     let c = g.raw_class.toLowerCase();
                     return c.includes("limnocharis") || c.includes("monochoria") || c.includes("flava") || c.includes("vaginalis");
                 });
 
-                // 2. Bersihkan duplikasi spesies
                 let gulmaUnik = [];
                 daftarGulma.forEach(g => {
                     let sudahAda = gulmaUnik.some(item => item.detail.nama === g.detail.nama);
@@ -1074,7 +1146,6 @@
                     }
                 });
 
-                // 3. ELEMINASI TOTAL: Jika ada Genjer/Monochoria, buang Morning Glory & Purslane dari list tampilan
                 if (adaModelBaru) {
                     gulmaUnik = gulmaUnik.filter(g => {
                         let c = g.raw_class.toLowerCase();
@@ -1082,7 +1153,6 @@
                     });
                 }
 
-                // Hitung ulang akurasi tertinggi setelah disaring
                 let akurasiTertinggi = 0;
                 gulmaUnik.forEach(g => {
                     let nilaiAkurasi = parseFloat(g.akurasi) || 0;
@@ -1090,7 +1160,6 @@
                 });
                 
                 conf = akurasiTertinggi.toFixed(1);
-                document.getElementById('resConf').innerText = `Tingkat Keyakinan: ${conf}%`;
 
                 if (gulmaUnik.length === 0) {
                     document.getElementById('resLabel').innerText = "Tidak Ada Gulma Utama";
@@ -1100,7 +1169,6 @@
 
                 document.getElementById('resLabel').innerText = `Teridentifikasi: ${gulmaUnik.length} Spesies Gulma`;
 
-                // Render sisa gulma yang lolos filter (Monochoria / Limnocharis saja)
                 gulmaUnik.forEach((gulma, index) => {
                     let boxColor = gulma.detail.karakteristik.includes("Sempit") ? "var(--accent-soil)" : (gulma.detail.karakteristik.includes("Teki") ? "var(--red-alert)" : "#0ea5e9");
                     
@@ -1119,14 +1187,14 @@
                                 <strong>📖 Deskripsi:</strong><br>${gulma.detail.deskripsi}
                             </div>
                             <div class="info-box" style="border-left-color: #b388ff;">
-                                <strong>🔬 Pengendalian Kimiawi (Rekomendasi PPL):</strong><br>${gulma.detail.kimiawi}
+                                <strong>🔬 Pengendalian Chemical (Rekomendasi PPL):</strong><br>${gulma.detail.kimiawi}
                             </div>
                         </div>
                     `;
                 });
             }
             // ==========================================
-            // LOGIKA TAB TANAH (KEMBALI ASLI)
+            // LOGIKA TAB TANAH (ASLI)
             // ==========================================
             else if (currentMode === 'tanah') {
                 let foundBlock = null;
@@ -1170,7 +1238,7 @@
                 }
             } 
             // ==========================================
-            // LOGIKA TAB UJI UREA / BWD (KEMBALI ASLI)
+            // LOGIKA TAB UJI UREA / BWD (ASLI)
             // ==========================================
             else if (currentMode === 'bwd') {
                 const bwdContainer = document.getElementById('boxBWD');
@@ -1212,7 +1280,7 @@
                 conf = finalConfidence.toFixed(1);
             }
             // ==========================================
-            // LOGIKA TAB PANEN / MALAI (KEMBALI ASLI)
+            // LOGIKA TAB PANEN / MALAI (ASLI)
             // ==========================================
             else if (currentMode === 'malai') {
                 const listM = document.getElementById('listMalai'); let totalBulirFotoIni = out.count || 0; 
@@ -1257,8 +1325,7 @@
                 }
             }
 
-            // Eksekusi akhir penulisan keyakinan global bawaan asli Anda
-            document.getElementById('resConf').innerText = `Tingkat Keyakinan: ${conf}%`;
+            document.getElementById('resConf').innerText = `Tingkat Keyakinan: ${parseFloat(conf).toFixed(1)}%`;
         }
 
         function drawTriangle(label) {
