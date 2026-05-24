@@ -447,7 +447,7 @@
                 <div class="info-box" style="border-left-color: var(--accent-hama);"><strong>🔍 Gejala Serangan di Sawah:</strong><br><span id="resGejalaHama">-</span></div>
                 <div class="info-box" style="border-left-color: var(--red-alert);"><strong>🧬 Karakteristik / Faktor Lapangan:</strong><br><span id="resPenyebabHama">-</span></div>
                 <div class="info-box" style="border-left-color: var(--accent-green);"><strong>✅ Solusi Teknis (Agens / Budidaya):</strong><br><span id="resSolusiHama">-</span></div>
-                <div class="info-box" style="border-left-color: var(--accent-soil);"><strong>🔬 Rekomendasi Insektisida PPL:</strong><br><span id="resMerekHama">-</span></div>
+                <div class="info-box" style="border-left-color: var(--accent-soil);"><strong>🔬 Rekomendasi Insektisida:</strong><br><span id="resMerekHama">-</span></div>
                 <div class="info-box" style="border-left-color: var(--accent-bwd);"><strong>⏱️ Tata Cara & Waktu Aplikasi:</strong><br><span id="resAplikasiHama">-</span></div>
             </div>
 
@@ -1089,7 +1089,7 @@
                         document.getElementById('resAplikasiHama').innerHTML = `
                             ${formatAplikasi}<br><br>
                             <div style="border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 8px; margin-top: 5px; color: #ff7675; font-size: 0.75rem;">
-                                💡 <b>Rekomendasi King Mamank:</b> ${hasilHama.catatan}
+                                💡 <b>Rekomendasi:</b> ${hasilHama.catatan}
                             </div>
                         `;
                     } else {
@@ -1187,7 +1187,7 @@
                                 <strong>📖 Deskripsi:</strong><br>${gulma.detail.deskripsi}
                             </div>
                             <div class="info-box" style="border-left-color: #b388ff;">
-                                <strong>🔬 Pengendalian Chemical (Rekomendasi PPL):</strong><br>${gulma.detail.kimiawi}
+                                <strong>🔬 Pengendalian Chemical (Rekomendasi):</strong><br>${gulma.detail.kimiawi}
                             </div>
                         </div>
                     `;
