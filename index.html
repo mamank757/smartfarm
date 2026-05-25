@@ -2,6 +2,7 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>PPL Milenial Wajo - Smart Farming</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -259,6 +260,7 @@
             border-left: 4px solid var(--accent-green); 
             font-size: 0.85rem;
             line-height: 1.5;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
         }
         .info-box strong { color: #ffffff; display: inline-block; margin-bottom: 4px; font-weight: 600;}
           
@@ -383,6 +385,40 @@
         .daily-item .day { font-weight: 600; color: var(--text-main); }
         .daily-item .icon { font-size: 1.25rem; text-align: center; }
         .daily-item .temp-range { text-align: right; font-weight: 700; color: var(--accent-soil); }
+    
+    /* Styling Badge Status ENSO */
+#ensoStatus span {
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 0.85rem;
+    text-shadow: 0 0 8px currentColor; /* Memberikan efek cahaya neon */
+}
+
+/* Membuat Canvas responsif dan halus */
+#macroClimateChart {
+    width: 100% !important;
+    height: 100% !important;
+}
+/* Mengatur agar container input tetap memiliki background solid */
+#boxKalkulatorPupuk .form-input {
+    background: #161e31 !important; /* Warna sedikit lebih terang dari body */
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+}
+/* Styling agar background input saat daftar muncul tetap gelap dan teks terlihat */
+#kecInput {
+    background-color: #0d1424 !important;
+    color: #ffffff !important;
+    border: 1px solid var(--card-border) !important;
+    /* Memberikan sedikit padding agar teks tidak terlalu mepet kiri */
+    padding: 14px !important;
+}
+
+/* Trik untuk browser (terutama mobile) agar saat opsi muncul tidak terlalu transparan */
+datalist {
+    background-color: #161e31;
+    color: #ffffff;
+}
     </style>
 </head>
 <body>
@@ -585,7 +621,7 @@
                 </div>
             </div>
 
-            <div id="boxCuaca" style="display:none; text-align: center;">
+          <div id="boxCuaca" style="display:none; text-align: center;">
                 <div id="gpsPrompt" style="padding: 15px 5px;">
                     <div style="font-size: 2.5rem; margin-bottom: 12px;">🛰️</div>
                     <h4 style="margin: 0; color: var(--text-main); font-size: 1.1rem; font-weight: 700;">Akses Lokasi / Lahan Sawah</h4>
@@ -601,23 +637,48 @@
                         <span id="lokasiSawah" style="font-size: 0.8rem; opacity: 0.6; font-weight: 600;">-</span><br>
                         <span id="alamatDesa" style="color: var(--accent-green); font-weight: 700; font-size: 0.9rem; display: inline-block; margin-top: 4px;">Mencari alamat...</span>
                     </div>
-<div id="prediksiHujan" class="info-box" style="border-left-color: var(--accent-soil); background: rgba(255, 215, 0, 0.02); display: none;">
+
+                    <div id="prediksiHujan" class="info-box" style="border-left-color: var(--accent-soil); background: rgba(255, 215, 0, 0.02); display: none;">
                         <strong>🔮 Prediksi Atmosfer (1 Jam Kedepan)</strong><br>
                         <span id="hujanNext">-</span>
                     </div>
+
                     <div class="forecast-title">🕒 Prakiraan Cuaca Per Jam</div>
-                    <div class="hourly-scroll" id="hourlyForecastContainer">
-                        </div>
+                    <div class="hourly-scroll" id="hourlyForecastContainer"></div>
 
                     <div class="forecast-title">📅 Prakiraan 7 Hari Kedepan</div>
-                    <div class="daily-list" id="dailyForecastContainer">
-                        </div>
+                    <div class="daily-list" id="dailyForecastContainer"></div>
                      
-                    <div id="ensoIodBox" style="display: block; margin-top: 12px;"></div>
-                     
+                   <div id="ensoIodBox" style="display: block; margin-top: 20px; border-radius: 16px; backdrop-filter: blur(12px); background: rgba(20, 20, 25, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px;">
+    
+    <strong style="display: block; margin-bottom: 12px; text-align: center; font-size: 0.95rem; color: #fff;">📈 Proyeksi Iklim Makro</strong>
+    <div id="ensoStatus" style="font-size: 0.9rem; margin-bottom: 15px; text-align: center; color: #fff; font-weight: 600; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;">
+        Mendeteksi fase iklim...
+    </div>
+    <div style="position: relative; width: 100%; height: 200px; margin-bottom: 20px;">
+        <canvas id="macroClimateChart"></canvas>
+    </div>
+    <div style="font-size: 0.75rem; color: #94a3b8; text-align: center; display: flex; justify-content: center; gap: 15px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 20px;">
+        <span><span style="color:#ff4a5a;">■</span> ENSO (Pasifik)</span>
+        <span><span style="color:#ffcc00;">■</span> IOD (Hindia)</span>
+    </div>
+
+    <div id="localSstBox" style="margin-top: 20px;">
+        <strong style="display: block; margin-bottom: 12px; text-align: center; font-size: 0.95rem; color: #fff;">🌊 Suhu Permukaan Laut Lokal</strong>
+        <div id="localWarningStatus" style="font-size: 0.85rem; margin-bottom: 15px; text-align: center; font-weight: 500; padding: 8px; border-radius: 8px; background: rgba(0,0,0,0.3);">
+            Menganalisis suhu laut lokal...
+        </div>
+        <div style="position: relative; width: 100%; height: 200px;">
+            <canvas id="localSstChart"></canvas>
+        </div>
+        <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 15px; text-align: center; display: flex; justify-content: center; gap: 15px;">
+            <span><span style="color:#00ff9d;">■</span> Bone (°C)</span>
+            <span><span style="color:#38b6ff;">■</span> Makassar (°C)</span>
+        </div>
+    </div>
+</div>
                     
-                     
-                    <div class="info-box" style="border-left-color: var(--accent-green); padding: 16px;">
+                    <div class="info-box" style="border-left-color: var(--accent-green); padding: 16px; margin-top: 16px;">
                         <strong>📊 Real-Time Parameter Lahan (Satelit)</strong>
                         <table style="width: 100%; margin-top: 8px; border: none;">
                             <tr>
@@ -674,12 +735,9 @@
                         <strong>⚠️ Risiko Penyakit Tanaman (Blast)</strong><br>
                         <span id="riskResult" style="display: block; margin-top: 4px;"></span>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div style="margin-bottom: 80px;"></div>
+                </div> </div> </div> 
+                
+                <div style="margin-bottom: 80px;"></div>
 
     <footer class="fixed-footer">
         <div>© 2026 Dibuat oleh: <strong>King Mamank</strong> • PPL BPP Bola - Kab. Wajo - Sulsel</div>
@@ -838,85 +896,90 @@ function getFormatTanggal(selisihHari) {
 
         // 💡 Diperbarui untuk mendukung penamaan dan pewarnaan tab menu HAMA baru Anda
         function switchMode(mode) {
-    currentMode = mode;
-    let color = '#4fc3f7'; 
-    let title = 'Cuaca & Risiko Penyakit Tanaman';
-    let sub = '';
-    const subEl = document.getElementById('tabSubtitleDisplay');
+            currentMode = mode;
+            let color = '#4fc3f7'; 
+            let title = 'Cuaca & Risiko Penyakit Tanaman';
+            let sub = '';
+            const subEl = document.getElementById('tabSubtitleDisplay');
 
-    if (mode === 'daun') { color = '#ff4a5a'; title = 'Deteksi Penyakit Padi'; }
-    if (mode === 'hama') { color = 'var(--accent-hama)'; title = 'Pendeteksi & Solusi Hama Padi'; } 
-    if (mode === 'gulma') { color = '#0ea5e9'; title = 'Identifikasi & Solusi Gulma'; }
-    if (mode === 'tanah') { color = '#d19b08'; title = 'Analisis Jenis Tanah'; }
-    if (mode === 'bwd') { color = '#00ff9d'; title = 'Analisis Warna Daun (BWD)'; }
-    if (mode === 'malai') { color = '#ffcc00'; title = 'Estimasi Panen - Ambil 3 foto malai'; }
-    if (mode === 'biaya') { color = '#b388ff'; title = '📱 Analisis Usaha Tani'; sub = 'Menghitung Kebutuhan, Keuntungan dan Perencanaan'; }
-    // Judul & warna menu pupuk baru
-    if (mode === 'pupuk') { color = 'var(--accent-pupuk)'; title = '🧮 Kalkulator Pupuk E-RDKK'; sub = 'Rekomendasi Dosis Berdasarkan Wilayah Nasional'; }
+            // 1. [DI SINI TEMPATNYA] Ambil elemen boxLokal dan sembunyikan di awal pengecekan
+            const boxLokal = document.getElementById('localSstBox');
+            if (boxLokal) boxLokal.style.display = 'none';
 
-    if (sub !== '') { subEl.innerText = sub; subEl.style.display = 'block'; } else { subEl.style.display = 'none'; }
+            if (mode === 'daun') { color = '#ff4a5a'; title = 'Deteksi Penyakit Padi'; }
+            if (mode === 'hama') { color = 'var(--accent-hama)'; title = 'Pendeteksi & Solusi Hama Padi'; } 
+            if (mode === 'gulma') { color = '#0ea5e9'; title = 'Identifikasi & Solusi Gulma'; }
+            if (mode === 'tanah') { color = '#d19b08'; title = 'Analisis Jenis Tanah'; }
+            if (mode === 'bwd') { color = '#00ff9d'; title = 'Analisis Warna Daun (BWD)'; }
+            if (mode === 'malai') { color = '#ffcc00'; title = 'Estimasi Panen - Ambil 3 foto malai'; }
+            if (mode === 'biaya') { color = '#b388ff'; title = '📱 Analisis Usaha Tani'; sub = 'Menghitung Kebutuhan, Keuntungan dan Perencanaan'; }
+            if (mode === 'pupuk') { color = 'var(--accent-pupuk)'; title = '🧮 Kalkulator Pupuk E-RDKK'; sub = 'Rekomendasi Dosis Berdasarkan Wilayah Nasional'; }
 
-    if (mode !== 'malai') {
-        hasilSampelBulir = [];
-        const listM = document.getElementById('listMalai');
-        if (listM) listM.innerHTML = "";
-    }
+            if (sub !== '') { subEl.innerText = sub; subEl.style.display = 'block'; } else { subEl.style.display = 'none'; }
 
-    // Atur Class Active Tombol Navigasi
-    // === SINKRONISASI STYLE AKTIF GRID TOMBOL ===
-    document.getElementById('tabCuaca').className = mode === 'cuaca' ? 'tab-btn active' : 'tab-btn';
-    document.getElementById('tabBiaya').className = mode === 'biaya' ? 'tab-btn active biaya-mode' : 'tab-btn';
-    document.getElementById('tabPupuk').className = mode === 'pupuk' ? 'tab-btn active pupuk-mode' : 'tab-btn';
-    document.getElementById('tabDaun').className = mode === 'daun' ? 'tab-btn active daun-mode' : 'tab-btn';
-    document.getElementById('tabHama').className = mode === 'hama' ? 'tab-btn active hama-mode' : 'tab-btn'; 
-    document.getElementById('tabGulma').className = mode === 'gulma' ? 'tab-btn active gulma-mode' : 'tab-btn';
-    document.getElementById('tabTanah').className = mode === 'tanah' ? 'tab-btn active tanah-mode' : 'tab-btn'; // 💡 Diubah ke tanah-mode
-    document.getElementById('tabBWD').className = mode === 'bwd' ? 'tab-btn active bwd-mode' : 'tab-btn';
-    document.getElementById('tabMalai').className = mode === 'malai' ? 'tab-btn active malai-mode' : 'tab-btn';
+            if (mode !== 'malai') {
+                hasilSampelBulir = [];
+                const listM = document.getElementById('listMalai');
+                if (listM) listM.innerHTML = "";
+            }
 
-    document.getElementById('modeTitle').innerText = title;
-    document.getElementById('modeTitle').style.color = color;
-    document.getElementById('laser').style.background = color;
+            // Atur Class Active Tombol Navigasi
+            document.getElementById('tabCuaca').className = mode === 'cuaca' ? 'tab-btn active' : 'tab-btn';
+            document.getElementById('tabBiaya').className = mode === 'biaya' ? 'tab-btn active biaya-mode' : 'tab-btn';
+            document.getElementById('tabPupuk').className = mode === 'pupuk' ? 'tab-btn active pupuk-mode' : 'tab-btn';
+            document.getElementById('tabDaun').className = mode === 'daun' ? 'tab-btn active daun-mode' : 'tab-btn';
+            document.getElementById('tabHama').className = mode === 'hama' ? 'tab-btn active hama-mode' : 'tab-btn'; 
+            document.getElementById('tabGulma').className = mode === 'gulma' ? 'tab-btn active gulma-mode' : 'tab-btn';
+            document.getElementById('tabTanah').className = mode === 'tanah' ? 'tab-btn active tanah-mode' : 'tab-btn';
+            document.getElementById('tabBWD').className = mode === 'bwd' ? 'tab-btn active bwd-mode' : 'tab-btn';
+            document.getElementById('tabMalai').className = mode === 'malai' ? 'tab-btn active malai-mode' : 'tab-btn';
 
-    // Kontrol Visibilitas Box Kontainer Menu
-    document.getElementById('boxPenyakit').style.display = mode === 'daun' ? 'block' : 'none';
-    document.getElementById('boxHama').style.display = mode === 'hama' ? 'block' : 'none'; 
-    document.getElementById('boxGulma').style.display = mode === 'gulma' ? 'block' : 'none';
-    document.getElementById('boxTanah').style.display = mode === 'tanah' ? 'block' : 'none';
-    document.getElementById('boxBWD').style.display = mode === 'bwd' ? 'block' : 'none';
-    document.getElementById('boxCuaca').style.display = mode === 'cuaca' ? 'block' : 'none';
-    document.getElementById('boxMalai').style.display = mode === 'malai' ? 'block' : 'none';
-    document.getElementById('boxBiayaTani').style.display = mode === 'biaya' ? 'block' : 'none';
-    document.getElementById('boxKalkulatorPupuk').style.display = mode === 'pupuk' ? 'block' : 'none'; // Tambahan untuk pupuk
-     
-    document.getElementById('formParameterLahan').style.display = mode === 'malai' ? 'block' : 'none';
+            document.getElementById('modeTitle').innerText = title;
+            document.getElementById('modeTitle').style.color = color;
+            document.getElementById('laser').style.background = color;
 
-    // Manajemen Tombol Kamera Utama Dashboard
-    // === PERBAIKI BLOK INI DI DALAM switchMode() ===
-    if (mode === 'cuaca' || mode === 'biaya' || mode === 'pupuk') {
-        document.getElementById('btnCamera').style.display = 'none';
-        document.getElementById('scanWindow').style.display = 'none';
-        document.getElementById('btnAnalisis').style.display = 'none';
-        
-        // Mode cuaca menampilkan hasil parameter, mode lain menyembunyikannya
-        document.getElementById('result').style.display = mode === 'cuaca' ? 'block' : 'none';
-        document.getElementById('resConf').style.display = mode === 'cuaca' ? 'none' : 'block';
-        
-        // 💡 PERBAIKAN: Jika GPS belum sinkron, tampilkan prompt GPS. Jika sudah, sembunyikan.
-        if (mode === 'cuaca') {
-            document.getElementById('gpsPrompt').style.display = isGpsSynced ? 'none' : 'block';
-            document.getElementById('weatherData').style.display = isGpsSynced ? 'block' : 'none';
-        } else {
-            document.getElementById('gpsPrompt').style.display = 'none';
+            // Kontrol Visibilitas Box Kontainer Menu
+            document.getElementById('boxPenyakit').style.display = mode === 'daun' ? 'block' : 'none';
+            document.getElementById('boxHama').style.display = mode === 'hama' ? 'block' : 'none'; 
+            document.getElementById('boxGulma').style.display = mode === 'gulma' ? 'block' : 'none';
+            document.getElementById('boxTanah').style.display = mode === 'tanah' ? 'block' : 'none';
+            document.getElementById('boxBWD').style.display = mode === 'bwd' ? 'block' : 'none';
+            document.getElementById('boxCuaca').style.display = mode === 'cuaca' ? 'block' : 'none';
+            document.getElementById('boxMalai').style.display = mode === 'malai' ? 'block' : 'none';
+            document.getElementById('boxBiayaTani').style.display = mode === 'biaya' ? 'block' : 'none';
+            document.getElementById('boxKalkulatorPupuk').style.display = mode === 'pupuk' ? 'block' : 'none';
+             
+            document.getElementById('formParameterLahan').style.display = mode === 'malai' ? 'block' : 'none';
+
+            // Manajemen Tombol Kamera Utama Dashboard
+            if (mode === 'cuaca' || mode === 'biaya' || mode === 'pupuk') {
+                document.getElementById('btnCamera').style.display = 'none';
+                document.getElementById('scanWindow').style.display = 'none';
+                document.getElementById('btnAnalisis').style.display = 'none';
+                
+                document.getElementById('result').style.display = mode === 'cuaca' ? 'block' : 'none';
+                document.getElementById('resConf').style.display = mode === 'cuaca' ? 'none' : 'block';
+                
+                // 2. [DI SINI TEMPATNYA] Blok kondisi cuaca diaktifkan yang sudah disinkronkan dengan boxLokal
+                if (mode === 'cuaca') {
+                    document.getElementById('gpsPrompt').style.display = isGpsSynced ? 'none' : 'block';
+                    document.getElementById('weatherData').style.display = isGpsSynced ? 'block' : 'none';
+                    
+                    if (isGpsSynced) {
+                        if (boxLokal) boxLokal.style.display = 'block'; // Tampilkan lagi box lokalnya
+                        setTimeout(() => { loadGlobalClimateIndices(); }, 100);
+                    }
+                } else {
+                    document.getElementById('gpsPrompt').style.display = 'none';
+                }
+            } else {
+                document.getElementById('btnCamera').style.display = 'block';
+                document.getElementById('scanWindow').style.display = 'flex';
+                document.getElementById('gpsPrompt').style.display = 'none';
+                document.getElementById('result').style.display = 'none';
+                document.getElementById('btnAnalisis').style.display = base64Image !== "" ? 'block' : 'none';
+            }
         }
-    } else {
-        document.getElementById('btnCamera').style.display = 'block';
-        document.getElementById('scanWindow').style.display = 'flex';
-        document.getElementById('gpsPrompt').style.display = 'none';
-        document.getElementById('result').style.display = 'none';
-        document.getElementById('btnAnalisis').style.display = base64Image !== "" ? 'block' : 'none';
-    }
-}
 
         function handleFile(event) {
             const file = event.target.files[0];
@@ -969,9 +1032,12 @@ function getFormatTanggal(selisihHari) {
         document.getElementById('weatherData').style.display = 'block';
         document.getElementById('result').style.display = 'block';
 
+        // 💡 TAMBAHKAN 2 BARIS INI UNTUK MEMBUKA GEMBOK GRAFIK LOKAL
+        const boxLokal = document.getElementById('localSstBox');
+        if (boxLokal) boxLokal.style.display = 'block';
+
         // Reset tombol ke kondisi sukses
-        btn.innerHTML = `✅ GPS & Satelit Terhubung`;
-        btn.style.background = "var(--accent-green)";
+        btn.innerHTML = `✅ GPS & Satelit Terhubung`;       btn.style.background = "var(--accent-green)";
         btn.style.color = "#000";
         btn.disabled = true; // Tetap disabled setelah sukses
 
@@ -1012,21 +1078,27 @@ function getFormatTanggal(selisihHari) {
 
         // Nominatim
         try {
-            const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`, {
-                headers: { 'User-Agent': 'SmartFarming-PPLWajo/1.0' }
-            });
-            if (geoRes.ok) {
-                const geoData = await geoRes.json(); 
-                const addr = geoData.address;
-                const desa = addr.village || addr.suburb || addr.hamlet || addr.neighborhood || addr.town || addr.municipality || "Pesisir/Luar Desa";
-                const kecamatan = addr.subdistrict || addr.city_district || addr.district || addr.county || "";
-                document.getElementById('alamatDesa').innerHTML = `<b>Desa ${desa}</b>, Kec. ${kecamatan}`;
-            } else { 
-                document.getElementById('alamatDesa').innerText = "Koordinat luar batas server alamat"; 
-            }
-        } catch (e) { 
-            document.getElementById('alamatDesa').innerText = "Satelit Cuaca Aktif"; 
-        }
+    const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`, {
+        headers: { 'User-Agent': 'SmartFarming-PPLWajo/1.0' }
+    });
+    if (geoRes.ok) {
+        const geoData = await geoRes.json(); 
+        const addr = geoData.address;
+        
+        // Mengambil Desa/Kelurahan
+        const desa = addr.village || addr.suburb || addr.hamlet || addr.neighborhood || addr.town || "Pesisir/Luar Desa";
+        
+        // Mengambil Kabupaten (biasanya tersimpan di county atau city)
+        const kabupaten = addr.county || addr.city || addr.municipality || "Wajo";
+        
+        // Menampilkan Desa dan Kabupaten
+        document.getElementById('alamatDesa').innerHTML = `<b>${desa}</b>, Kab. ${kabupaten}`;
+    } else { 
+        document.getElementById('alamatDesa').innerText = "Koordinat luar batas server alamat"; 
+    }
+} catch (e) { 
+    document.getElementById('alamatDesa').innerText = "Satelit Cuaca Aktif"; 
+}
 
         // API Calls
         const urlArchive = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${getFormatTanggal(30)}&end_date=${getFormatTanggal(1)}&daily=precipitation_sum&timezone=auto`;
@@ -1244,61 +1316,188 @@ function getFormatTanggal(selisihHari) {
         }
     }
 }
-        async function loadGlobalClimateIndices() {
-            const container = document.getElementById('ensoIodBox'); if (!container) return;
-            container.innerHTML = `<div class="info-box" style="border-left-color: var(--accent-bwd);">🔄 <strong>Menghubungkan 5 Zona Satelit (Nino 3 + Nino 4)...</strong><br><small style="opacity:0.7;">Mengekstrak rata-rata spasial Pasifik Barat & Timur...</small></div>`;
-            const urlNINO3 = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=0.00&longitude=-120.00&variables=sea_surface_temperature_anomaly&forecast_months=3&timezone=auto";
-            const urlNINO4 = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=0.00&longitude=-160.00&variables=sea_surface_temperature_anomaly&forecast_months=3&timezone=auto";
-            const urlWTIO = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=0.00&longitude=60.00&variables=sea_surface_temperature_anomaly&forecast_months=3&timezone=auto";
-            const urlSETIO = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=-10.00&longitude=110.00&variables=sea_surface_temperature_anomaly&forecast_months=3&timezone=auto";
-            const urlBone = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=-4.85&longitude=120.60&variables=sea_surface_temperature&forecast_months=3&timezone=Asia/Makassar";
-            const urlMakassar = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=-4.00&longitude=118.80&variables=sea_surface_temperature&forecast_months=3&timezone=Asia/Makassar";
+        // Variabel global untuk menyimpan kedua objek grafik agar tidak menumpuk saat ganti tab
+        let macroChartInstance = null;
+        let localChartInstance = null;
 
-            const fetchJSONP = (targetUrl) => {
-                return new Promise((resolve) => {
-                    const callbackName = "cb_" + Math.random().toString(36).substring(2, 10);
-                    window[callbackName] = (data) => { resolve(data); delete window[callbackName]; const scriptEl = document.getElementById(callbackName); if (scriptEl) scriptEl.remove(); };
-                    const script = document.createElement('script'); script.id = callbackName;
-                    script.src = `${URL_IKLIM}?url=${encodeURIComponent(targetUrl)}&callback=${callbackName}`;
-                    document.body.appendChild(script);
-                });
-            };
+       async function loadGlobalClimateIndices() {
+    const container = document.getElementById('ensoIodBox'); 
+    if (!container) return;
+    
+    // 1. Konfigurasi Baseline Klimatologi (1981-2010)
+    const baseNINO34 = [26.8, 27.0, 27.3, 27.6, 27.4, 27.1, 26.8, 26.6, 26.7, 26.9, 27.0, 26.9];
+    const baseWTIO = [28.2, 28.3, 28.6, 28.9, 28.7, 28.2, 27.8, 27.6, 27.8, 28.2, 28.4, 28.3];
+    const baseSETIO = [28.4, 28.3, 28.5, 28.4, 27.9, 27.2, 26.6, 26.3, 26.4, 27.2, 28.1, 28.4];
 
-            try {
-                const [dN3, dN4, dW, dS, dBl, dMk] = await Promise.all([fetchJSONP(urlNINO3), fetchJSONP(urlNINO4), fetchJSONP(urlWTIO), fetchJSONP(urlSETIO), fetchJSONP(urlBone), fetchJSONP(urlMakassar)]);
-                let aN3 = 0.15; let aN4 = 0.15;
-                if (dN3?.seasonal?.sea_surface_temperature_anomaly) aN3 = dN3.seasonal.sea_surface_temperature_anomaly[dN3.seasonal.sea_surface_temperature_anomaly.length - 1];
-                if (dN4?.seasonal?.sea_surface_temperature_anomaly) aN4 = dN4.seasonal.sea_surface_temperature_anomaly[dN4.seasonal.sea_surface_temperature_anomaly.length - 1];
-                let nino34 = parseFloat(((aN3 + aN4) / 2).toFixed(2));
+    // 2. Definisi URL API (ECMWF SEAS5)
+    const urlNINO34 = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=0&longitude=-150&monthly=temperature_2m_mean&models=ecmwf_seas5";
+    const urlWTIO = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=0.00&longitude=60.00&monthly=temperature_2m_mean&models=ecmwf_seas5";
+    const urlSETIO = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=-10.00&longitude=110.00&monthly=temperature_2m_mean&models=ecmwf_seas5";
+    const urlBone = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=-4.85&longitude=120.60&monthly=temperature_2m_mean&models=ecmwf_seas5";
+    const urlMakassar = "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=-4.00&longitude=118.80&monthly=temperature_2m_mean&models=ecmwf_seas5";
 
-                let iod = -0.05;
-                if (dW?.seasonal?.sea_surface_temperature_anomaly && dS?.seasonal?.sea_surface_temperature_anomaly) {
-                    iod = dW.seasonal.sea_surface_temperature_anomaly[dW.seasonal.sea_surface_temperature_anomaly.length - 1] - dS.seasonal.sea_surface_temperature_anomaly[dS.seasonal.sea_surface_temperature_anomaly.length - 1];
-                }
-                let sstBone = dBl?.seasonal?.sea_surface_temperature ? dBl.seasonal.sea_surface_temperature[dBl.seasonal.sea_surface_temperature.length - 1] : 29.2;
-                let sstMks = dMk?.seasonal?.sea_surface_temperature ? dMk.seasonal.sea_surface_temperature[dMk.seasonal.sea_surface_temperature.length - 1] : 29.3;
+    const fetchJSONP = (targetUrl) => {
+        return new Promise((resolve) => {
+            const callbackName = "cb_" + Math.random().toString(36).substring(2, 10);
+            window[callbackName] = (data) => { resolve(data); delete window[callbackName]; const scriptEl = document.getElementById(callbackName); if (scriptEl) scriptEl.remove(); };
+            const script = document.createElement('script'); script.id = callbackName;
+            script.src = `${URL_IKLIM}?url=${encodeURIComponent(targetUrl)}&callback=${callbackName}`;
+            document.body.appendChild(script);
+        });
+    };
 
-                const packingData = {
-                    enso: nino34 >= 0.12 ? `PREDIKSI 3 BLN KE DEPAN: EL NIÑO [${nino34 >= 0 ? "+" : ""}${nino34.toFixed(2)} °C] (🚨 PERINGATAN: Tren Kering)` : (nino34 <= -0.40 ? `PREDIKSI 3 BLN KE DEPAN: LA NIÑA [${nino34.toFixed(2)} °C] (Tren Basah)` : `PREDIKSI 3 BLN KE DEPAN: NETRAL [${nino34 >= 0 ? "+" : ""}${nino34.toFixed(2)} °C] (Normal)`),
-                    ensoColor: nino34 >= 0.12 ? "#ff4a5a" : (nino34 <= -0.40 ? "#38b6ff" : "#00ff9d"),
-                    iod: iod >= 0.20 ? `PREDIKSI 3 BLN KE DEPAN: IOD POSITIF [${iod >= 0 ? "+" : ""}${iod.toFixed(2)} °C] (⚠️ Waspada Hambatan Uap Air Barat)` : (iod <= -0.20 ? `PREDIKSI 3 BLN KE DEPAN: IOD NEGATIF [${iod.toFixed(2)} °C] (Suplai Uap Timur Meningkat)` : `PREDIKSI 3 BLN KE DEPAN: NETRAL [${iod >= 0 ? "+" : ""}${iod.toFixed(2)} °C] (Normal)`),
-                    iodColor: iod >= 0.20 ? "#ffcc00" : (iod <= -0.20 ? "#38b6ff" : "#00ff9d"),
-                    sstBone: sstBone >= 29.0 ? `PROYEKSI 3 BLN KE DEPAN: HANGAT [${sstBone.toFixed(1)} °C] (Potensi Penguapan & Hujan Tinggi)` : `PROYEKSI 3 BLN KE DEPAN: DINGIN [${sstBone.toFixed(1)} °C] (Potensi Kemarau/Awan Rendah)`,
-                    boneColor: sstBone >= 29.0 ? "#00ff9d" : "#ffcc00",
-                    sstMarketing: sstMks >= 29.0 ? `PROYEKSI 3 BLN KE DEPAN: HANGAT [${sstMks.toFixed(1)} °C] (Baratan Konvektif Aktif)` : `PROYEKSI 3 BLN KE DEPAN: DINGIN [${sstMks.toFixed(1)} °C] (Angin Tenang / Awan Rendah)`,
-                    makassarColor: sstMks >= 29.0 ? "#00ff9d" : "#ffffff"
-                };
-                packingData && renderClimateUI(packingData);
-            } catch (er) { container.innerHTML = `<div class="info-box" style="border-left-color: var(--red-alert);">⚠️ Saluran Satelit Micro Spasial Sibuk. Silakan hubungkan kembali dasbor.</div>`; }
+    try {
+        const [dN34, dW, dS, dBl, dMk] = await Promise.all([
+            fetchJSONP(urlNINO34), fetchJSONP(urlWTIO), 
+            fetchJSONP(urlSETIO), fetchJSONP(urlBone), fetchJSONP(urlMakassar)
+        ]);
+
+        const namaBulan = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+        const sekarang = new Date();
+        const labelsMasaDepan = [];
+        const indeksBulan = [];
+        
+        for (let i = 1; i <= 3; i++) {
+            let targetDate = new Date(sekarang.getFullYear(), sekarang.getMonth() + i, 1);
+            labelsMasaDepan.push(`${namaBulan[targetDate.getMonth()]} ${targetDate.getFullYear().toString().substring(2)}`);
+            indeksBulan.push(targetDate.getMonth());
         }
 
-        window.renderClimateUI = function(data) {
-            const container = document.getElementById('ensoIodBox'); if (!container) return;
-            container.innerHTML = `
-                <div class="info-box" style="border-left-color: ${data.ensoColor}; background: rgba(255,255,255,0.01);"><strong>🌊 Indeks Samudera Pasifik (ENSO):</strong><br><span style="font-weight: 700; color: ${data.ensoColor};">${data.enso}</span></div>
-                <div class="info-box" style="border-left-color: ${data.iodColor}; background: rgba(255,255,255,0.01);"><strong>🌍 Indeks Samudera Hindia (IOD):</strong><br><span style="font-weight: 700; color: ${data.iodColor};">${data.iod}</span></div>
-                <div class="info-box" style="border-left-color: ${data.boneColor}; background: rgba(255,255,255,0.01);"><strong>⚓ Parameter Perairan Teluk Bone:</strong><br><span style="font-weight: 700; color: ${data.boneColor};">${data.sstBone}</span></div>
-                <div class="info-box" style="border-left-color: ${data.makassarColor}; background: rgba(255,255,255,0.01);"><strong>⚓ Parameter Perairan Selat Makassar:</strong><br><span style="font-weight: 700; color: ${data.makassarColor};">${data.sstMarketing}</span></div>`;
+        // 3. Kalkulasi Anomali NINO 3.4 & Interpretasi Fase
+        let ensoAnomali = [0.1, 0.3, 0.5]; // Default
+        if (dN34?.monthly?.temperature_2m_mean && dN34.monthly.temperature_2m_mean.length >= 4) {
+            ensoAnomali = [
+                parseFloat((dN34.monthly.temperature_2m_mean[1] - baseNINO34[indeksBulan[0]]).toFixed(2)),
+                parseFloat((dN34.monthly.temperature_2m_mean[2] - baseNINO34[indeksBulan[1]]).toFixed(2)),
+                parseFloat((dN34.monthly.temperature_2m_mean[3] - baseNINO34[indeksBulan[2]]).toFixed(2))
+            ];
+        }
+
+        const avgEnso = ensoAnomali.reduce((a, b) => a + b, 0) / 3;
+        let statusENSO = "Netral", warnaENSO = "#94a3b8";
+        if (avgEnso >= 0.5) { statusENSO = "El Niño (Potensi Kemarau)"; warnaENSO = "#ff4a5a"; } 
+        else if (avgEnso <= -0.5) { statusENSO = "La Niña (Potensi Basah)"; warnaENSO = "#38b6ff"; }
+
+        const statusEl = document.getElementById('ensoStatus');
+        if (statusEl) statusEl.innerHTML = `<span style="color:${warnaENSO}; font-weight:bold;">${statusENSO}</span>`;
+
+        // 4. Kalkulasi IOD Anomali
+        let iodTrend = [-0.05, -0.12, -0.02];
+        if (dW?.monthly?.temperature_2m_mean && dS?.monthly?.temperature_2m_mean && dW.monthly.temperature_2m_mean.length >= 4) {
+            iodTrend = [
+                parseFloat(((dW.monthly.temperature_2m_mean[1] - baseWTIO[indeksBulan[0]]) - (dS.monthly.temperature_2m_mean[1] - baseSETIO[indeksBulan[0]])).toFixed(2)),
+                parseFloat(((dW.monthly.temperature_2m_mean[2] - baseWTIO[indeksBulan[1]]) - (dS.monthly.temperature_2m_mean[2] - baseSETIO[indeksBulan[1]])).toFixed(2)),
+                parseFloat(((dW.monthly.temperature_2m_mean[3] - baseWTIO[indeksBulan[2]]) - (dS.monthly.temperature_2m_mean[3] - baseSETIO[indeksBulan[2]])).toFixed(2))
+            ];
+        }
+
+        // 5. Data Lokal (Bone & Makassar)
+        // 💡 KOREKSI BIAS: Mengurangi 0.4 agar proxy suhu udara mendekati suhu permukaan laut
+        const bias = 0.4;
+
+        let sstBoneTrend = dBl?.monthly?.temperature_2m_mean 
+            ? [
+                (dBl.monthly.temperature_2m_mean[1] - bias).toFixed(1),
+                (dBl.monthly.temperature_2m_mean[2] - bias).toFixed(1),
+                (dBl.monthly.temperature_2m_mean[3] - bias).toFixed(1)
+              ] 
+            : ["28.8", "29.1", "28.9"]; // Fallback disesuaikan setelah koreksi
+
+        let sstMksTrend = dMk?.monthly?.temperature_2m_mean 
+            ? [
+                (dMk.monthly.temperature_2m_mean[1] - bias).toFixed(1),
+                (dMk.monthly.temperature_2m_mean[2] - bias).toFixed(1),
+                (dMk.monthly.temperature_2m_mean[3] - bias).toFixed(1)
+              ] 
+            : ["28.7", "29.0", "28.8"]; // Fallback disesuaikan setelah koreksi
+
+// ... (setelah sstBoneTrend dan sstMksTrend dihitung)
+
+        // Logika Warning Lokal
+        const avgSstLokal = (parseFloat(sstBoneTrend[2]) + parseFloat(sstMksTrend[2])) / 2;
+        let statusLokal = "Suhu Laut Normal";
+        let warnaLokal = "#10b981"; // Hijau standar
+
+        if (avgSstLokal >= 30.0) {
+            statusLokal = "⚠️ PERINGATAN: Suhu Laut Lokal Tinggi!";
+            warnaLokal = "#f59e0b"; // Oranye/Amber
+        } else if (avgSstLokal >= 30.5) {
+            statusLokal = "🔥 BAHAYA: Marine Heatwave Lokal!";
+            warnaLokal = "#ef4444"; // Merah
+        }
+
+        const localWarningEl = document.getElementById('localWarningStatus');
+        if (localWarningEl) {
+            localWarningEl.innerHTML = `<span style="color:${warnaLokal}; font-weight:bold;">${statusLokal}</span>`;
+        }
+        
+        renderSplitCharts(labelsMasaDepan, ensoAnomali, iodTrend, sstBoneTrend, sstMksTrend);    } catch (er) { 
+        console.error("Gagal Render Iklim:", er);
+        if (container) container.innerHTML = `<div class="info-box">⚠️ Gagal memuat data prediksi iklim.</div>`; 
+    }
+}
+        
+        function renderSplitCharts(labels, enso, iod, bone, makassar) {
+            const ctxMacro = document.getElementById('macroClimateChart');
+            const ctxLocal = document.getElementById('localSstChart');
+            if (!ctxMacro || !ctxLocal) return;
+
+            // Hancurkan grafik lama jika ada (Manajemen Lifecycle Tab)
+            if (macroChartInstance) macroChartInstance.destroy();
+            if (localChartInstance) localChartInstance.destroy();
+
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#94a3b8', font: { size: 11, weight: '600' } } }
+                }
+            };
+
+            // TAMPIKAN GRAFIK 1: IKLIM MAKRO (ENSO & IOD)
+            macroChartInstance = new Chart(ctxMacro, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'ENSO', data: enso, borderColor: '#ff4a5a', backgroundColor: 'transparent', borderWidth: 3, tension: 0.2 },
+                        { label: 'IOD', data: iod, borderColor: '#ffcc00', backgroundColor: 'transparent', borderWidth: 3, tension: 0.2 }
+                    ]
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        ...commonOptions.scales,
+                        y: {
+                            min: -2, max: 2, grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                            ticks: { color: '#ff7675', font: { size: 10 }, callback: v => v + '°C' }
+                        }
+                    }
+                }
+            });
+
+            // TAMPIKAN GRAFIK 2: SUHU LAUT LOKAL (BONE & MAKASSAR)
+            localChartInstance = new Chart(ctxLocal, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Sst Bone', data: bone, borderColor: '#00ff9d', backgroundColor: 'transparent', borderWidth: 2.5, borderDash: [3, 3], tension: 0.2 },
+                        { label: 'Sst Makassar', data: makassar, borderColor: '#38b6ff', backgroundColor: 'transparent', borderWidth: 2.5, borderDash: [3, 3], tension: 0.2 }
+                    ]
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        ...commonOptions.scales,
+                        y: {
+                            min: 25, max: 33, grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                            ticks: { color: '#38b6ff', font: { size: 10 }, callback: v => v + '°C' }
+                        }
+                    }
+                }
+            });
         }
 
         async function mulaiAnalisis() {
