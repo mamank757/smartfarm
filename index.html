@@ -317,6 +317,64 @@
             z-index: 100;
         }
         footer.fixed-footer strong { color: var(--text-main); }
+        /* --- Gaya Baru Prakiraan Cuaca --- */
+        .forecast-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin: 20px 0 10px 0;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        /* Wadah scroll menyamping untuk per jam */
+        .hourly-scroll {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+            scrollbar-width: none; /* Lapisan Firefox */
+        }
+        .hourly-scroll::-webkit-scrollbar { display: none; } /* Lapisan Chrome/Safari */
+        
+        .hourly-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 12px;
+            min-width: 75px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .hourly-card .time { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; }
+        .hourly-card .icon { font-size: 1.5rem; margin: 6px 0; }
+        .hourly-card .temp { font-size: 0.85rem; font-weight: 700; color: var(--accent-bwd); }
+
+        /* Struktur list ke bawah untuk harian */
+        .daily-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 12px;
+        }
+        .daily-item {
+            display: grid;
+            grid-template-columns: 2fr 1fr 2fr;
+            align-items: center;
+            padding: 8px 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            font-size: 0.8rem;
+        }
+        .daily-item:last-child { border-bottom: none; }
+        .daily-item .day { font-weight: 600; color: var(--text-main); }
+        .daily-item .icon { font-size: 1.25rem; text-align: center; }
+        .daily-item .temp-range { text-align: right; font-weight: 700; color: var(--accent-soil); }
     </style>
 </head>
 <body>
@@ -401,7 +459,7 @@
     </button>
     
     <button class="btn-main" style="background: #25D366; color: #fff; margin-top: 0;" onclick="kirimHasilKeWhatsApp()">
-        💬 KIRIM HASIL KE WA
+        💬 KIRIM/SIMPAN HASIL
     </button>
 
     <div id="outputHasilPupuk" class="info-box" style="display:none; border-left-color: var(--accent-pupuk); background: rgba(34, 197, 94, 0.02); margin-top: 20px;"></div>
@@ -535,13 +593,21 @@
                         <span id="lokasiSawah" style="font-size: 0.8rem; opacity: 0.6; font-weight: 600;">-</span><br>
                         <span id="alamatDesa" style="color: var(--accent-green); font-weight: 700; font-size: 0.9rem; display: inline-block; margin-top: 4px;">Mencari alamat...</span>
                     </div>
-                     
-                    <div id="ensoIodBox" style="display: block; margin-top: 12px;"></div>
-                     
-                    <div id="prediksiHujan" class="info-box" style="border-left-color: var(--accent-soil); background: rgba(255, 215, 0, 0.02); display: none;">
+<div id="prediksiHujan" class="info-box" style="border-left-color: var(--accent-soil); background: rgba(255, 215, 0, 0.02); display: none;">
                         <strong>🔮 Prediksi Atmosfer (1 Jam Kedepan)</strong><br>
                         <span id="hujanNext">-</span>
                     </div>
+                    <div class="forecast-title">🕒 Prakiraan Cuaca Per Jam</div>
+                    <div class="hourly-scroll" id="hourlyForecastContainer">
+                        </div>
+
+                    <div class="forecast-title">📅 Prakiraan 7 Hari Kedepan</div>
+                    <div class="daily-list" id="dailyForecastContainer">
+                        </div>
+                     
+                    <div id="ensoIodBox" style="display: block; margin-top: 12px;"></div>
+                     
+                    
                      
                     <div class="info-box" style="border-left-color: var(--accent-green); padding: 16px;">
                         <strong>📊 Real-Time Parameter Lahan (Satelit)</strong>
@@ -906,14 +972,92 @@ window.addEventListener('load', async function() {
                 } catch (e) { document.getElementById('alamatDesa').innerText = "Satelit Cuaca Aktif (Alamat Teks Batas Waktu)"; }
 
                 const urlArchive = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&past_days=30&daily=precipitation_sum&timezone=auto`;
-                const urlForecast = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=rain,temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_direction_10m,surface_pressure&hourly=precipitation_probability,precipitation,temperature_850hPa,cape&timezone=auto`;
+                // 1. UPDATE URL API FORECAST (Menambahkan weather_code untuk hourly & daily, serta min/max temp)
+                const urlForecast = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=rain,temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_direction_10m,surface_pressure,weather_code&hourly=precipitation_probability,precipitation,temperature_850hPa,cape,temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto`;
+                
                 const [resA, resF] = await Promise.all([fetch(urlArchive), fetch(urlForecast)]);
                 const dataArchive = await resA.json(); const dataForecast = await resF.json();
                 
                 const cur = dataForecast.current; const hourly = dataForecast.hourly;
-                const nowISO = new Date().toISOString().slice(0, 13); 
-                const nowIndex = hourly.time.findIndex(t => t.startsWith(nowISO));
-                const activeIndex = nowIndex >= 0 ? nowIndex : 0;
+                const daily = dataForecast.daily; // Ambil objek data harian baru
+                
+                // 1. Ambil waktu lokal perangkat saat ini
+const sekarang = new Date();
+
+// 2. Format menjadi string YYYY-MM-DDTHH:00 (Sesuai format array Open-Meteo)
+const tahun = sekarang.getFullYear();
+const bulan = String(sekarang.getMonth() + 1).padStart(2, '0');
+const tanggal = String(sekarang.getDate()).padStart(2, '0');
+const jam = String(sekarang.getHours()).padStart(2, '0');
+
+const waktuLokalTarget = `${tahun}-${bulan}-${tanggal}T${jam}:00`;
+
+// 3. Cari indeks yang pas dengan jam lokal HP kamu saat ini
+let activeIndex = hourly.time.findIndex(t => t.startsWith(waktuLokalTarget));
+
+// Jika tidak ketemu karena batas tanggal, gunakan fallback jam terdekat
+if (activeIndex === -1) {
+    const jamSaja = sekarang.getHours();
+    activeIndex = jamSaja; // Mengambil index jam pada hari pertama
+}
+
+                // Fungsi bantu internal untuk merubah WMO Code Open-Meteo menjadi Ikon & Teks Bahasa Indonesia
+                const dapatkanKondisiCuaca = (code) => {
+                    if ([0].includes(code)) return { teks: "Cerah", ikon: "☀️" };
+                    if ([1, 2, 3].includes(code)) return { teks: "Berawan", ikon: "☁️" };
+                    if ([45, 48].includes(code)) return { teks: "Berkabut", ikon: "🌫️" };
+                    if ([51, 53, 55, 61, 63, 80, 81].includes(code)) return { teks: "Hujan Ringan/Sedang", ikon: "🌧️" };
+                    if ([65, 82].includes(code)) return { teks: "Hujan Lebat", ikon: "🌧️" };
+                    if ([95, 96, 99].includes(code)) return { teks: "Hujan Petir", ikon: "⛈️" };
+                    return { teks: "Berawan", ikon: "⛅" };
+                };
+
+                // 2. RENDER PRAKIRAAN PER JAM (Mengambil data 12 jam kedepan dari jam saat ini)
+                const hourlyContainer = document.getElementById('hourlyForecastContainer');
+                if (hourlyContainer) {
+                    hourlyContainer.innerHTML = '';
+                    for (let i = activeIndex; i < activeIndex + 12; i++) {
+                        if (!hourly.time[i]) break;
+                        const tStr = hourly.time[i].split('T')[1].substring(0, 5); // Format Ambil "HH:MM"
+                        const cuacaJam = dapatkanKondisiCuaca(hourly.weather_code[i]);
+                        const tempJam = hourly.temperature_2m[i].toFixed(0);
+                        
+                        hourlyContainer.innerHTML += `
+                            <div class="hourly-card">
+                                <div class="time">${tStr}</div>
+                                <div class="icon" title="${cuacaJam.teks}">${cuacaJam.ikon}</div>
+                                <div class="temp">${tempJam}°C</div>
+                            </div>
+                        `;
+                    }
+                }
+
+                // 3. RENDER PRAKIRAAN HARIAN (Mengambil data ramalan 7 hari kedepan)
+                const dailyContainer = document.getElementById('dailyForecastContainer');
+                if (dailyContainer) {
+                    dailyContainer.innerHTML = '';
+                    const namaHari = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+                    
+                    for (let j = 0; j < daily.time.length; j++) {
+                        const dObj = new Date(daily.time[j]);
+                        let hariTeks = namaHari[dObj.getDay()];
+                        
+                        // Tandai hari ini agar lebih informatif
+                        if (j === 0) hariTeks = "Hari Ini";
+                        
+                        const cuacaHari = dapatkanKondisiCuaca(daily.weather_code[j]);
+                        const tMax = daily.temperature_2m_max[j].toFixed(0);
+                        const tMin = daily.temperature_2m_min[j].toFixed(0);
+                        
+                        dailyContainer.innerHTML += `
+                            <div class="daily-item">
+                                <div class="day">${hariTeks}</div>
+                                <div class="icon" title="${cuacaHari.teks}">${cuacaHari.ikon}</div>
+                                <div class="temp-range">${tMin}° / ${tMax}°C</div>
+                            </div>
+                        `;
+                    }
+                }
 
                 const currentCape = hourly.cape ? hourly.cape[activeIndex] : 0;
                 const dpSpread = (cur.temperature_2m - cur.dew_point_2m).toFixed(1);
@@ -1464,11 +1608,11 @@ function hitungRekomendasiPupuk() {
         <b>📐 Luas Hamparan:</b> ${luas} Ha<br><br>
         
         <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--accent-soil)">
-            <b>📦 Pupuk Organik Dasar:</b><br>
+            <b>📦 Pupuk Organik Dasar (Jika dibuthkan):</b><br>
             Kebutuhan: <span style="color: #fff; font-weight:700;">${org.toFixed(0)} kg</span> (${sak(org)} Sak)
         </div>
 
-        <b>⏱️ Jadwal Aplikasi di Lapangan:</b><br>
+        <b>⏱️ Jadwal Penggunaan di Lahan:</b><br>
         • <b>Tahap I (${t1}):</b> Urea: ${u1.toFixed(0)} kg | Phonska: ${p1.toFixed(0)} kg<br>
         • <b>Tahap II (${t2}):</b> Urea: ${u2.toFixed(0)} kg | Phonska: ${p2.toFixed(0)} kg<br>
         • <b>Tahap III (${t3}):</b> Phonska: ${p3.toFixed(0)} kg<br><br>
@@ -1483,7 +1627,7 @@ function hitungRekomendasiPupuk() {
     hasilTeksWA = `*SMART FARMING - PPL MILENIAL WAJO*\n*REKOMENDASI DOSIS PUPUK E-RDKK*\n\n` +
                   `📍 Wilayah: ${kecInput}\n` +
                   `📐 Luas Lahan: ${luas} Ha\n` +
-                  `📦 Organik (Jika dibutuhkan): ${org.toFixed(0)} kg (${sak(org)} sak)\n\n` +
+                  `📦 Organik (jika dibutuhkan): ${org.toFixed(0)} kg (${sak(org)} sak)\n\n` +
                   `*Jadwal Pemupukan:*\n` +
                   `1. Pemupukan I (${t1}): Urea: ${u1.toFixed(0)}kg, Phonska: ${p1.toFixed(0)}kg\n` +
                   `2. Pemupukan II (${t2}): Urea: ${u2.toFixed(0)}kg, Phonska: ${p2.toFixed(0)}kg\n` +
