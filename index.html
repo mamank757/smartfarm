@@ -62,44 +62,47 @@
             margin: 6px 0 0 0;
         }
 
-        /* PERBAIKAN TAB: PAS LEBAR SATU LAYAR HAPE */
         .tab-container {
-            display: flex; 
-            background: rgba(13, 20, 38, 0.8); 
-            padding: 4px; 
-            border-radius: 14px;
-            margin-bottom: 20px; 
-            width: 100%; 
-            max-width: 480px; 
-            border: 1px solid var(--card-border); 
-            gap: 4px;
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
-            overflow-x: auto;
-            scrollbar-width: none;
-        }
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); /* 💡 Ini yang mengunci bentuk 3 Kolom */
+    background: rgba(13, 20, 38, 0.8); 
+    padding: 6px; 
+    border-radius: 16px;
+    margin-bottom: 25px; 
+    width: 100%; 
+    max-width: 480px; 
+    border: 1px solid var(--card-border); 
+    gap: 6px; /* Jarak antar kotak tombol */
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+    box-sizing: border-box;
+}
         .tab-container::-webkit-scrollbar { display: none; }
          
         .tab-btn {
-            flex: 1; 
-            padding: 10px 4px; 
-            border: none; 
-            background: none; 
-            color: var(--text-muted);
-            cursor: pointer; 
-            font-weight: 700; 
-            border-radius: 10px; 
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); 
-            font-size: 0.58rem;
-            letter-spacing: 0.3px;
-            text-align: center;
-            white-space: nowrap;
-        }
+    width: 100%;
+    padding: 12px 2px; /* Ditambah vertikalnya agar enak ditekan */
+    border: none; 
+    background: rgba(255, 255, 255, 0.02); /* Ada base warna tipis saat mati */
+    color: var(--text-muted);
+    cursor: pointer; 
+    font-weight: 800; /* Dibuat lebih tebal teksnya */
+    border-radius: 12px; 
+    transition: all 0.2s ease; 
+    font-size: 0.65rem; /* Ukuran font disesuaikan agar muat dalam kotak */
+    letter-spacing: 0.5px;
+    text-align: center;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
          
         .tab-btn.active { background: #38b6ff; color: #000000; }
         .tab-btn.active.daun-mode { background: #ff4a5a; color: #ffffff; }
         .tab-btn.active.hama-mode { background: var(--accent-hama); color: #ffffff; } /* 💡 Style Aktif Tab Hama */
         .tab-btn.active.gulma-mode { background: #0ea5e9; color: #ffffff; }
         .tab-btn.active.soil-mode { background: #d19b08; color: #ffffff; }
+        .tab-btn.active.tanah-mode { background: #d19b08; color: #ffffff; }
         .tab-btn.active.bwd-mode { background: #00ff9d; color: #000000; }
         .tab-btn.active.malai-mode { background: #ffcc00; color: #000000; }
         .tab-btn.active.biaya-mode { background: var(--accent-biaya); color: #000000; }
@@ -324,15 +327,15 @@
     </div>
 
     <div class="tab-container">
-    <button class="tab-btn" id="tabCuaca" onclick="switchMode('cuaca')">CUACA</button>
-    <button class="tab-btn" id="tabPupuk" onclick="switchMode('pupuk')">PUPUK</button> 
-    <button class="tab-btn" id="tabBiaya" onclick="switchMode('biaya')">BIAYA</button>
-    <button class="tab-btn active" id="tabDaun" onclick="switchMode('daun')">PENYAKIT</button>
-    <button class="tab-btn" id="tabHama" onclick="switchMode('hama')">HAMA</button>
-    <button class="tab-btn" id="tabGulma" onclick="switchMode('gulma')">GULMA</button>
-    <button class="tab-btn" id="tabTanah" onclick="switchMode('tanah')">TANAH</button>
-    <button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">BWD</button>
-    <button class="tab-btn" id="tabMalai" onclick="switchMode('malai')">PANEN</button>
+    <button class="tab-btn" id="tabCuaca" onclick="switchMode('cuaca')">PREDIKSI CUACA</button>
+    <button class="tab-btn" id="tabPupuk" onclick="switchMode('pupuk')">DOSIS PUPUK ERDKK</button> 
+    <button class="tab-btn" id="tabBiaya" onclick="switchMode('biaya')">BIAYA USAHA TANI</button>
+    <button class="tab-btn active" id="tabDaun" onclick="switchMode('daun')">DETEKSI PENYAKIT PADI</button>
+    <button class="tab-btn" id="tabHama" onclick="switchMode('hama')">DETEKSI HAMA PADI</button>
+    <button class="tab-btn" id="tabGulma" onclick="switchMode('gulma')">DETEKSI JENIS GULMA</button>
+    <button class="tab-btn" id="tabTanah" onclick="switchMode('tanah')">DETEKSI TEKSTUR TANAH</button>
+    <button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">UJI BWD UREA</button>
+    <button class="tab-btn" id="tabMalai" onclick="switchMode('malai')">ESTIMASI HASIL PANEN</button>
 </div>
 
     <div class="card">
@@ -780,13 +783,14 @@ window.addEventListener('load', async function() {
     }
 
     // Atur Class Active Tombol Navigasi
+    // === SINKRONISASI STYLE AKTIF GRID TOMBOL ===
     document.getElementById('tabCuaca').className = mode === 'cuaca' ? 'tab-btn active' : 'tab-btn';
     document.getElementById('tabBiaya').className = mode === 'biaya' ? 'tab-btn active biaya-mode' : 'tab-btn';
-    document.getElementById('tabPupuk').className = mode === 'pupuk' ? 'tab-btn active pupuk-mode' : 'tab-btn'; // Tambahan untuk pupuk
+    document.getElementById('tabPupuk').className = mode === 'pupuk' ? 'tab-btn active pupuk-mode' : 'tab-btn';
     document.getElementById('tabDaun').className = mode === 'daun' ? 'tab-btn active daun-mode' : 'tab-btn';
     document.getElementById('tabHama').className = mode === 'hama' ? 'tab-btn active hama-mode' : 'tab-btn'; 
     document.getElementById('tabGulma').className = mode === 'gulma' ? 'tab-btn active gulma-mode' : 'tab-btn';
-    document.getElementById('tabTanah').className = mode === 'tanah' ? 'tab-btn active soil-mode' : 'tab-btn';
+    document.getElementById('tabTanah').className = mode === 'tanah' ? 'tab-btn active tanah-mode' : 'tab-btn'; // 💡 Diubah ke tanah-mode
     document.getElementById('tabBWD').className = mode === 'bwd' ? 'tab-btn active bwd-mode' : 'tab-btn';
     document.getElementById('tabMalai').className = mode === 'malai' ? 'tab-btn active malai-mode' : 'tab-btn';
 
