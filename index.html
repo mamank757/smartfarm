@@ -564,9 +564,13 @@ datalist {
         </div>
           
         <input type="file" id="fileInput" accept="image/*" hidden onchange="handleFile(event)">
-        <button id="btnCamera" class="btn-main btn-camera" onclick="document.getElementById('fileInput').click()">📸 AMBIL FOTO / GALERI</button>
+        <button id="btnCamera" class="btn-main btn-camera" onclick="bukaKamera()">📸 AMBIL FOTO / GALERI</button>
 
-        <div class="scan-window" id="scanWindow">
+        <div id="cameraWarning" style="display:none; color: var(--accent-soil); font-size: 0.75rem; text-align: center; margin: 10px 0; font-weight: 600; padding: 8px; border: 1px solid var(--accent-soil); border-radius: 8px;">
+    ⚠️ Ambil foto 30-50cm dari target/objek agar hasil akurat
+</div>
+
+<div class="scan-window" id="scanWindow">
             <div class="laser-line" id="laser"></div>
             <p id="msg" style="font-size: 0.8rem; opacity: 0.4; font-weight: 500;">Pratinjau foto sampel</p>
             <img id="preview" alt="Preview">
@@ -822,7 +826,21 @@ window.addEventListener('load', async function() {
         };
 
         const kamusWarna = { "yellow": "Kuning", "yellowish green": "Hijau Kekuningan", "light green": "Hijau Muda", "green": "Hijau", "dark green": "Hijau Tua" };
-         
+        
+        function bukaKamera() {
+    // 1. Tampilkan peringatan
+    const warning = document.getElementById('cameraWarning');
+    warning.style.display = 'block';
+    
+    // 2. Buka file input
+    document.getElementById('fileInput').click();
+
+    // 3. (Opsional) Sembunyikan pesan otomatis setelah 5 detik
+    setTimeout(() => {
+        warning.style.display = 'none';
+    }, 15000);
+}
+
         function dapatkanHariSiklusBulan() {
             const kranBulanMati = new Date("2026-01-18T17:00:00Z"); 
             const sekarang = new Date();
