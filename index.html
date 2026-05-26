@@ -1586,7 +1586,7 @@ if (nilaiEnso > 0.5 && nilaiIod > 0.4) {
     judulKesimpulan = "🚨 WASPADA RISIKO KEKERINGAN (EL NINO + IOD POSITIF)";
     warnaAksen = "var(--red-alert)";
     teksAnalisis = `🌏 NASIONAL: Kombinasi El Nino (+${nilaiEnso}°C) dan IOD Positif (+${nilaiIod}°C) menekan curah hujan di Indonesia timur.\n\n📍 SULSEL: SST Teluk Bone ${sstBone}°C, Selat Makassar ${sstMakassar}°C. Pasokan uap air berkurang, risiko defisit air di lahan sawah beberapa wilayah Sulsel meningkat.`;
-    rekomendasiPPL = "⚡ SARAN DAN TINDAKAN: (1) Informasikan potensi mundurnya musim hujan 1-2 bulan, (2) Rekomendasikan varietas tahan kering (Inpari 42, Inpari 43), (3) Dorong pembuatan embung kelompok, (4) Alihkan ke palawija jika air terbatas.";
+    rekomendasiPPL = "⚡ SARAN DAN TINDAKAN: (1) Potensi mundurnya musim hujan 1-2 bulan, (2) Rekomendasi varietas tahan kering (Inpari 42, Inpari 43), (3) Alihkan ke palawija jika air terbatas.";
 
 } else if (nilaiEnso > 0.5 && nilaiIod <= 0.4) {
 
@@ -1595,10 +1595,10 @@ if (nilaiEnso > 0.5 && nilaiIod > 0.4) {
 
     if (sstBone >= 29.0) {
         teksAnalisis = `🌏 NASIONAL: El Nino (+${nilaiEnso}°C) mengurangi curah hujan 20-40% di Indonesia timur.\n\n📍 SULSEL: SST Teluk Bone hangat (${sstBone}°C). Masih ada potensi hujan lokal singkat di beberapa wilayah Sulsel.`;
-        rekomendasiPPL = "🌾 SARAN DAN TINDAKAN: (1) Gunakan varietas genjah (Inpari 32, Inpari 42, Cakrabuana), (2) Terapkan jajar legowo 2:1, (3) Pantau wereng, (4) Optimalisasi embung.";
+        rekomendasiPPL = "🌾 SARAN DAN TINDAKAN: (1) Gunakan varietas genjah (Inpari 32, Inpari 42, Cakrabuana), (2) Terapkan jajar legowo 2:1, (3) Pantau wereng, (4) Optimalisasi irigasi sumur bor.";
     } else {
         teksAnalisis = `🌏 NASIONAL: El Nino (+${nilaiEnso}°C) aktif. Dampak utama pengurangan intensitas hujan.\n\n📍 SULSEL: SST Teluk Bone dingin (${sstBone}°C). Pasokan uap air sangat berkurang, risiko defisit air berkepanjangan di beberapa wilayah Sulsel tinggi.`;
-        rekomendasiPPL = "🚜 SARAN DAN TINDAKAN: (1) Jangan paksakan tanam padi jika air tidak cukup, (2) Alihkan ke jagung/kacang tanah/sorgum, (3) Pendampingan pembuatan embung, (4) Gunakan sistem Tapin, (5) Pantau sumber air alternatif.";
+        rekomendasiPPL = "🚜 SARAN DAN TINDAKAN: (1) Jangan paksakan tanam padi jika air tidak cukup, (2) Alihkan ke jagung/kacang tanah/sorgum, (3) Gunakan varietas genjah (Inpari 32, Inpari 42, Cakrabuana) (4) Gunakan sistem Tapin.";
     }
 
 } else if (nilaiEnso < -0.5) {
