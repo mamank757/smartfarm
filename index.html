@@ -2229,75 +2229,116 @@
         // ==========================================
         async function analisisVarietasPadi() {
     const divOutput = document.getElementById("outputHasilVarietas");
-    const btnWA = document.getElementById("btnKirimWAVarietas"); // ➕ Ambil elemen tombol WA
+    const btnWA = document.getElementById("btnKirimWAVarietas");
+    const btnCopy = document.getElementById("btnCopyVarietas");
+    
+    // 1. Mengambil Nilai Input dari Form Elemen HTML
     const targetUmur = parseInt(document.getElementById("input-umur-var").value);
-    const curahHujan = document.getElementById("input-hujan-var").value; // Tambahan informasi untuk teks WA
-    const tipeLahan = document.getElementById("input-lahan-var").value;  // Tambahan informasi untuk teks WA
+    const curahHujan = document.getElementById("input-hujan-var").value; // contoh: "tinggi", "sedang", "rendah"
+    const tipeLahan = document.getElementById("input-lahan-var").value;   // contoh: "irigasi", "tadah hujan", "gogo"
 
+    // Validasi awal jika input umur belum diisi
     if (!targetUmur) {
         alert("⚠️ Mohon isi Target Umur Panen!");
         return;
     }
 
+    // Reset tampilan output & sembunyikan tombol aksi selama proses loading
     divOutput.style.display = "block";
-    divOutput.innerHTML = "🔍 Mengambil data varietas dari database...";
-    if (btnWA) btnWA.style.display = "none"; // Sembunyikan dulu tombol WA saat memuat
+    divOutput.innerHTML = "🔍 Mengambil data & menganalisis kesesuaian lahan...";
+    if (btnWA) btnWA.style.display = "none";
+    if (btnCopy) btnCopy.style.display = "none";
 
     try {
+        // 2. Ambil Data Real-time dari Google Sheets API bapak
         const URL_DB = "https://script.google.com/macros/s/AKfycbzQb8OMKiA_TJgagaUihf18U5-pIIVYuwohB59ZJi4Nuzru0-xfDr6qFEqvJ3zNcy5xOg/exec";
         const response = await fetch(URL_DB);
         const data = await response.json();
 
+        // 3. JANTUNG LOGIKA: Penyaringan MULTI-VARIABEL (Umur + Lahan + Iklim)
         const hasil = data.filter(item => {
-            const umur = parseInt(item.umur);
-            return umur >= (targetUmur - 5) && umur <= (targetUmur + 5);
+            // Konversi semua ke huruf kecil (lowercase) agar pencocokan teks tidak error akibat beda spasi/huruf kapital
+            const inputLahan = tipeLahan.toLowerCase();
+            const inputHujan = curahHujan.toLowerCase();
+            const umurVarietas = parseInt(item.umur);
+
+            // Syarat Lapis 1: Rentang Umur masuk batas toleransi (Target ± 5 Hari)
+            const cocokUmur = umurVarietas >= (targetUmur - 5) && umurVarietas <= (targetUmur + 5);
+
+            // Syarat Lapis 2: Kesesuaian Tipe Lahan (Memeriksa apakah spesifikasi di database mengandung kata kunci input)
+            // *Jika di database kosong, set lolos sebagai antisipasi, atau gunakan .includes()
+            const cocokLahan = item.lahan ? item.lahan.toLowerCase().includes(inputLahan) : true;
+
+            // Syarat Lapis 3: Kesesuaian Curah Hujan/Iklim
+            const cocokHujan = item.curahHujanDb ? item.curahHujanDb.toLowerCase().includes(inputHujan) : true;
+
+            // Varietas lolos seleksi HANYA JIKA memenuhi ketiga syarat di atas secara bersamaan
+            return cocokUmur && cocokLahan && cocokHujan;
         });
 
+        // 4. PEMPROSESAN OUTPUT DAN FORMATTING DATA
         if (hasil.length > 0) {
-            let html = `<h4 style="color:var(--accent-green)">Hasil Rekomendasi:</h4>`;
+            let html = `<h4 style="color:var(--accent-green); margin-bottom:15px;">🌱 Hasil Rekomendasi Varietas Cocok:</h4>`;
             
-            // ➕ Mulai menyusun teks berformat WhatsApp
-            hasilTeksWAVarietas = `*SMART FARMING - PPL MILENIAL WAJO*\n*REKOMENDASI VARIETAS PADI SPREADSHEET*\n\n` +
-                                  `🌧️ Curah Hujan Wilayah: ${curahHujan ? curahHujan.toUpperCase() : '-'}\n` +
-                                  `⛰️ Tipe Hamparan Lahan: ${tipeLahan ? tipeLahan.toUpperCase() : '-'}\n` +
-                                  `⏱️ Target Umur Panen: ${targetUmur} Hari\n\n` +
-                                  `*Daftar Varietas yang Cocok (Target ±5 Hari):*\n----------------------------------------\n`;
+            // Inisialisasi Header Teks Cetak Tebal untuk dikirim ke WhatsApp bapak
+            hasilTeksWAVarietas = `*SMART FARMING - PPL BPP BOLA*\n` +
+                                  `*REKOMENDASI VARIETAS PADI SPEADSHEET*\n` +
+                                  `----------------------------------------\n` +
+                                  `⛰️ Tipe Lahan: ${tipeLahan.toUpperCase()}\n` +
+                                  `🌧️ Curah Hujan: ${curahHujan.toUpperCase()}\n` +
+                                  `⏱️ Target Umur: ${targetUmur} Hari (Batas Toleransi: ${targetUmur - 5}-${targetUmur + 5} hari)\n` +
+                                  `----------------------------------------\n\n` +
+                                  `*Daftar Varietas yang Direkomendasikan:*\n\n`;
 
+            // Looping menyusun data visual HTML dashboard dan format pesan WhatsApp
             hasil.forEach((v, index) => {
-                // Tampilan Aplikasi di HP (HTML)
+                // Tampilan Kartu Elemen di Aplikasi (Aksen Neon/Gelap)
                 html += `
-                <div class="leaf-card" style="border-left-color:var(--accent-green); background:rgba(0,0,0,0.3); padding:15px; margin-bottom:15px; border-radius:10px;">
-                    <strong style="color:var(--accent-green); font-size:1.2rem">${v.nama}</strong><br>
-                    <small>⏱️ Umur: ${v.umur} hari | 📊 Potensi: ${v.potensi} Ton/Ha</small><br>
-                    <hr style="border:0; border-top:1px solid #333; margin:8px 0;">
-                    <small style="display:block; margin-bottom:4px;">🛡️ <b>Tahan:</b> ${v.tahanHama} | ${v.tahanPenyakit}</small>
-                    <small style="display:block; margin-bottom:4px; color:var(--red-alert)">⚠️ <b>Rentan:</b> ${v.rentanHama} | ${v.rentanPenyakit}</small>
-                    <small style="color:var(--accent-bwd)">🌍 <b>Adaptasi:</b> ${v.adaptasi}</small>
+                <div class="leaf-card" style="border-left: 4px solid var(--accent-green); background: rgba(0, 0, 0, 0.4); padding: 15px; margin-bottom: 15px; border-radius: 10px;">
+                    <strong style="color: var(--accent-green); font-size: 1.2rem;">${index + 1}. ${v.nama}</strong><br>
+                    <small style="color: #ccc;">⏱️ Umur: <b>${v.umur} HST</b> | 📊 Potensi: <b>${v.potensi} Ton/Ha</b></small>
+                    <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0;">
+                    <small style="display: block; margin-bottom: 4px; color: #e0e0e0;">🛡️ <b>Tahan:</b> ${v.tahanHama || '-'} | ${v.tahanPenyakit || '-'}</small>
+                    <small style="display: block; margin-bottom: 4px; color: #ff5555;">⚠️ <b>Rentan:</b> ${v.rentanHama || '-'} | ${v.rentanPenyakit || '-'}</small>
+                    <small style="color: #00bfff;">🌍 <b>Adaptasi Ketinggian Lahan (m):</b> ${v.adaptasi || '-'}</small>
                 </div>`;
 
-                // Struktur Teks yang akan dikirim ke WhatsApp bapak
-                hasilTeksWAVarietas += `${index + 1}. *${v.nama}*\n` +
+                // Tampilan Susunan Teks saat disalin atau dikirim ke WhatsApp
+                hasilTeksWAVarietas += `${index + 1}. *${v.nama.toUpperCase()}*\n` +
                                        `   • Umur Panen: ${v.umur} Hari\n` +
                                        `   • Potensi Hasil: ${v.potensi} Ton/Ha\n` +
-                                       `   • Keunggulan/Tahan: ${v.tahanHama} | ${v.tahanPenyakit}\n` +
-                                       `   • Kerentanan: ${v.rentanHama} | ${v.rentanPenyakit}\n` +
-                                       `   • Wilayah Adaptasi: ${v.adaptasi}\n\n`;
+                                       `   • Ketahanan: ${v.tahanHama || '-'} | ${v.tahanPenyakit || '-'}\n` +
+                                       `   • Kerentanan: ${v.rentanHama || '-'} | ${v.rentanPenyakit || '-'}\n` +
+                                       `   • Rekomendasi Lahan: ${v.adaptasi || '-'}\n\n`;
             });
 
+            // Footer teks penutup WhatsApp
             hasilTeksWAVarietas += `_Diproduksi Otomatis oleh Sistem Aplikasi Penyuluh Milenial Wajo_`;
 
+            // Tampilkan ke layar dashboard bapak
             divOutput.innerHTML = html;
-            if (btnWA) btnWA.style.display = "block"; // ➕ Munculkan tombol WA jika data ada
-            if (document.getElementById("btnCopyVarietas")) document.getElementById("btnCopyVarietas").style.display = "block";
+            
+            // Munculkan tombol aksi cetak WA dan Salin karena data tersedia
+            if (btnWA) btnWA.style.display = "block";
+            if (btnCopy) btnCopy.style.display = "block";
+
         } else {
-            divOutput.innerHTML = "❌ Tidak ada varietas yang cocok dengan umur tersebut.";
+            // Kondisi jika setelah disaring 3 lapis tidak ditemukan data yang klop
+            divOutput.innerHTML = `
+                <div style="text-align:center; padding:20px; color:#ff5555;">
+                    ❌ Tidak ditemukan varietas yang cocok di database untuk kondisi lahan <b>${tipeLahan}</b> dengan curah hujan <b>${curahHujan}</b> pada kisaran umur tersebut.
+                </div>`;
             hasilTeksWAVarietas = "";
             if (btnWA) btnWA.style.display = "none";
+            if (btnCopy) btnCopy.style.display = "none";
         }
+
     } catch (e) {
-        divOutput.innerHTML = "❌ Error: " + e.message;
+        // Penanganan error jika koneksi ke Google Apps Script/Spreadsheet terputus atau gagal
+        divOutput.innerHTML = `<div style="color:#ff5555;">❌ Gagal memuat database varietas: ${e.message}</div>`;
         hasilTeksWAVarietas = "";
         if (btnWA) btnWA.style.display = "none";
+        if (btnCopy) btnCopy.style.display = "none";
     }
 }
 
