@@ -2262,8 +2262,8 @@
             const inputHujan = curahHujan.toLowerCase();
             const umurVarietas = parseInt(item.umur);
 
-            // Syarat Lapis 1: Rentang Umur masuk batas toleransi (Target ± 5 Hari)
-            const cocokUmur = umurVarietas >= (targetUmur - 5) && umurVarietas <= (targetUmur + 5);
+            // Syarat Lapis 1: Rentang Umur masuk batas toleransi (Target ± 7 Hari)
+            const cocokUmur = umurVarietas >= (targetUmur - 7) && umurVarietas <= (targetUmur + 7);
 
             // Syarat Lapis 2: Kesesuaian Tipe Lahan (Memeriksa apakah spesifikasi di database mengandung kata kunci input)
             // *Jika di database kosong, set lolos sebagai antisipasi, atau gunakan .includes()
