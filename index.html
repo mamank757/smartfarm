@@ -447,8 +447,8 @@
 
     <div class="sticky-top">
         <div class="header">
-            <h1>SMART FARMING</h1>
-            <p>Multi Analisis Tani Digital — developed by PPL MILENIAL WAJO</p>
+            <h1>SMART FARMING - IOT</h1>
+            <p>Internet of Things. Developed by PPL MILENIAL WAJO</p>
         </div>
     </div>
 
@@ -2251,7 +2251,7 @@
 
     try {
         // 2. Ambil Data Real-time dari Google Sheets API bapak
-        const URL_DB = "https://script.google.com/macros/s/AKfycbzQb8OMKiA_TJgagaUihf18U5-pIIVYuwohB59ZJi4Nuzru0-xfDr6qFEqvJ3zNcy5xOg/exec";
+        const URL_DB = "https://script.google.com/macros/s/AKfycbyZkUpdSU4mDLF53yaZHCbxW32V-gTGE9q_LorGMYrcul1cA3CEbOot-Ld-1e3flQn6vQ/exec";
         const response = await fetch(URL_DB);
         const data = await response.json();
 
@@ -2300,7 +2300,10 @@
                     <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0;">
                     <small style="display: block; margin-bottom: 4px; color: #e0e0e0;">🛡️ <b>Tahan:</b> ${v.tahanHama || '-'} | ${v.tahanPenyakit || '-'}</small>
                     <small style="display: block; margin-bottom: 4px; color: #ff5555;">⚠️ <b>Rentan:</b> ${v.rentanHama || '-'} | ${v.rentanPenyakit || '-'}</small>
-                    <small style="color: #00bfff;">🌍 <b>Adaptasi Ketinggian Lahan (m):</b> ${v.adaptasi || '-'}</small>
+                    <small style="display: block; color: #00bfff;">🌍 <b>Adaptasi (m):</b> ${v.adaptasi || '-'}</small>
+                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.1);">
+                        <small style="color: #fbbf24; font-style: italic;">📝 <b>Catatan:</b> ${v.catatan || '-'}</small>
+                    </div>
                 </div>`;
 
                 // Tampilan Susunan Teks saat disalin atau dikirim ke WhatsApp
@@ -2309,7 +2312,8 @@
                                        `   • Potensi Hasil: ${v.potensi} Ton/Ha\n` +
                                        `   • Ketahanan: ${v.tahanHama || '-'} | ${v.tahanPenyakit || '-'}\n` +
                                        `   • Kerentanan: ${v.rentanHama || '-'} | ${v.rentanPenyakit || '-'}\n` +
-                                       `   • Rekomendasi Lahan: ${v.adaptasi || '-'}\n\n`;
+                                       `   • Rekomendasi Lahan: ${v.adaptasi || '-'}\n` +
+                                       `   • Catatan Tambahan: ${v.catatan || '-'}\n\n`; // <--- CATATAN MASUK WA
             });
 
             // Footer teks penutup WhatsApp
