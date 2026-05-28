@@ -224,6 +224,24 @@
             z-index: 5; 
             animation: scanAnim 3s linear infinite;
         }
+        /* Animasi memutar ikon */
+@keyframes spin { 
+    100% { transform: rotate(360deg); } 
+}
+
+/* Animasi tombol berdenyut ala radar */
+@keyframes pulseRadar {
+    0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+    70% { box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+/* Class tambahan saat tombol sedang loading */
+.btn-live.is-syncing {
+    animation: pulseRadar 1.5s infinite;
+    background: var(--accent-soil) !important;
+    color: #fff !important;
+}
         @keyframes scanAnim { 0% { top: 0%; } 50% { top: 100%; } 100% { top: 0%; } }
         .is-scanning .laser-line { display: block; }
 
@@ -809,7 +827,7 @@
         const URL_IKLIM = "https://script.google.com/macros/s/AKfycbx2l8qiuAQ0vf_eeqx36VJSeDkjC61mrdoyE8fuLU8YGK_nOCBDyTwjp4MxYIRL3SkA/exec";
         const URL_PUPUK = "https://script.google.com/macros/s/AKfycbyZkyLEeLi7Igk-JXLuYuRsV0ZqTmbevRUQu6rY10rptwNyZ7y3d-YNmJCDn3QgM0Dm/exec";
         const URL_POLA_HUJAN = "https://script.google.com/macros/s/AKfycbyc3eEBcxqr_YqRKJ6lPnS4nAzz9TVrKQwKcgBJAg3KSulTdrYKeVvQbUjDVSIjYVLI/exec";
-        const URL_ZOM_LOKAL = "https://script.google.com/macros/s/AKfycbyCwk9R9y6A7oX-d14DqypIWN2KgGSsh8weo0_z6XkisYFzS0D1uvRcDDU6aAoWEBo_wA/exec";
+        const URL_ZOM_LOKAL = "https://script.google.com/macros/s/AKfycbw4oqbO59e789P9KU2mucMf2jmoFEiUow_-GDqWw2lp26EwWturqzId4m87PlTHFx292g/exec";
         const gasUrl = "https://script.google.com/macros/s/AKfycbw1e0FboS3FgWXEYrulCbYzoyQC0aWopU-DRIhlVJTF_C5jQoJRviDfRX_NCTis5wCiWg/exec";
           
         window.addEventListener('load', async function() {
@@ -1077,49 +1095,59 @@
         }
 
         async function aktifkanGPS() {
-            const btn = document.querySelector('.btn-live'); 
-            const originalText = "SINKRONKAN GPS & SATELIT";
+    const btn = document.querySelector('.btn-live'); 
+    const originalText = "SINKRONKAN GPS & SATELIT";
 
-            try {
-                btn.innerHTML = `⏳ <span style="display:inline-block; animation: spin 1.5s linear infinite;">⟳</span> MENCARI SINYAL GPS & SATELIT...`;
-                btn.style.opacity = "0.75"; 
-                btn.disabled = true;
+    try {
+        // 1. Tambahkan efek gerak & ubah teks tombol
+        btn.classList.add('is-syncing'); 
+        btn.innerHTML = `⏳ <span style="display:inline-block; animation: spin 1.2s linear infinite;">⟳</span> MENCARI SINYAL...`;
+        btn.style.opacity = "0.75"; 
+        btn.disabled = true;
 
-                document.getElementById('resLabel').innerHTML = `<span style="color:var(--accent-bwd);">🛰️ Menghubungkan ke Satelit...</span>`;
-                document.getElementById('resConf').innerText = "Mengambil koordinasi lahan...";
+        // 2. Update UI status deteksi
+        document.getElementById('resLabel').innerHTML = `<span style="color:var(--accent-bwd);">🛰️ Menghubungkan ke Satelit...</span>`;
+        document.getElementById('resConf').innerText = "Mengambil koordinat lahan...";
 
-                await loadWeather(); 
+        // 3. Panggil fungsi utama penarik data cuaca
+        await loadWeather(); 
 
-                isGpsSynced = true; 
-                document.getElementById('gpsPrompt').style.display = 'none';
-                document.getElementById('weatherData').style.display = 'block';
-                document.getElementById('result').style.display = 'block';
+        // 4. Jika sukses, ubah flag dan tampilkan data
+        isGpsSynced = true; 
+        document.getElementById('gpsPrompt').style.display = 'none';
+        document.getElementById('weatherData').style.display = 'block';
+        document.getElementById('result').style.display = 'block';
 
-                const boxLokal = document.getElementById('localSstBox');
-                if (boxLokal) boxLokal.style.display = 'block';
+        const boxLokal = document.getElementById('localSstBox');
+        if (boxLokal) boxLokal.style.display = 'block';
 
-                btn.innerHTML = `✅ GPS & Satelit Terhubung`;       
-                btn.style.background = "var(--accent-green)";
-                btn.style.color = "#000";
-                btn.disabled = true; 
+        // 5. Matikan efek gerak dan set tombol ke status Sukses
+        btn.classList.remove('is-syncing'); 
+        btn.innerHTML = `✅ GPS & Satelit Terhubung`;        
+        btn.style.background = "var(--accent-green)";
+        btn.style.color = "#000";
+        btn.style.opacity = "1";
 
-            } catch (err) {
-                console.error(err);
-                btn.innerHTML = originalText;
-                btn.style.opacity = "1"; 
-                btn.disabled = false;
-                btn.style.background = ""; 
+    } catch (err) {
+        console.error(err);
+        
+        // Kembalikan status tombol jika gagal
+        btn.classList.remove('is-syncing'); 
+        btn.innerHTML = originalText;
+        btn.style.opacity = "1"; 
+        btn.disabled = false;
+        btn.style.background = ""; 
 
-                document.getElementById('resLabel').innerText = "❌ Gagal Sinkronisasi GPS";
-                document.getElementById('resConf').innerText = "Silakan coba lagi";
-                
-                document.getElementById('gpsPrompt').style.display = 'block';
-                document.getElementById('weatherData').style.display = 'none';
-                document.getElementById('result').style.display = 'none';
+        document.getElementById('resLabel').innerText = "❌ Gagal Sinkronisasi GPS";
+        document.getElementById('resConf').innerText = "Silakan coba lagi";
+        
+        document.getElementById('gpsPrompt').style.display = 'block';
+        document.getElementById('weatherData').style.display = 'none';
+        document.getElementById('result').style.display = 'none';
 
-                alert("Gagal Sinkronisasi GPS.\n\nPastikan:\n• GPS HP aktif\n• Izin Lokasi diberikan\n• Koneksi internet stabil");
-            }
-        }
+        alert("Gagal Sinkronisasi GPS.\n\nPastikan:\n• GPS HP aktif\n• Izin Lokasi diberikan\n• Koneksi internet stabil");
+    }
+}
 
         async function loadWeather() {
             try {
@@ -2549,28 +2577,39 @@ async function prosesAnalisisKalender() {
         let baselineData = [];
         let namaZona = "";
 
-        // 3. LOGIKA HYBRID: Cek ZOM Lokal (Sulsel) dengan Haversine
-        // 3. LOGIKA HYBRID: Cek ZOM Lokal (Sulsel) dengan Haversine
+       // 3. LOGIKA HYBRID: Cek ZOM Lokal (Sulsel) dengan Haversine
         let jarakTerdekat = Infinity;
         let kabTerpilih = null;
 
-        // KITA HILANGKAN SYARAT 'status === "success"' JAGA-JAGA JIKA JSON-NYA BERBEDA
-        if (dataZom && dataZom.data) {
-            dataZom.data.forEach(kab => {
-                let jarak = hitungJarakHaversine(lokasi.lat, lokasi.lon, parseFloat(kab.lat), parseFloat(kab.lon));
-                if (jarak < jarakTerdekat) {
-                    jarakTerdekat = jarak;
-                    kabTerpilih = kab;
+        // PERBAIKAN: Deteksi apakah array berada di dalam properti .data, atau langsung berupa array.
+        let arrayZom = null;
+        if (dataZom && Array.isArray(dataZom.data)) {
+            arrayZom = dataZom.data;
+        } else if (Array.isArray(dataZom)) {
+            arrayZom = dataZom;
+        }
+
+        if (arrayZom) {
+            arrayZom.forEach(kab => {
+                let latKab = parseFloat(kab.lat);
+                let lonKab = parseFloat(kab.lon);
+                
+                // Pastikan koordinat valid sebelum dihitung
+                if (!isNaN(latKab) && !isNaN(lonKab)) {
+                    let jarak = hitungJarakHaversine(lokasi.lat, lokasi.lon, latKab, lonKab);
+                    if (jarak < jarakTerdekat) {
+                        jarakTerdekat = jarak;
+                        kabTerpilih = kab;
+                    }
                 }
             });
         } else {
-            // Memunculkan peringatan jika data dari Google Sheet kosong/gagal ditarik
-            console.warn("Data ZOM Lokal kosong atau format JSON tidak sesuai.");
+            console.warn("Format JSON ZOM Lokal tidak sesuai atau gagal dimuat.");
         }
 
-        // Batas maksimal area Sulsel (Jika jarak > 150 km, otomatis beralih ke Makro)
+        // Batas maksimal area (Jika jarak > 150 km, otomatis beralih ke Makro)
         if (kabTerpilih && jarakTerdekat <= 150) {
-            namaZona = `ZOM KAB. ${kabTerpilih.kabupaten_kota.toUpperCase()} (Jarak dari titik ZOM: ${jarakTerdekat.toFixed(1)} km)`;
+            namaZona = `ZOM KAB. ${kabTerpilih.kabupaten_kota.toUpperCase()} (Jarak: ${jarakTerdekat.toFixed(1)} km)`;
             baselineData = [
                 parseFloat(kabTerpilih.jan), parseFloat(kabTerpilih.feb), parseFloat(kabTerpilih.mar),
                 parseFloat(kabTerpilih.apr), parseFloat(kabTerpilih.mei), parseFloat(kabTerpilih.jun),
@@ -2578,13 +2617,12 @@ async function prosesAnalisisKalender() {
                 parseFloat(kabTerpilih.okt), parseFloat(kabTerpilih.nov), parseFloat(kabTerpilih.des)
             ];
         } else {
-            // JIKA TETAP MASUK KESINI, KITA BERI PENANDA AGAR KAMU TAHU
+            // FALLBACK POLA MAKRO
             let polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("monsunal")); // Default
             if (lokasi.lon > 125) { polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("lokal")); } 
             else if (lokasi.lat > -2 && lokasi.lon < 118) { polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("ekuatorial")); } 
             else if (lokasi.lon >= 118 && lokasi.lon <= 125 && lokasi.lat > -2) { polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("peralihan")); }
             
-            // Tambahkan tulisan [FALLBACK] agar mudah dibedakan saat testing
             namaZona = `[FALLBACK] POLA MAKRO: ${polaTerpilih.pola.toUpperCase()}`;
             baselineData = polaTerpilih.baseline;
         }
