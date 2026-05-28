@@ -224,6 +224,22 @@
             z-index: 5; 
             animation: scanAnim 3s linear infinite;
         }
+        /* Animasi berkedip/menyala untuk teks loading Kalender */
+@keyframes kedipTeks {
+    0% { opacity: 0.4; transform: scale(0.98); }
+    50% { opacity: 1; text-shadow: 0 0 12px var(--accent-kalender); transform: scale(1.02); }
+    100% { opacity: 0.4; transform: scale(0.98); }
+}
+
+.animasi-loading-kalender {
+    animation: kedipTeks 1.5s ease-in-out infinite;
+    color: var(--accent-kalender);
+    font-size: 0.9rem;
+    font-weight: 800;
+    text-align: center;
+    margin-bottom: 15px;
+    letter-spacing: 1px;
+}
         /* Animasi memutar ikon */
 @keyframes spin { 
     100% { transform: rotate(360deg); } 
@@ -1531,7 +1547,7 @@
         // Fungsi untuk memicu tampilan hasil di layar
 function showLeafAnalysisResult(r, g, b) {
   // Ambil elemen modal (pastikan ID-nya sesuai dengan HTML di bawah)
-  const modal = document.getElementById("customAlert");
+  const modal = document.getElementById("customAlertModal");
   const msgElement = document.getElementById("customAlertMessage");
   
   // Mengatur teks sesuai permintaanmu
@@ -2551,11 +2567,25 @@ async function prosesAnalisisKalender() {
         return;
     }
 
+    const containerUtama = document.getElementById("hasilProyeksiIklim");
     const kontainerTeks = document.getElementById("teksAnalisisFase");
-    document.getElementById("hasilProyeksiIklim").style.display = "block";
-    kontainerTeks.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--accent-kalender);"><i>📡 Membaca GPS & Menyinkronkan Data ZOM Satelit...</i></div>`;
+    
+    // Cari elemen judul <h4> dan kotak bungkus grafik <div>
+    const judulChart = containerUtama.querySelector("h4");
+    const bungkusChart = containerUtama.querySelector("div"); 
+    
+    containerUtama.style.display = "block";
+    
+    // Simpan teks asli judul "Grafik Risiko Gagal Panen" di memori
+    if (!judulChart.dataset.asli) judulChart.dataset.asli = judulChart.innerHTML;
+    
+    // Ubah judul menjadi teks animasi & sembunyikan kotak grafik kosong
+    judulChart.innerHTML = `<div class="animasi-loading-kalender">📡 MEMBACA GPS & MENYINKRONKAN...</div>`;
+    bungkusChart.style.display = "none";
+    kontainerTeks.innerHTML = "";
 
     try {
+        
         // 1. Panggil GPS lebih dulu secara strict sebelum memuat data berat lainnya
         const lokasi = await dapatkanLokasiOtomatis();
 
@@ -2696,6 +2726,8 @@ async function prosesAnalisisKalender() {
 
         const dataSkor = [riskTanam.skor, riskVeg.skor, riskGen.skor, riskPanen.skor];
         
+        judulChart.innerHTML = judulChart.dataset.asli; // Kembalikan judul asli
+        bungkusChart.style.display = "block";
         renderKalenderChart(labels, dataSkor);
         
         kontainerTeks.innerHTML = `
@@ -2723,6 +2755,9 @@ async function prosesAnalisisKalender() {
         console.error(errorMesej);
         alert("Gagal Membaca Lokasi!\n\n" + errorMesej);
         
+        judulChart.innerHTML = judulChart.dataset.asli; // Kembalikan judul
+        bungkusChart.style.display = "none"; // Biarkan grafik tetap tersembunyi
+
         kontainerTeks.innerHTML = `
             <div class="info-box" style="border-left-color: var(--red-alert); text-align: center;">
                 <strong>⚠️ Akses Lokasi Ditolak / Gagal</strong><br>
