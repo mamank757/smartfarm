@@ -809,6 +809,7 @@
         const URL_IKLIM = "https://script.google.com/macros/s/AKfycbx2l8qiuAQ0vf_eeqx36VJSeDkjC61mrdoyE8fuLU8YGK_nOCBDyTwjp4MxYIRL3SkA/exec";
         const URL_PUPUK = "https://script.google.com/macros/s/AKfycbyZkyLEeLi7Igk-JXLuYuRsV0ZqTmbevRUQu6rY10rptwNyZ7y3d-YNmJCDn3QgM0Dm/exec";
         const URL_POLA_HUJAN = "https://script.google.com/macros/s/AKfycbyc3eEBcxqr_YqRKJ6lPnS4nAzz9TVrKQwKcgBJAg3KSulTdrYKeVvQbUjDVSIjYVLI/exec";
+        const URL_ZOM_LOKAL = "https://script.google.com/macros/s/AKfycbyCwk9R9y6A7oX-d14DqypIWN2KgGSsh8weo0_z6XkisYFzS0D1uvRcDDU6aAoWEBo_wA/exec";
         const gasUrl = "https://script.google.com/macros/s/AKfycbw1e0FboS3FgWXEYrulCbYzoyQC0aWopU-DRIhlVJTF_C5jQoJRviDfRX_NCTis5wCiWg/exec";
           
         window.addEventListener('load', async function() {
@@ -2495,6 +2496,26 @@ const dapatkanLokasiOtomatis = () => new Promise((resolve, reject) => {
     );
 });
 
+// --- KODE BARU: Rumus Jarak Satelit (Haversine) & Normalisasi Hujan ---
+function hitungJarakHaversine(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Radius Bumi dalam km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+function normalisasiCurahHujan(curahHujan) {
+    // Mengubah curah hujan riil (mm) menjadi indeks (-1.5 s/d 1.5) agar sinkron dengan algoritma lama
+    if (curahHujan < 50) return -1.5;
+    if (curahHujan < 100) return -0.8;
+    if (curahHujan < 200) return 0;
+    if (curahHujan < 300) return 0.5;
+    if (curahHujan < 400) return 1.0;
+    return 1.5;
+}
+// --- AKHIR KODE BARU ---
 async function prosesAnalisisKalender() {
     const tglInput = document.getElementById("inputTglTanam").value;
     if (!tglInput) {
@@ -2510,34 +2531,65 @@ async function prosesAnalisisKalender() {
         // 1. Panggil GPS lebih dulu secara strict sebelum memuat data berat lainnya
         const lokasi = await dapatkanLokasiOtomatis();
 
-        // 2. Jika GPS berhasil, lanjut ambil data dari Apps Script & satelit
-        const [ensoData, iodData, resPola] = await Promise.all([
+        // 2. Tarik Data Global + Pola Makro + ZOM Lokal secara bersamaan
+        const [ensoData, iodData, resPola, resZom] = await Promise.all([
             getENSOAnomaly(),
             getIODAnomaly(),
-            fetch(URL_POLA_HUJAN)
+            fetch(URL_POLA_HUJAN),
+            fetch(URL_ZOM_LOKAL).catch(() => null) // Fallback aman jika link ZOM bermasalah
         ]);
         
         const dbPola = await resPola.json();
+        let dataZom = null;
+        if(resZom) dataZom = await resZom.json();
+
         const ensoVal = ensoData.latestAnomaly; 
         const iodVal = iodData.latestAnomaly;  
 
-        // 3. Logika Pemetaan Koordinat ke Pola Hujan
-        let polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("monsunal")); // Default
-        
-        if (lokasi.lon > 125) {
-            // Area Maluku, Papua
-            polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("lokal"));
-        } else if (lokasi.lat > -2 && lokasi.lon < 118) {
-            // Area Sumatera, Kalimantan (sekitar ekuator)
-            polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("ekuatorial"));
-        } else if (lokasi.lon >= 118 && lokasi.lon <= 125 && lokasi.lat > -2) {
-             // Sebagian Sulawesi transisi
-            polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("peralihan"));
-        }
-        
-        // Ambil array baseline 12 bulan (index 0 = Jan, 11 = Des)
-        const baselineData = polaTerpilih.baseline;
+        let baselineData = [];
+        let namaZona = "";
 
+        // 3. LOGIKA HYBRID: Cek ZOM Lokal (Sulsel) dengan Haversine
+        // 3. LOGIKA HYBRID: Cek ZOM Lokal (Sulsel) dengan Haversine
+        let jarakTerdekat = Infinity;
+        let kabTerpilih = null;
+
+        // KITA HILANGKAN SYARAT 'status === "success"' JAGA-JAGA JIKA JSON-NYA BERBEDA
+        if (dataZom && dataZom.data) {
+            dataZom.data.forEach(kab => {
+                let jarak = hitungJarakHaversine(lokasi.lat, lokasi.lon, parseFloat(kab.lat), parseFloat(kab.lon));
+                if (jarak < jarakTerdekat) {
+                    jarakTerdekat = jarak;
+                    kabTerpilih = kab;
+                }
+            });
+        } else {
+            // Memunculkan peringatan jika data dari Google Sheet kosong/gagal ditarik
+            console.warn("Data ZOM Lokal kosong atau format JSON tidak sesuai.");
+        }
+
+        // Batas maksimal area Sulsel (Jika jarak > 150 km, otomatis beralih ke Makro)
+        if (kabTerpilih && jarakTerdekat <= 150) {
+            namaZona = `ZOM KAB. ${kabTerpilih.kabupaten_kota.toUpperCase()} (Jarak: ${jarakTerdekat.toFixed(1)} km)`;
+            baselineData = [
+                parseFloat(kabTerpilih.jan), parseFloat(kabTerpilih.feb), parseFloat(kabTerpilih.mar),
+                parseFloat(kabTerpilih.apr), parseFloat(kabTerpilih.mei), parseFloat(kabTerpilih.jun),
+                parseFloat(kabTerpilih.jul), parseFloat(kabTerpilih.agu), parseFloat(kabTerpilih.sep),
+                parseFloat(kabTerpilih.okt), parseFloat(kabTerpilih.nov), parseFloat(kabTerpilih.des)
+            ];
+        } else {
+            // JIKA TETAP MASUK KESINI, KITA BERI PENANDA AGAR KAMU TAHU
+            let polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("monsunal")); // Default
+            if (lokasi.lon > 125) { polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("lokal")); } 
+            else if (lokasi.lat > -2 && lokasi.lon < 118) { polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("ekuatorial")); } 
+            else if (lokasi.lon >= 118 && lokasi.lon <= 125 && lokasi.lat > -2) { polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("peralihan")); }
+            
+            // Tambahkan tulisan [FALLBACK] agar mudah dibedakan saat testing
+            namaZona = `[FALLBACK] POLA MAKRO: ${polaTerpilih.pola.toUpperCase()}`;
+            baselineData = polaTerpilih.baseline;
+        }
+
+        // 4. Kalkulasi Fase Tanam
         const awalTanam = new Date(tglInput);
         const tglVegetatif = new Date(awalTanam); tglVegetatif.setDate(tglVegetatif.getDate() + 25);
         const tglGeneratif = new Date(awalTanam); tglGeneratif.setDate(tglGeneratif.getDate() + 65);
@@ -2551,43 +2603,47 @@ async function prosesAnalisisKalender() {
             `Panen\n(${formatTgl(tglPanen)})`
         ];
 
-        // 4. Modifikasi Logika Dinamis ZOM
+        // 5. Modifikasi Analisis Dinamis
         const hitungRisikoDinamis = (bulanIndex, fase) => {
-            const baselineBulanIni = parseFloat(baselineData[bulanIndex]);
+            let baselineBulanIni = parseFloat(baselineData[bulanIndex]);
             
-            // Baseline ZOM digabung dengan distorsi ENSO & IOD
-            const wetnessScore = baselineBulanIni - ensoVal - iodVal;
+            // Konversi dari angka MM (ZOM) ke Indeks jika data berasal dari ZOM lokal
+            if (baselineBulanIni > 10) { 
+                baselineBulanIni = normalisasiCurahHujan(baselineBulanIni);
+            }
+            
+            // Baseline indeks digabung dengan distorsi ENSO & IOD (diboboti agar tidak ekstrem)
+            const wetnessScore = baselineBulanIni - (ensoVal * 0.5) - (iodVal * 0.5);
             
             let statusCuaca = "";
             if (wetnessScore <= -1.0) statusCuaca = "Sangat Kering (Ekstrem)";
             else if (wetnessScore < -0.3) statusCuaca = "Cenderung Kering";
-            else if (wetnessScore <= 0.3) statusCuaca = "Normal / Sesuai ZOM";
+            else if (wetnessScore <= 0.3) statusCuaca = "Normal / Stabil";
             else if (wetnessScore < 1.0) statusCuaca = "Cenderung Basah";
             else statusCuaca = "Sangat Basah (Ekstrem)";
 
             let skor = 20; 
             let masalah = "Aman";
             
-            // Matriks Risiko Berdasarkan Fase vs Kondisi Air Aktual
             if (fase === "Tanam") {
                 if (wetnessScore <= -1.0) { skor = 85; masalah = "Tanah retak parah, krisis air olah lahan (Tunda Tanam)."; }
-                else if (wetnessScore < -0.3) { skor = 50; masalah = "Butuh pompanisasi untuk basahi lahan."; }
+                else if (wetnessScore < -0.3) { skor = 50; masalah = "Butuh pompanisasi ekstra untuk basahi lahan."; }
                 else if (wetnessScore > 1.0) { skor = 65; masalah = "Persemaian berisiko membusuk terendam genangan."; }
-                else { skor = 20; masalah = "Kondisi air ideal untuk tanam."; }
+                else { skor = 20; masalah = "Kondisi air ideal untuk pengolahan & tanam."; }
             }
             else if (fase === "Vegetatif") {
-                if (wetnessScore <= -1.0) { skor = 75; masalah = "Pertumbuhan anakan kerdil akibat stres air."; }
+                if (wetnessScore <= -1.0) { skor = 75; masalah = "Pertumbuhan anakan padi kerdil akibat stres air."; }
                 else if (wetnessScore > 1.0) { skor = 60; masalah = "Curah hujan picu ledakan Hawar Pelepah & busuk akar."; }
-                else { skor = 30; masalah = "Kondisi pertumbuhan anakan normal."; }
+                else { skor = 30; masalah = "Kondisi pertumbuhan anakan produktif normal."; }
             }
             else if (fase === "Generatif") {
-                if (wetnessScore <= -1.0) { skor = 95; masalah = "KRITIS: Padi hampa massal (Puso) akibat kekeringan parah!"; }
+                if (wetnessScore <= -1.0) { skor = 95; masalah = "KRITIS: Padi hampa massal (Puso) akibat kekeringan parah saat bunting!"; }
                 else if (wetnessScore < -0.3) { skor = 60; masalah = "Waspada malai tidak terisi penuh (kekurangan air)."; }
                 else if (wetnessScore > 1.0) { skor = 75; masalah = "Hujan lebat melunturkan serbuk sari & memicu Blast."; }
-                else { skor = 25; masalah = "Kondisi pengisian bulir optimal."; }
+                else { skor = 25; masalah = "Kondisi penyerbukan dan pengisian bulir optimal."; }
             }
             else if (fase === "Panen") {
-                if (wetnessScore <= -1.0) { skor = 10; masalah = "Kondisi sangat ideal dan terik untuk jemur gabah."; }
+                if (wetnessScore <= -1.0) { skor = 10; masalah = "Kondisi terik sangat ideal untuk jemur gabah."; }
                 else if (wetnessScore < -0.3) { skor = 20; masalah = "Kondisi pengeringan gabah aman."; }
                 else if (wetnessScore > 1.0) { skor = 95; masalah = "KRITIS: Padi rebah, gabah tumbuh di sawah, Combine amblas!"; }
                 else if (wetnessScore > 0.3) { skor = 65; masalah = "Hujan mempersulit panen, wajib siapkan mesin Dryer."; }
@@ -2606,7 +2662,7 @@ async function prosesAnalisisKalender() {
         
         kontainerTeks.innerHTML = `
             <div style="text-align: center; font-size: 0.8rem; margin-bottom: 15px; color: var(--accent-kalender); border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 8px;">
-                📍 Mendeteksi Zona Iklim: <b>${polaTerpilih.pola.toUpperCase()}</b>
+                📍 Mendeteksi Zona Iklim: <b>${namaZona}</b>
             </div>
             <div class="info-box" style="border-left-color: ${getWarnaRisiko(riskVeg.skor)};">
                 <strong>🌱 Vegetatif (${tglVegetatif.toLocaleDateString("id-ID", {month: 'long'})})</strong><br>
@@ -2626,13 +2682,9 @@ async function prosesAnalisisKalender() {
         `;
 
     } catch (errorMesej) {
-        // Jika GPS gagal, hentikan proses dan tampilkan pop-up error
         console.error(errorMesej);
-        
-        // Memanggil kustom modal yang sudah kamu buat sebelumnya
         alert("Gagal Membaca Lokasi!\n\n" + errorMesej);
         
-        // Kembalikan tampilan UI agar tidak loading terus-menerus
         kontainerTeks.innerHTML = `
             <div class="info-box" style="border-left-color: var(--red-alert); text-align: center;">
                 <strong>⚠️ Akses Lokasi Ditolak / Gagal</strong><br>
