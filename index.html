@@ -582,7 +582,7 @@
         <button id="btnCamera" class="btn-main btn-camera" onclick="bukaKamera()">📸 AMBIL FOTO / GALERI</button>
 
         <div id="cameraWarning" style="display:none; color: var(--accent-soil); font-size: 0.75rem; text-align: center; margin: 10px 0; font-weight: 600; padding: 8px; border: 1px solid var(--accent-soil); border-radius: 8px;">
-            ⚠️ Ambil foto dgn jarak 30-50 cm dari target/objek agar hasil akurat!
+            ⚠️ Ambil foto 30-50cm dari target/objek agar hasil akurat
         </div>
 
         <div class="scan-window" id="scanWindow">
@@ -773,6 +773,7 @@
     </footer>
 
     <script>
+        let baselineIklimLokal = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // Nilai default netral
         // 1. Fungsi bawaan untuk membuka & menutup modal
         function tutupCustomAlert() {
             document.getElementById('customAlertModal').style.display = 'none';
@@ -805,8 +806,9 @@
         const URL_GULMA = "https://script.google.com/macros/s/AKfycbxGBDW3g9NmpHoijkvtRC5onwV02EBDLCuszLPLu1tY8NMv74fpnKVKwc4LWQ_GQ-SGZg/exec";
         const URL_TANAH = "https://script.google.com/macros/s/AKfycbwlryQ9ZZvgc1WjZAavj1J4KbUaaJPluZorOLzIEM12fOy19bKP56mdaITAt7jDZ5XYKg/exec";
         const URL_MALAI = "https://script.google.com/macros/s/AKfycbzVPK1I_81gFU07Q_tNsWxUK1SZ_1tmwNlASp8P5_IR5hApq3XZb8koYufA46fIOacd/exec";
-        const URL_IKLIM = "https://script.google.com/macros/s/AKfycbzBNq1X9NtTnPD2bHMnz20_6t06RiaQxjoAy-9iQ_x94N5WRUj-aNyW1tk0VVkRThZr/exec";
+        const URL_IKLIM = "https://script.google.com/macros/s/AKfycbx2l8qiuAQ0vf_eeqx36VJSeDkjC61mrdoyE8fuLU8YGK_nOCBDyTwjp4MxYIRL3SkA/exec";
         const URL_PUPUK = "https://script.google.com/macros/s/AKfycbyZkyLEeLi7Igk-JXLuYuRsV0ZqTmbevRUQu6rY10rptwNyZ7y3d-YNmJCDn3QgM0Dm/exec";
+        const URL_POLA_HUJAN = "https://script.google.com/macros/s/AKfycbyc3eEBcxqr_YqRKJ6lPnS4nAzz9TVrKQwKcgBJAg3KSulTdrYKeVvQbUjDVSIjYVLI/exec";
         const gasUrl = "https://script.google.com/macros/s/AKfycbw1e0FboS3FgWXEYrulCbYzoyQC0aWopU-DRIhlVJTF_C5jQoJRviDfRX_NCTis5wCiWg/exec";
           
         window.addEventListener('load', async function() {
@@ -1147,13 +1149,18 @@
                     const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`, {
                         headers: { 'User-Agent': 'SmartFarming-PPLWajo/1.0' }
                     });
+                    
+                    // --- AWAL KODE BARU YANG DITEMPEL ---
                     if (geoRes.ok) {
                         const geoData = await geoRes.json(); 
                         const addr = geoData.address;
                         const desa = addr.village || addr.suburb || addr.hamlet || addr.neighborhood || addr.town || "Pesisir/Luar Desa";
                         const kabupaten = addr.county || addr.city || addr.municipality || "";
                         document.getElementById('alamatDesa').innerHTML = `<b>${desa}</b>, Kab. ${kabupaten}`;
-                    } else { 
+
+                       // ... di dalam fungsi loadWeather ...
+
+} else { 
                         document.getElementById('alamatDesa').innerText = "Koordinat luar batas server alamat"; 
                     }
                 } catch (e) { 
@@ -1362,7 +1369,6 @@
                 }
             }
         }
-
         async function startBWDCamera() {
             const video = document.getElementById('videoElement');
             try {
@@ -2466,13 +2472,29 @@ async function getLocalSSTTimeseries() {
 
 let kalenderChartInstance = null;
 
-// Update fungsi switchMode yang sudah ada untuk menampung tab kalender
-// Tambahkan 3 baris ini di dalam fungsi switchMode(mode) { ... }
-// if (mode === 'kalender') { color = 'var(--accent-kalender)'; title = 'Kalender & Ancaman Iklim'; }
-// document.getElementById('tabKalender').className = mode === 'kalender' ? 'tab-btn active kalender-mode' : 'tab-btn';
-// document.getElementById('boxKalender').style.display = mode === 'kalender' ? 'block' : 'none';
+// Fungsi untuk memaksa pengambilan GPS jika user belum menekan tombol sinkronisasi di tab cuaca
+const dapatkanLokasiOtomatis = () => new Promise((resolve, reject) => {
+    // Jika sudah sinkron di tab cuaca sebelumnya, gunakan data tersebut
+    if (isGpsSynced && document.getElementById('lokasiSawah').innerText !== "-") {
+        const koordinatTeks = document.getElementById('lokasiSawah').innerText;
+        const parts = koordinatTeks.split(',');
+        resolve({ lat: parseFloat(parts[0]), lon: parseFloat(parts[1]) });
+        return;
+    }
 
-// Ubah fungsi menjadi async agar bisa menunggu data satelit
+    // Jika belum sinkron, paksa pencarian GPS baru
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+        },
+        (error) => {
+            // Tolak eksekusi dan lempar pesan error
+            reject("Sinyal satelit tidak ditemukan. Pastikan GPS menyala dan izin lokasi browser diberikan.");
+        },
+        { enableHighAccuracy: false, timeout: 10000 }
+    );
+});
+
 async function prosesAnalisisKalender() {
     const tglInput = document.getElementById("inputTglTanam").value;
     if (!tglInput) {
@@ -2480,113 +2502,144 @@ async function prosesAnalisisKalender() {
         return;
     }
 
-    // Memunculkan status loading agar terkesan futuristik saat mengambil data
     const kontainerTeks = document.getElementById("teksAnalisisFase");
     document.getElementById("hasilProyeksiIklim").style.display = "block";
-    kontainerTeks.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--accent-kalender);"><i>📡 Menyinkronkan Proyeksi Iklim ENSO & IOD dari Satelit...</i></div>`;
+    kontainerTeks.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--accent-kalender);"><i>📡 Membaca GPS & Menyinkronkan Data ZOM Satelit...</i></div>`;
 
-    // Mengambil data anomali iklim secara real-time dari fungsi yang sudah Anda buat
-    const [ensoData, iodData] = await Promise.all([
-        getENSOAnomaly(),
-        getIODAnomaly()
-    ]);
-    
-    const ensoVal = ensoData.latestAnomaly; // Nilai (+) berarti El Nino/Kering, (-) La Nina/Basah
-    const iodVal = iodData.latestAnomaly;   // Nilai (+) berarti IOD Kering, (-) IOD Basah
+    try {
+        // 1. Panggil GPS lebih dulu secara strict sebelum memuat data berat lainnya
+        const lokasi = await dapatkanLokasiOtomatis();
 
-    const awalTanam = new Date(tglInput);
-    
-    // Perhitungan tanggal fase (HST)
-    const tglVegetatif = new Date(awalTanam); tglVegetatif.setDate(tglVegetatif.getDate() + 25);
-    const tglGeneratif = new Date(awalTanam); tglGeneratif.setDate(tglGeneratif.getDate() + 65);
-    const tglPanen = new Date(awalTanam); tglPanen.setDate(tglPanen.getDate() + 105);
-
-    const formatTgl = (d) => d.toLocaleDateString("id-ID", { day: 'numeric', month: 'short' });
-    const labels = [
-        `Tanam\n(${formatTgl(awalTanam)})`, 
-        `Vegetatif\n(${formatTgl(tglVegetatif)})`, 
-        `Generatif\n(${formatTgl(tglGeneratif)})`, 
-        `Panen\n(${formatTgl(tglPanen)})`
-    ];
-
-    // INI ADALAH OTAK UTAMANYA: Mengubah sistem tebakan bulan menjadi analisis anomali
-    const hitungRisikoDinamis = (bulan, fase) => {
-        // 1. Tentukan Baseline (Bulan 4-9 adalah Kemarau)
-        const isKemarau = (bulan >= 4 && bulan <= 9);
-        const baselineBasah = isKemarau ? -1 : 1; 
+        // 2. Jika GPS berhasil, lanjut ambil data dari Apps Script & satelit
+        const [ensoData, iodData, resPola] = await Promise.all([
+            getENSOAnomaly(),
+            getIODAnomaly(),
+            fetch(URL_POLA_HUJAN)
+        ]);
         
-        // 2. Kalkulasi Wetness Score (Skor Kebasahan)
-        // Jika El Nino (+) dan IOD (+), nilai minus membesar = Sangat Kering
-        // Jika La Nina (-) dan IOD (-), nilai minus bertemu minus jadi plus = Sangat Basah
-        const wetnessScore = baselineBasah - ensoVal - iodVal;
+        const dbPola = await resPola.json();
+        const ensoVal = ensoData.latestAnomaly; 
+        const iodVal = iodData.latestAnomaly;  
+
+        // 3. Logika Pemetaan Koordinat ke Pola Hujan
+        let polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("monsunal")); // Default
         
-        let statusCuaca = "";
-        if (wetnessScore <= -1.5) statusCuaca = "Sangat Kering (Ekstrem)";
-        else if (wetnessScore < -0.4) statusCuaca = "Cenderung Kering";
-        else if (wetnessScore <= 0.4) statusCuaca = "Normal / Stabil";
-        else if (wetnessScore < 1.5) statusCuaca = "Cenderung Basah";
-        else statusCuaca = "Sangat Basah (Ekstrem)";
-
-        let skor = 20; 
-        let masalah = "Aman";
+        if (lokasi.lon > 125) {
+            // Area Maluku, Papua
+            polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("lokal"));
+        } else if (lokasi.lat > -2 && lokasi.lon < 118) {
+            // Area Sumatera, Kalimantan (sekitar ekuator)
+            polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("ekuatorial"));
+        } else if (lokasi.lon >= 118 && lokasi.lon <= 125 && lokasi.lat > -2) {
+             // Sebagian Sulawesi transisi
+            polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes("peralihan"));
+        }
         
-        // 3. Matriks Risiko Berdasarkan Fase vs Kondisi Air Aktual
-        if (fase === "Tanam") {
-            if (wetnessScore <= -1.5) { skor = 85; masalah = "Tanah retak parah, krisis air olah lahan (Tunda Tanam)."; }
-            else if (wetnessScore < -0.4) { skor = 50; masalah = "Butuh pompanisasi untuk basahi lahan."; }
-            else if (wetnessScore > 1.5) { skor = 65; masalah = "Persemaian berisiko membusuk terendam genangan."; }
-            else { skor = 20; masalah = "Kondisi air ideal untuk tanam."; }
-        }
-        else if (fase === "Vegetatif") {
-            if (wetnessScore <= -1.5) { skor = 75; masalah = "Pertumbuhan anakan kerdil akibat stres air."; }
-            else if (wetnessScore > 1.5) { skor = 60; masalah = "Curah hujan picu ledakan Hawar Pelepah & busuk akar."; }
-            else { skor = 30; masalah = "Kondisi pertumbuhan anakan normal."; }
-        }
-        else if (fase === "Generatif") {
-            if (wetnessScore <= -1.5) { skor = 95; masalah = "KRITIS: Padi hampa massal (Puso) akibat kekeringan parah!"; }
-            else if (wetnessScore < -0.4) { skor = 60; masalah = "Waspada malai tidak terisi penuh (kekurangan air)."; }
-            else if (wetnessScore > 1.5) { skor = 75; masalah = "Hujan lebat melunturkan serbuk sari & memicu Blast."; }
-            else { skor = 25; masalah = "Kondisi pengisian bulir optimal."; }
-        }
-        else if (fase === "Panen") {
-            if (wetnessScore <= -1.5) { skor = 10; masalah = "Kondisi sangat ideal dan terik untuk jemur gabah."; }
-            else if (wetnessScore < -0.4) { skor = 20; masalah = "Kondisi pengeringan gabah aman."; }
-            else if (wetnessScore > 1.5) { skor = 95; masalah = "KRITIS: Padi rebah, gabah tumbuh di sawah, Combine amblas!"; }
-            else if (wetnessScore > 0.4) { skor = 65; masalah = "Hujan mempersulit panen, wajib siapkan mesin Dryer."; }
-        }
-        return { skor, statusCuaca, masalah };
-    };
+        // Ambil array baseline 12 bulan (index 0 = Jan, 11 = Des)
+        const baselineData = polaTerpilih.baseline;
 
-    // Eksekusi fungsi dengan mengambil indeks bulan (1-12)
-    const riskTanam = hitungRisikoDinamis(awalTanam.getMonth() + 1, "Tanam");
-    const riskVeg = hitungRisikoDinamis(tglVegetatif.getMonth() + 1, "Vegetatif");
-    const riskGen = hitungRisikoDinamis(tglGeneratif.getMonth() + 1, "Generatif");
-    const riskPanen = hitungRisikoDinamis(tglPanen.getMonth() + 1, "Panen");
+        const awalTanam = new Date(tglInput);
+        const tglVegetatif = new Date(awalTanam); tglVegetatif.setDate(tglVegetatif.getDate() + 25);
+        const tglGeneratif = new Date(awalTanam); tglGeneratif.setDate(tglGeneratif.getDate() + 65);
+        const tglPanen = new Date(awalTanam); tglPanen.setDate(tglPanen.getDate() + 105);
 
-    const dataSkor = [riskTanam.skor, riskVeg.skor, riskGen.skor, riskPanen.skor];
-    
-    renderKalenderChart(labels, dataSkor);
-    
-    // Render UI dengan menyertakan Status Cuaca Dinamis
-    kontainerTeks.innerHTML = `
-        <div class="info-box" style="border-left-color: ${getWarnaRisiko(riskVeg.skor)};">
-            <strong>🌱 Vegetatif (${tglVegetatif.toLocaleDateString("id-ID", {month: 'long'})})</strong><br>
-            <span style="color: var(--accent-kalender); font-size: 0.75rem; font-weight: bold;">[ Iklim: ${riskVeg.statusCuaca} ]</span><br>
-            <span style="color: #cbd5e1; font-size: 0.8rem;">Dampak: ${riskVeg.masalah}</span>
-        </div>
-        <div class="info-box" style="border-left-color: ${getWarnaRisiko(riskGen.skor)};">
-            <strong>🌾 Generatif (${tglGeneratif.toLocaleDateString("id-ID", {month: 'long'})})</strong><br>
-            <span style="color: var(--accent-kalender); font-size: 0.75rem; font-weight: bold;">[ Iklim: ${riskGen.statusCuaca} ]</span><br>
-            <span style="color: #cbd5e1; font-size: 0.8rem;">Dampak: <b>${riskGen.masalah}</b></span>
-        </div>
-        <div class="info-box" style="border-left-color: ${getWarnaRisiko(riskPanen.skor)};">
-            <strong>🚜 Panen (${tglPanen.toLocaleDateString("id-ID", {month: 'long'})})</strong><br>
-            <span style="color: var(--accent-kalender); font-size: 0.75rem; font-weight: bold;">[ Iklim: ${riskPanen.statusCuaca} ]</span><br>
-            <span style="color: #cbd5e1; font-size: 0.8rem;">Dampak: ${riskPanen.masalah}</span>
-        </div>
-    `;
+        const formatTgl = (d) => d.toLocaleDateString("id-ID", { day: 'numeric', month: 'short' });
+        const labels = [
+            `Tanam\n(${formatTgl(awalTanam)})`, 
+            `Vegetatif\n(${formatTgl(tglVegetatif)})`, 
+            `Generatif\n(${formatTgl(tglGeneratif)})`, 
+            `Panen\n(${formatTgl(tglPanen)})`
+        ];
+
+        // 4. Modifikasi Logika Dinamis ZOM
+        const hitungRisikoDinamis = (bulanIndex, fase) => {
+            const baselineBulanIni = parseFloat(baselineData[bulanIndex]);
+            
+            // Baseline ZOM digabung dengan distorsi ENSO & IOD
+            const wetnessScore = baselineBulanIni - ensoVal - iodVal;
+            
+            let statusCuaca = "";
+            if (wetnessScore <= -1.0) statusCuaca = "Sangat Kering (Ekstrem)";
+            else if (wetnessScore < -0.3) statusCuaca = "Cenderung Kering";
+            else if (wetnessScore <= 0.3) statusCuaca = "Normal / Sesuai ZOM";
+            else if (wetnessScore < 1.0) statusCuaca = "Cenderung Basah";
+            else statusCuaca = "Sangat Basah (Ekstrem)";
+
+            let skor = 20; 
+            let masalah = "Aman";
+            
+            // Matriks Risiko Berdasarkan Fase vs Kondisi Air Aktual
+            if (fase === "Tanam") {
+                if (wetnessScore <= -1.0) { skor = 85; masalah = "Tanah retak parah, krisis air olah lahan (Tunda Tanam)."; }
+                else if (wetnessScore < -0.3) { skor = 50; masalah = "Butuh pompanisasi untuk basahi lahan."; }
+                else if (wetnessScore > 1.0) { skor = 65; masalah = "Persemaian berisiko membusuk terendam genangan."; }
+                else { skor = 20; masalah = "Kondisi air ideal untuk tanam."; }
+            }
+            else if (fase === "Vegetatif") {
+                if (wetnessScore <= -1.0) { skor = 75; masalah = "Pertumbuhan anakan kerdil akibat stres air."; }
+                else if (wetnessScore > 1.0) { skor = 60; masalah = "Curah hujan picu ledakan Hawar Pelepah & busuk akar."; }
+                else { skor = 30; masalah = "Kondisi pertumbuhan anakan normal."; }
+            }
+            else if (fase === "Generatif") {
+                if (wetnessScore <= -1.0) { skor = 95; masalah = "KRITIS: Padi hampa massal (Puso) akibat kekeringan parah!"; }
+                else if (wetnessScore < -0.3) { skor = 60; masalah = "Waspada malai tidak terisi penuh (kekurangan air)."; }
+                else if (wetnessScore > 1.0) { skor = 75; masalah = "Hujan lebat melunturkan serbuk sari & memicu Blast."; }
+                else { skor = 25; masalah = "Kondisi pengisian bulir optimal."; }
+            }
+            else if (fase === "Panen") {
+                if (wetnessScore <= -1.0) { skor = 10; masalah = "Kondisi sangat ideal dan terik untuk jemur gabah."; }
+                else if (wetnessScore < -0.3) { skor = 20; masalah = "Kondisi pengeringan gabah aman."; }
+                else if (wetnessScore > 1.0) { skor = 95; masalah = "KRITIS: Padi rebah, gabah tumbuh di sawah, Combine amblas!"; }
+                else if (wetnessScore > 0.3) { skor = 65; masalah = "Hujan mempersulit panen, wajib siapkan mesin Dryer."; }
+            }
+            return { skor, statusCuaca, masalah };
+        };
+
+        const riskTanam = hitungRisikoDinamis(awalTanam.getMonth(), "Tanam");
+        const riskVeg = hitungRisikoDinamis(tglVegetatif.getMonth(), "Vegetatif");
+        const riskGen = hitungRisikoDinamis(tglGeneratif.getMonth(), "Generatif");
+        const riskPanen = hitungRisikoDinamis(tglPanen.getMonth(), "Panen");
+
+        const dataSkor = [riskTanam.skor, riskVeg.skor, riskGen.skor, riskPanen.skor];
+        
+        renderKalenderChart(labels, dataSkor);
+        
+        kontainerTeks.innerHTML = `
+            <div style="text-align: center; font-size: 0.8rem; margin-bottom: 15px; color: var(--accent-kalender); border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 8px;">
+                📍 Mendeteksi Zona Iklim: <b>${polaTerpilih.pola.toUpperCase()}</b>
+            </div>
+            <div class="info-box" style="border-left-color: ${getWarnaRisiko(riskVeg.skor)};">
+                <strong>🌱 Vegetatif (${tglVegetatif.toLocaleDateString("id-ID", {month: 'long'})})</strong><br>
+                <span style="color: var(--accent-kalender); font-size: 0.75rem; font-weight: bold;">[ Iklim: ${riskVeg.statusCuaca} ]</span><br>
+                <span style="color: #cbd5e1; font-size: 0.8rem;">Dampak: ${riskVeg.masalah}</span>
+            </div>
+            <div class="info-box" style="border-left-color: ${getWarnaRisiko(riskGen.skor)};">
+                <strong>🌾 Generatif (${tglGeneratif.toLocaleDateString("id-ID", {month: 'long'})})</strong><br>
+                <span style="color: var(--accent-kalender); font-size: 0.75rem; font-weight: bold;">[ Iklim: ${riskGen.statusCuaca} ]</span><br>
+                <span style="color: #cbd5e1; font-size: 0.8rem;">Dampak: <b>${riskGen.masalah}</b></span>
+            </div>
+            <div class="info-box" style="border-left-color: ${getWarnaRisiko(riskPanen.skor)};">
+                <strong>🚜 Panen (${tglPanen.toLocaleDateString("id-ID", {month: 'long'})})</strong><br>
+                <span style="color: var(--accent-kalender); font-size: 0.75rem; font-weight: bold;">[ Iklim: ${riskPanen.statusCuaca} ]</span><br>
+                <span style="color: #cbd5e1; font-size: 0.8rem;">Dampak: ${riskPanen.masalah}</span>
+            </div>
+        `;
+
+    } catch (errorMesej) {
+        // Jika GPS gagal, hentikan proses dan tampilkan pop-up error
+        console.error(errorMesej);
+        
+        // Memanggil kustom modal yang sudah kamu buat sebelumnya
+        alert("Gagal Membaca Lokasi!\n\n" + errorMesej);
+        
+        // Kembalikan tampilan UI agar tidak loading terus-menerus
+        kontainerTeks.innerHTML = `
+            <div class="info-box" style="border-left-color: var(--red-alert); text-align: center;">
+                <strong>⚠️ Akses Lokasi Ditolak / Gagal</strong><br>
+                <span style="font-size: 0.85rem; color: #cbd5e1;">Aplikasi memerlukan data lintang & bujur untuk menganalisis ancaman iklim spesifik di hamparan lahanmu. Coba muat ulang halaman.</span>
+            </div>`;
+    }
 }
-
         switchMode('cuaca');
 
         async function analisisVarietasPadi() {
