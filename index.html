@@ -2613,7 +2613,7 @@ async function prosesAnalisisKalender() {
             }
             
             // Baseline indeks digabung dengan distorsi ENSO & IOD (diboboti agar tidak ekstrem)
-            const wetnessScore = baselineBulanIni - (ensoVal * 0.5) - (iodVal * 0.5);
+            const wetnessScore = baselineBulanIni - (ensoVal * 0.2) - (iodVal * 0.1);
             
             let statusCuaca = "";
             if (wetnessScore <= -1.0) statusCuaca = "Sangat Kering (Ekstrem)";
