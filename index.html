@@ -2639,7 +2639,7 @@ async function prosesAnalisisKalender() {
 
         // Batas maksimal area (Jika jarak > 150 km, otomatis beralih ke Makro)
         if (kabTerpilih && jarakTerdekat <= 150) {
-            namaZona = `ZOM WIL. ${kabTerpilih.kabupaten_kota.toUpperCase()} (Jarak: ${jarakTerdekat.toFixed(1)} km)`;
+            namaZona = `WIL. ${kabTerpilih.kabupaten_kota.toUpperCase()} (Jarak: ${jarakTerdekat.toFixed(1)} km)`;
             baselineData = [
                 parseFloat(kabTerpilih.jan), parseFloat(kabTerpilih.feb), parseFloat(kabTerpilih.mar),
                 parseFloat(kabTerpilih.apr), parseFloat(kabTerpilih.mei), parseFloat(kabTerpilih.jun),
