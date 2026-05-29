@@ -681,14 +681,20 @@
             </div>
 
             <div id="boxCuaca" style="display:none; text-align: center;">
-                <div id="gpsPrompt" style="padding: 15px 5px;">
-                    <div style="font-size: 2.5rem; margin-bottom: 12px;">🛰️</div>
-                    <h4 style="margin: 0; color: var(--text-main); font-size: 1.1rem; font-weight: 700;">Akses Lokasi / Lahan Sawah</h4>
-                    <p style="font-size: 0.8rem; color: var(--text-muted); margin: 10px 0 24px; line-height: 1.5;">
-                        Kami memerlukan koordinat GPS untuk mengambil data cuaca langsung dari satelit di titik sawah Anda saat ini.
-                    </p>
-                    <button class="btn-main btn-live" onclick="aktifkanGPS()">SINKRONKAN GPS & SATELIT</button>
-                </div>
+               <div id="gpsPrompt" style="padding: 15px 5px;">
+    <div style="font-size: 2.5rem; margin-bottom: 12px;">🛰️</div>
+    <h4 style="margin: 0; color: var(--text-main); font-size: 1.1rem; font-weight: 700;">Akses Lokasi / Lahan Sawah</h4>
+    <p style="font-size: 0.8rem; color: var(--text-muted); margin: 10px 0 15px; line-height: 1.5;">
+        Kami memerlukan koordinat GPS untuk mengambil data cuaca langsung dari satelit di titik sawah Anda saat ini.
+    </p>
+    
+    <div class="form-group" style="text-align: left; margin-bottom: 24px;">
+        <label style="text-align: center; display: block; margin-bottom: 8px;">📅 MASUKKAN TANGGAL AWAL TANAM</label>
+        <input type="date" id="tglTanamCuaca" class="form-input">
+    </div>
+    
+    <button class="btn-main btn-live" onclick="aktifkanGPS()">SINKRONKAN GPS & SATELIT</button>
+</div>
 
                 <div id="weatherData" style="display: none; text-align: left;">
                     <div class="info-box" style="border-left: 4px solid var(--accent-bwd); background: rgba(56, 182, 255, 0.02);">
@@ -963,12 +969,61 @@
         }
 
         function analisisFaseTanaman() {
-            const sekarang = new Date(); const bulan = sekarang.getMonth() + 1;
-            let musim = ""; let fase = ""; let umurHari = 0; let risikoFase = 1; let b = sekarang.getMonth() + 1;
-            if (bulan >= 4 && bulan <= 9) { musim = "Musim Tanam (April - September)"; } else { musim = "Musim Tanam (Oktober - Maret)"; }
-            if ([4, 10].includes(bulan)) { fase = "Pengolahan Lahan / Persiapan"; umurHari = 0; } else if ([5, 11].includes(bulan)) { fase = "Penanaman / Persemaian"; umurHari = 15; risikoFase = 1.2; } else if ([6, 7, 12, 1].includes(bulan)) { fase = "Vegetatif (Pertumbuhan Daun & Batang)"; umurHari = 45; risikoFase = 1.4; } else if ([8, 2].includes(bulan)) { fase = "Generatif (Bunting & Pengisian Malai)"; umurHari = 80; risikoFase = 1.6; } else if ([9, 3].includes(bulan)) { fase = "Panen / Pasca Panen"; umurHari = 110; risikoFase = 0.8; }
-            return { musim, fase, umurHari, risikoFase, bulan: b };
-        }
+    // Ambil data secara dinamis dari input menu Cuaca, Kalender, atau Pupuk
+    let tglInput = document.getElementById("tglTanamCuaca")?.value ||
+                   document.getElementById("inputTglTanam")?.value ||
+                   document.getElementById("tanggalTanam")?.value;
+
+    const sekarang = new Date();
+
+    // Jika user belum mengisi tanggal sama sekali, tampilkan peringatan di antarmuka
+    if (!tglInput) {
+        return {
+            musim: "Belum Diset",
+            fase: "⚠️ Pilih Tanggal Tanam di Form Atas",
+            umurHari: 0,
+            risikoFase: 1,
+            bulan: sekarang.getMonth() + 1
+        };
+    }
+
+    // Kalkulasi selisih hari persis seperti hitungan Kalender Iklim
+    const awalTanam = new Date(tglInput);
+    const selisihWaktu = sekarang.getTime() - awalTanam.getTime();
+    const umurHari = Math.floor(selisihWaktu / (1000 * 3600 * 24));
+    const bulanTanam = awalTanam.getMonth() + 1;
+
+    let fase = "";
+    let risikoFase = 1;
+
+    // Klasifikasi fase berdasarkan umur tanaman (hari)
+    if (umurHari < 0) {
+        fase = "Pengolahan Lahan / Persiapan";
+        risikoFase = 0.5;
+    } else if (umurHari <= 15) {
+        fase = "Penanaman / Persemaian";
+        risikoFase = 1.2;
+    } else if (umurHari <= 45) {
+        fase = "Vegetatif (Pertumbuhan Daun & Batang)";
+        risikoFase = 1.4;
+    } else if (umurHari <= 80) {
+        fase = "Generatif (Bunting & Pengisian Malai)";
+        risikoFase = 1.6;
+    } else if (umurHari <= 110) {
+        fase = "Panen / Pasca Panen";
+        risikoFase = 0.8;
+    } else {
+        fase = "Masa Bera / Lahan Kosong";
+        risikoFase = 0.5;
+    }
+
+    // Penamaan Musim Dinamis berdasarkan bulan awal tanam, bukan patokan kaku
+    let musim = (bulanTanam >= 4 && bulanTanam <= 9)
+        ? `Musim Gadu (Tanam: ${awalTanam.toLocaleDateString("id-ID", { month: "short", year: "numeric" })})`
+        : `Musim Rendeng (Tanam: ${awalTanam.toLocaleDateString("id-ID", { month: "short", year: "numeric" })})`;
+
+    return { musim, fase, umurHari, risikoFase, bulan: sekarang.getMonth() + 1 };
+}
 
         function getFormatTanggal(selisihHari) {
             const d = new Date();
