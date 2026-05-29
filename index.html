@@ -926,39 +926,96 @@
             return hariSiklus < 0 ? hariSiklus + 29.53059 : hariSiklus;
         }
 
-        function hitungRisikoWereng(suhu, kelembapan, curahHujan) {
-            let skor = 0; let level = "RENDAH"; let warna = "var(--accent-green)"; let detail = ""; let saran = "";
-            if (suhu >= 26 && suhu <= 30) { skor += 35; } else if (suhu >= 23 && suhu < 26) { skor += 20; } else if (suhu > 30) { skor += 15; }
-            if (kelembapan >= 85) { skor += 30; } else if (kelembapan >= 75) { skor += 15; }
-            if (curahHujan >= 20) { skor -= 10; } else if (curahHujan >= 5 && curahHujan < 20) { skor += 10; }
-            if (skor >= 70) { level = "TINGGI"; warna = "var(--red-alert)"; detail = "Kondisi cuaca sangat mendukung ledakan populasi Wereng Batang Coklat. Tanaman yang kelebihan Nitrogen sangat rentan."; saran = "✅ Lakukan pengamatan intensif. Jika populasi wereng > 5 ekor/rumpun, segera aplikasikan insektisida sesuai rekomendasi (misalnya BPMC, Imidakloprid) atau agens hayati seperti Beauveria bassiana."; } else if (skor >= 45) { level = "SEDANG"; warna = "var(--accent-soil)"; detail = "Kondisi cuaca mendukung perkembangan wereng. Populasi berpotening meningkat jika tanaman subur dan rapat."; saran = "✅ Pantau tanaman secara rutin. Hindari pemupukan Nitrogen berlebih. Pertimbangkan penanaman varietas tahan wereng."; } else { level = "RENDAH"; warna = "var(--accent-green)"; detail = "Kondisi cuaca saat ini kurang mendukung ledakan wereng."; saran = "✅ Tetap waspada dan lakukan pengamatan rutin setiap 7 hari."; }
-            return { skor, level, warna, detail, saran };
-        }
+        function hitungRisikoWereng(suhu, kelembapan, curahHujan, faseTanaman) {
+    let skor = 0; let level = "RENDAH"; let warna = "var(--accent-green)"; let detail = ""; let saran = "";
+    if (suhu >= 26 && suhu <= 30) { skor += 35; } else if (suhu >= 23 && suhu < 26) { skor += 20; } else if (suhu > 30) { skor += 15; }
+    if (kelembapan >= 85) { skor += 30; } else if (kelembapan >= 75) { skor += 15; }
+    if (curahHujan >= 20) { skor -= 10; } else if (curahHujan >= 5 && curahHujan < 20) { skor += 10; }
+    
+    // LOGIKA FASE TANAMAN
+    if (faseTanaman.fase.includes("Vegetatif") || faseTanaman.fase.includes("Generatif")) {
+        skor += 20; // Tanaman hijau dan rimbun, wereng suka
+    } else if (faseTanaman.fase.includes("Panen") || faseTanaman.fase.includes("Bera")) {
+        skor -= 40; // Batang sudah keras/kering, wereng tidak suka
+    }
 
-        function hitungRisikoSheathBlight(suhu, kelembapan) {
-            let skor = 0; let level = "RENDAH"; let warna = "var(--accent-green)"; let detail = ""; let saran = "";
-            if (suhu >= 28 && suhu <= 32) { skor += 35; } else if (suhu >= 25 && suhu < 28) { skor += 20; } else if (suhu > 32) { skor += 15; }
-            if (kelembapan >= 95) { skor += 40; } else if (kelembapan >= 90) { skor += 30; } else if (kelembapan >= 85) { skor += 15; }
-            if (skor >= 65) { level = "TINGGI"; warna = "var(--red-alert)"; detail = "Kondisi sangat mendukung perkembangan jamur Rhizoctonia solani. Penyakit mudah menyebar di kanopi yang lembab."; saran = "✅ Kurangi pemupukan Nitrogen, tingkatkan sirkulasi udara, and pertimbangkan fungisida (Validamycin / Hexaconazole) jika gejala muncul."; } else if (skor >= 45) { level = "SEDANG"; warna = "var(--accent-soil)"; detail = "Kondisi cuaca mendukung serangan Sheath Blight, terutama pada tanaman yang rapat and kelebihan N."; saran = "✅ Pantau pelepah daun bagian bawah. Jaga jarak tanam dan hindari pengairan berlebih."; } else { level = "RENDAH"; warna = "var(--accent-green)"; detail = "Kondisi cuaca saat ini kurang mendukung penyebaran Hawar Pelepah."; saran = "✅ Pertahankan pemupukan berimbang dan sanitasi lahan."; }
-            return { skor, level, warna, detail, saran };
-        }
+    if (skor >= 70) { level = "TINGGI"; warna = "var(--red-alert)"; detail = "Kondisi cuaca dan fase padi sangat mendukung ledakan Wereng Batang Coklat."; saran = "✅ Lakukan pengamatan intensif di pangkal batang. Jika wereng > 5 ekor/rumpun, segera aplikasikan insektisida sistemik (BPMC, Imidakloprid)."; } 
+    else if (skor >= 45) { level = "SEDANG"; warna = "var(--accent-soil)"; detail = "Kondisi mendukung perkembangan wereng, terutama jika jarak tanam rapat."; saran = "✅ Pantau tanaman. Hindari pupuk Urea berlebih agar batang tidak terlalu lunak."; } 
+    else { level = "RENDAH"; warna = "var(--accent-green)"; detail = "Kondisi saat ini kurang mendukung ledakan wereng."; saran = "✅ Tetap waspada dan amati secara rutin tiap minggu."; }
+    return { skor, level, warna, detail, saran };
+}
 
-        function hitungRisikoTungro(suhu, kelembapan, curahHujan) {
-            let skor = 0; let level = "RENDAH"; let warna = "var(--accent-green)"; let detail = ""; let saran = "";
-            if (suhu >= 25 && suhu <= 29) { skor += 35; } else if (suhu >= 22 && suhu < 25) { skor += 20; }
-            if (kelembapan >= 85) { skor += 30; } else if (kelembapan >= 75) { skor += 15; }
-            if (curahHujan >= 5 && curahHujan <= 25) { skor += 15; } else if (curahHujan > 30) { skor -= 10; }
-            if (skor >= 70) { level = "TINGGI"; warna = "var(--red-alert)"; detail = "Kondisi cuaca sangat mendukung penyebaran penyakit Tungro. Populasi wereng hijau berpotensi tinggi."; saran = "✅ Pantau gejala daun menguning dari ujung (orange-yellow). Gunakan varietas tahan Tungro dan kendalikan wereng hijau sejak dini."; } else if (skor >= 45) { level = "SEDANG"; warna = "var(--accent-soil)"; detail = "Kondisi cuaca mendukung perkembangan Tungro. Risiko meningkat jika wereng hijau banyak."; saran = "✅ Lakukan pengamatan rutin terhadap wereng hijau. Hindari pemupukan Nitrogen berlebih."; } else { level = "RENDAH"; warna = "var(--accent-green)"; detail = "Kondisi cuaca saat ini kurang mendukung penyebaran Tungro."; saran = "✅ Tetap waspada terutama pada fase vegetatif tanaman."; }
-            return { skor, level, warna, detail, saran };
-        }
+  function hitungRisikoSheathBlight(suhu, kelembapan, faseTanaman) {
+    let skor = 0; let level = "RENDAH"; let warna = "var(--accent-green)"; let detail = ""; let saran = "";
+    if (suhu >= 28 && suhu <= 32) { skor += 35; } else if (suhu >= 25 && suhu < 28) { skor += 20; } else if (suhu > 32) { skor += 15; }
+    if (kelembapan >= 95) { skor += 40; } else if (kelembapan >= 90) { skor += 30; } else if (kelembapan >= 85) { skor += 15; }
+    
+    // LOGIKA FASE TANAMAN
+    if (faseTanaman.fase.includes("Generatif")) {
+        skor += 25; // Kanopi sangat rapat, kelembapan mikro tinggi
+    } else if (faseTanaman.umurHari > 30 && faseTanaman.umurHari <= 45) {
+        skor += 15; // Pembentukan anakan maksimal
+    }
 
-        function hitungRisikoHamaPBP(suhu, kelembapan) {
-            const hariBulan = dapatkanHariSiklusBulan(); let skorHama = 0; let analisisTeks = ""; let tindakanPPL = ""; let warnaStatus = "var(--accent-green)";
-            if (hariBulan >= 26 || hariBulan <= 3) { skorHama += 45; analisisTeks = "Diprediksi sedang puncak penerbangan ngengat dewasa untuk kawin and peletakan telur massal di pesemaian/lahan."; tindakanPPL = "Pasang lampu perangkap (light trap) di pematang sawah malam ini untuk menangkap kaper sebelum bertelur. Semprot agens hayati Beauveria bassiana."; } else if (hariBulan >= 12 && hariBulan <= 17) { skorHama += 40; analisisTeks = "Diprediksi sedang puncak penetasan telur menjadi larva (ulat kecil). Ulat mulai merayap mencari batang padi."; tindakanPPL = "Kondisi kritis! Lakukan pengamatan intensif pada rumpun padi. Jika ditemukan kelompok telur atau gejala Sundep > 5%, segera aplikasikan insektisida sistemik."; } else { skorHama += 15; analisisTeks = "Diprediksi aktivitas ngengat sedang. Larva yang berada di dalam batang sedang berganti kulit (instar)."; tindakanPPL = "Lakukan pemupukan berimbang (jangan over Urea) and jaga air sawah agar tidak terlalu menggenang tinggi."; }
-            if (kelembapan >= 80) skorHama += 25; if (suhu >= 24 && suhu <= 29) skorHama += 30;
-            let tingkatRisiko = "RENDAH"; if (skorHama >= 75) { tingkatRisiko = "BAHAYA / TINGGI"; warnaStatus = "var(--red-alert)"; } else if (skorHama >= 45) { tingkatRisiko = "WASPADA / SEDANG"; warnaStatus = "var(--accent-soil)"; }
-            return { skor: skorHama, level: tingkatRisiko, warna: warnaStatus, detail: analisisTeks, saran: tindakanPPL };
-        }
+    if (skor >= 65) { level = "TINGGI"; warna = "var(--red-alert)"; detail = "Sangat mendukung perkembangan jamur Rhizoctonia solani pada pelepah batang."; saran = "✅ Kurangi Urea, tingkatkan sirkulasi air (keringkan sesaat), dan gunakan fungisida berbahan aktif Validamycin/Hexaconazole."; } 
+    else if (skor >= 45) { level = "SEDANG"; warna = "var(--accent-soil)"; detail = "Cuaca mendukung serangan, terutama di petakan yang terlalu subur dan rapat."; saran = "✅ Pantau pelepah daun bagian bawah. Jaga air tidak menggenang terus menerus."; } 
+    else { level = "RENDAH"; warna = "var(--accent-green)"; detail = "Kondisi kurang mendukung Hawar Pelepah."; saran = "✅ Pertahankan sanitasi lahan dan pemupukan NPK berimbang."; }
+    return { skor, level, warna, detail, saran };
+}     
+        function hitungRisikoTungro(suhu, kelembapan, curahHujan, faseTanaman) {
+    let skor = 0; let level = "RENDAH"; let warna = "var(--accent-green)"; let detail = ""; let saran = "";
+    if (suhu >= 25 && suhu <= 29) { skor += 35; } else if (suhu >= 22 && suhu < 25) { skor += 20; }
+    if (kelembapan >= 85) { skor += 30; } else if (kelembapan >= 75) { skor += 15; }
+    if (curahHujan >= 5 && curahHujan <= 25) { skor += 15; } else if (curahHujan > 30) { skor -= 10; }
+    
+    // LOGIKA FASE TANAMAN (Tungro paling mematikan saat tanaman muda)
+    if (faseTanaman.umurHari > 0 && faseTanaman.umurHari <= 45) {
+        skor += 25; 
+    } else if (faseTanaman.umurHari > 60) {
+        skor -= 30; // Tanaman tua sudah jaringan keras, virus tungro sulit berkembang
+    }
+
+    if (skor >= 70) { level = "TINGGI"; warna = "var(--red-alert)"; detail = "Fase dan cuaca sangat mendukung penularan Virus Tungro oleh Wereng Hijau."; saran = "✅ Cek daun kuning/oranye dari ujung. Jika terlihat wereng hijau, kendalikan segera, cabut dan bakar tanaman yang sudah terinfeksi parah."; } 
+    else if (skor >= 45) { level = "SEDANG"; warna = "var(--accent-soil)"; detail = "Waspada penularan jika di sekitar ada lahan endemik Tungro."; saran = "✅ Lakukan monitoring populasi Wereng Hijau di pesemaian atau pertanaman muda."; } 
+    else { level = "RENDAH"; warna = "var(--accent-green)"; detail = "Risiko penyebaran Tungro relatif kecil."; saran = "✅ Pastikan pembersihan gulma sisa yang bisa jadi inang virus."; }
+    return { skor, level, warna, detail, saran };
+}
+
+        function hitungRisikoHamaPBP(suhu, kelembapan, faseTanaman) {
+    const hariBulan = dapatkanHariSiklusBulan(); 
+    let skorHama = 0; let analisisTeks = ""; let tindakanPPL = ""; let warnaStatus = "var(--accent-green)";
+    
+    if (hariBulan >= 26 || hariBulan <= 3) { 
+        skorHama += 45; 
+        analisisTeks = "Puncak penerbangan ngengat dewasa bertelur."; 
+        tindakanPPL = "Pasang lampu perangkap (light trap). Kumpulkan kelompok telur di daun."; 
+    } else if (hariBulan >= 12 && hariBulan <= 17) { 
+        skorHama += 40; 
+        analisisTeks = "Puncak telur menetas jadi ulat (larva), siap masuk ke batang."; 
+        tindakanPPL = "KONDISI KRITIS! Waktunya aplikasi insektisida sistemik jika kelompok telur ditemukan."; 
+    } else { 
+        skorHama += 15; 
+        analisisTeks = "Aktivitas ngengat sedang. Larva sudah masuk ganti kulit di dalam batang."; 
+        tindakanPPL = "Pemupukan berimbang, jangan over Urea."; 
+    }
+    
+    if (kelembapan >= 80) skorHama += 25; 
+    if (suhu >= 24 && suhu <= 29) skorHama += 30;
+
+    // LOGIKA FASE (SUNDEP vs BELUK)
+    if (faseTanaman.fase.includes("Vegetatif") || faseTanaman.fase.includes("Persemaian")) {
+        analisisTeks += " Mewaspadai gejala SUNDEP (pucuk tengah mati dan mudah dicabut).";
+    } else if (faseTanaman.fase.includes("Generatif")) {
+        analisisTeks += " Mewaspadai gejala BELUK (malai hampa, tegak, warna putih).";
+        skorHama += 15; // Beluk lebih kritis karena berakibat fatal pada hasil panen
+    }
+
+    let tingkatRisiko = "RENDAH"; 
+    if (skorHama >= 75) { tingkatRisiko = "BAHAYA / TINGGI"; warnaStatus = "var(--red-alert)"; } 
+    else if (skorHama >= 45) { tingkatRisiko = "WASPADA / SEDANG"; warnaStatus = "var(--accent-soil)"; }
+    
+    return { skor: skorHama, level: tingkatRisiko, warna: warnaStatus, detail: analisisTeks, saran: tindakanPPL };
+}
 
         function hitungRisikoTikus(curahHujan, faseTanaman) {
             let skor = 30; let level = "RENDAH"; let warna = "var(--accent-green)"; let detail = ""; let saran = "";
@@ -1413,7 +1470,7 @@
                         <div style="background:rgba(255,255,255,0.02);padding:8px;border-radius:6px;"><b>💡 Rekomendasi:</b> ${analisisTikus.saran}</div>
                     </div>`);
 
-                const analisisHama = hitungRisikoHamaPBP(cur.temperature_2m, cur.relative_humidity_2m);
+                const analisisHama = hitungRisikoHamaPBP(cur.temperature_2m, cur.relative_humidity_2m, faseTanaman);
                 document.getElementById('weatherData').insertAdjacentHTML('beforeend', `
                     <div class="info-box info-box-dynamic" style="border-left-color:${analisisHama.warna};margin-top:15px;">
                         <strong>🐛 Peringatan Dini Penggerek Batang</strong><br>
@@ -1422,7 +1479,7 @@
                         <div style="background:rgba(255,255,255,0.02);padding:8px;border-radius:6px;"><b>💡 Rekomendasi:</b> ${analisisHama.saran}</div>
                     </div>`);
 
-                const analisisSheath = hitungRisikoSheathBlight(cur.temperature_2m, cur.relative_humidity_2m);
+                const analisisSheath = hitungRisikoSheathBlight(cur.temperature_2m, cur.relative_humidity_2m, faseTanaman);
                 document.getElementById('weatherData').insertAdjacentHTML('beforeend', `
                     <div class="info-box info-box-dynamic" style="border-left-color:${analisisSheath.warna};margin-top:15px;">
                         <strong>🍂 Hawar Pelepah (Sheath Blight)</strong><br>
@@ -1431,7 +1488,7 @@
                         <div style="background:rgba(255,255,255,0.02);padding:8px;border-radius:6px;"><b>💡 Rekomendasi:</b> ${analisisSheath.saran}</div>
                     </div>`);
 
-                const analisisWereng = hitungRisikoWereng(cur.temperature_2m, cur.relative_humidity_2m, cur.rain || 0);
+                const analisisWereng = hitungRisikoWereng(cur.temperature_2m, cur.relative_humidity_2m, cur.rain || 0, faseTanaman);
                 document.getElementById('weatherData').insertAdjacentHTML('beforeend', `
                     <div class="info-box info-box-dynamic" style="border-left-color:${analisisWereng.warna};margin-top:15px;">
                         <strong>🪳 Wereng Batang Coklat</strong><br>
@@ -1440,7 +1497,7 @@
                         <div style="background:rgba(255,255,255,0.02);padding:8px;border-radius:6px;"><b>💡 Rekomendasi:</b> ${analisisWereng.saran}</div>
                     </div>`);
 
-                const analisisTungro = hitungRisikoTungro(cur.temperature_2m, cur.relative_humidity_2m, cur.rain || 0);
+                const analisisTungro = hitungRisikoTungro(cur.temperature_2m, cur.relative_humidity_2m, cur.rain || 0, faseTanaman);
                 document.getElementById('weatherData').insertAdjacentHTML('beforeend', `
                     <div class="info-box info-box-dynamic" style="border-left-color:${analisisTungro.warna};margin-top:15px;">
                         <strong>🌾 Tungro (Virus)</strong><br>
