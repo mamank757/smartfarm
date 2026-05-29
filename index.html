@@ -2659,9 +2659,9 @@ async function prosesAnalisisKalender() {
 
         // 4. Kalkulasi Fase Tanam
         const awalTanam = new Date(tglInput);
-        const tglVegetatif = new Date(awalTanam); tglVegetatif.setDate(tglVegetatif.getDate() + 25);
-        const tglGeneratif = new Date(awalTanam); tglGeneratif.setDate(tglGeneratif.getDate() + 65);
-        const tglPanen = new Date(awalTanam); tglPanen.setDate(tglPanen.getDate() + 105);
+        const tglVegetatif = new Date(awalTanam); tglVegetatif.setDate(tglVegetatif.getDate() + 35);
+        const tglGeneratif = new Date(awalTanam); tglGeneratif.setDate(tglGeneratif.getDate() + 50);
+        const tglPanen = new Date(awalTanam); tglPanen.setDate(tglPanen.getDate() + 110);
 
         const formatTgl = (d) => d.toLocaleDateString("id-ID", { day: 'numeric', month: 'short' });
         const labels = [
