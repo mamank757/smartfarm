@@ -2877,62 +2877,119 @@ async function prosesAnalisisKalender() {
         }
         
         // 1. Fungsi untuk merender grafik batang (Bar Chart) Kalender Iklim
+// 1. Fungsi untuk merender grafik batang (Bar Chart) Kalender Iklim
 function renderKalenderChart(labels, dataSkor) {
     const ctx = document.getElementById('kalenderChart').getContext('2d');
     
-    // Hancurkan chart lama jika sudah ada agar tidak menumpuk/glitch saat tombol ditekan berkali-kali
+    // Hancurkan chart lama jika sudah ada agar tidak menumpuk/glitch
     if (kalenderChartInstance) {
         kalenderChartInstance.destroy();
     }
 
-    // Tentukan warna bar secara dinamis berdasarkan persentase skor risiko
+    // --- EFEK FUTURISTIK 1: Gradient Fill Neon ---
+    const gradientFill = ctx.createLinearGradient(0, 0, 0, 300);
+    gradientFill.addColorStop(0, 'rgba(217, 70, 239, 0.6)');  // Ungu neon terang di atas
+    gradientFill.addColorStop(0.8, 'rgba(217, 70, 239, 0.0)'); // Memudar transparan ke bawah
+
+    // Tentukan warna titik berdasarkan persentase skor risiko
     const bgColors = dataSkor.map(skor => {
-        if (skor >= 70) return 'rgba(239, 68, 68, 0.8)';      // Merah (Bahaya)
-        if (skor >= 40) return 'rgba(245, 158, 11, 0.8)';     // Kuning/Oranye (Waspada)
-        return 'rgba(16, 185, 129, 0.8)';                     // Hijau (Aman)
+        if (skor >= 70) return '#ef4444';      // Merah (Bahaya)
+        if (skor >= 40) return '#f59e0b';      // Kuning/Oranye (Waspada)
+        return '#10b981';                      // Hijau (Aman)
     });
 
+    // --- EFEK FUTURISTIK 2: Custom Plugin untuk Neon Glow Shadow ---
+    const neonGlowPlugin = {
+        id: 'neonGlow',
+        beforeDatasetsDraw: (chart) => {
+            const ctx = chart.ctx;
+            ctx.save();
+            ctx.shadowColor = 'rgba(217, 70, 239, 0.6)';
+            ctx.shadowBlur = 12;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 4;
+        },
+        afterDatasetsDraw: (chart) => {
+            chart.ctx.restore();
+        }
+    };
+
     kalenderChartInstance = new Chart(ctx, {
-        type: 'line', // Ubah dari 'bar' menjadi 'line'
+        type: 'line',
+        plugins: [neonGlowPlugin, ChartDataLabels], // Aktifkan Glow & Datalabels
         data: {
             labels: labels,
             datasets: [{
-                label: 'Risiko Gagal Panen (%)',
+                label: 'Risiko Gagal Panen',
                 data: dataSkor,
-                borderColor: 'var(--accent-kalender)', // Warna ungu neon Kalender
-                backgroundColor: 'rgba(217, 70, 239, 0.15)', // Warna arsiran transparan
+                borderColor: '#d946ef', // Garis utama ungu neon
+                backgroundColor: gradientFill,
                 borderWidth: 3,
-                tension: 0.4, // Membuat garis melengkung halus (smooth curve)
-                fill: true,   // Mengisi area di bawah garis
-                pointBackgroundColor: bgColors, // Titik (dot) tetap memakai warna Lampu Lalu Lintas
-                pointBorderColor: '#fff',
+                tension: 0.4, // Melengkung halus (smooth curve)
+                fill: true,
+                pointBackgroundColor: '#0b1528', // Titik tengah gelap menyatu dengan background
+                pointBorderColor: bgColors,      // Warna ring titik sesuai risiko
+                pointBorderWidth: 3,
                 pointRadius: 6,
-                pointHoverRadius: 8
+                pointHoverRadius: 9,
+                pointHoverBackgroundColor: bgColors,
+                pointHoverBorderColor: '#ffffff',
+                pointHoverBorderWidth: 2
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                padding: { top: 25, right: 10, left: 10 } // Ruang ekstra untuk label angka di atas
+            },
             plugins: {
                 legend: { display: false },
+                // --- EFEK FUTURISTIK 3: Glassmorphism Tooltip ---
                 tooltip: {
+                    backgroundColor: 'rgba(11, 21, 40, 0.85)',
+                    titleColor: '#d946ef',
+                    bodyColor: '#ffffff',
+                    borderColor: 'rgba(217, 70, 239, 0.3)',
+                    borderWidth: 1,
+                    padding: 12,
+                    displayColors: false,
+                    cornerRadius: 12,
                     callbacks: {
                         label: function(context) {
                             return ' Tingkat Risiko: ' + context.raw + '%';
                         }
+                    }
+                },
+                // --- EFEK FUTURISTIK 4: Angka di atas grafik ---
+                datalabels: {
+                    color: bgColors, // Angka mengikuti warna indikator bahaya
+                    anchor: 'end',
+                    align: 'top',
+                    offset: 4,
+                    font: {
+                        family: "'Plus Jakarta Sans', sans-serif",
+                        weight: '800',
+                        size: 11
+                    },
+                    formatter: function(value) {
+                        return value + '%';
                     }
                 }
             },
             scales: {
                 y: { 
                     beginAtZero: true, 
-                    max: 100,
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#94a3b8' }
+                    max: 110, // Max dinaikkan sedikit agar label tidak terpotong batas atas
+                    grid: { 
+                        color: 'rgba(255, 255, 255, 0.05)',
+                        borderDash: [5, 5] // Grid putus-putus ala radar satelit
+                    },
+                    ticks: { color: '#64748b', font: { size: 10, weight: '600' } }
                 },
                 x: { 
                     grid: { display: false },
-                    ticks: { color: '#94a3b8', font: { size: 10 } }
+                    ticks: { color: '#8da2be', font: { size: 10, weight: '600' } }
                 }
             }
         }
