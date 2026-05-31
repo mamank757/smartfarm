@@ -437,7 +437,8 @@
     <button class="tab-btn" id="tabGulma" onclick="switchMode('gulma')">JENIS GULMA</button>
     <button class="tab-btn" id="tabTanah" onclick="switchMode('tanah')">FISIK TANAH</button>
     <button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">UJI BWD</button>
-    <button class="tab-btn" id="tabChat" onclick="toggleChatbox()">KONSULTASI</button>
+    <button class="tab-btn" id="tabChat1" onclick="toggleChatbox(1)">KONSULTASI 1</button>
+    <button class="tab-btn" id="tabChat2" onclick="toggleChatbox(2)">KONSULTASI 2</button>
 </div>
 </div>
 
@@ -962,19 +963,42 @@ const URL_BWD = "https://script.google.com/macros/s/AKfycbwGAPTPnLJyg-OtcbFt1aG_
             }
         }
 // Fungsi khusus untuk menampilkan dan menyembunyikan Chatbox AI
-function toggleChatbox() {
+let activeChatType = 1; // Variabel penanda AI mana yang aktif
+
+// Fungsi khusus untuk menampilkan dan menyembunyikan Chatbox AI
+function toggleChatbox(type = 1) {
     const chatbox = document.getElementById('chatboxAI');
-    const tabChat = document.getElementById('tabChat');
-    
-    if (chatbox.style.display === 'none' || chatbox.style.display === '') {
+    const tabChat1 = document.getElementById('tabChat1');
+    const tabChat2 = document.getElementById('tabChat2');
+    const chatTitle = document.getElementById('chatTitleText');
+
+    const isCurrentlyOpen = chatbox.style.display === 'flex';
+    const isSameTab = activeChatType === type;
+
+    // Jika tab yang sama diklik 2x, tutup chatbox-nya
+    if (isCurrentlyOpen && isSameTab) {
+        chatbox.style.display = 'none';
+        if(tabChat1) tabChat1.classList.remove('active');
+        if(tabChat2) tabChat2.classList.remove('active');
+    } else {
+        activeChatType = type;
         chatbox.style.display = 'flex';
-        tabChat.classList.add('active');
+        
+        if(tabChat1) tabChat1.classList.remove('active');
+        if(tabChat2) tabChat2.classList.remove('active');
+
+        // Sesuaikan nama tab dan judul sesuai tipe AI
+        if (type === 1) {
+            if(tabChat1) tabChat1.classList.add('active');
+            if(chatTitle) chatTitle.innerText = "KING MAMANK";
+        } else {
+            if(tabChat2) tabChat2.classList.add('active');
+            if(chatTitle) chatTitle.innerText = "PPL WAJO";
+        }
+
         // Sembunyikan floating button biar tidak double
         const btnBuka = document.getElementById('btnBukaChat');
         if (btnBuka) btnBuka.style.display = 'none';
-    } else {
-        chatbox.style.display = 'none';
-        tabChat.classList.remove('active');
     }
 }
 // Fungsi untuk menghaluskan fluktuasi (Moving Average)
@@ -3417,7 +3441,7 @@ function getWarnaRisiko(skor) {
 <div id="chatboxAI" style="display: none; position: fixed; bottom: 80px; right: 20px; z-index: 1000; width: 320px; max-height: 500px; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
     
     <div style="background: rgba(255,255,255,0.05); padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-        <span style="color: #10b981; font-weight: bold; letter-spacing: 1px;">Tanya King Mamank</span>
+        <span id="chatTitleText" style="color: #10b981; font-weight: bold; letter-spacing: 1px;">Tanya Asisten</span>
         <button id="btnTutupChat" style="background: transparent; color: #ef4444; border: 1px solid #ef4444; padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; cursor: pointer;">
             TUTUP
         </button>
@@ -3447,7 +3471,8 @@ function getWarnaRisiko(skor) {
 </div>
 
 <script>
-const GAS_URL = "https://script.google.com/macros/s/AKfycbxmyMvcCFnOuYiN0XPJQ1MhxPHAvgAgZNECRhEqXd6PbOTqZ2GRvi0M7cDhLT5-uMzv/exec";
+const GAS_URL_1 = "https://script.google.com/macros/s/AKfycbzJfQzgWnMJKqiaT8YP-GEPI_PNyYgjMkdL7LWQeostDueXwhRcY8ihHsPxNVTvIgRv/exec";
+const GAS_URL_2 = "https://script.google.com/macros/s/AKfycbyvSjJziHRXDf_sj0HX1zKOr3P57uzvBBwT1EZzedVhzykUB4JN5H-WCuJNH43dhXcX/exec"; 
 
 const chatboxAI = document.getElementById('chatboxAI');
 const btnBukaChat = document.getElementById('btnBukaChat');
@@ -3459,8 +3484,7 @@ const btnKirimPesan = document.getElementById('btnKirimPesan');
 chatboxAI.style.display = 'none';
 
 btnBukaChat.addEventListener('click', () => {
-    chatboxAI.style.display = 'flex';
-    btnBukaChat.style.display = 'none';
+    toggleChatbox(1); // Default membuka AI 1 jika dari tombol mengambang
 });
 
 btnTutupChat.addEventListener('click', () => {
@@ -3492,7 +3516,8 @@ async function kirimPesan() {
 
     try {
 
-        const response = await fetch(GAS_URL, {
+        const targetUrl = activeChatType === 1 ? GAS_URL_1 : GAS_URL_2;
+        const response = await fetch(targetUrl, {
             method: "POST",
             body: JSON.stringify({
                 pesan: teksPesan
@@ -3525,7 +3550,7 @@ async function kirimPesan() {
             data.choices[0].message) {
 
             tambahkanPesanLayar(
-                "King Mamank",
+                "Asisten",
                 data.choices[0].message.content,
                 "#10b981"
             );
@@ -3537,7 +3562,7 @@ async function kirimPesan() {
         if (data.status === "sukses") {
 
             tambahkanPesanLayar(
-                "King Mamank",
+                "Asisten",
                 data.jawaban,
                 "#10b981"
             );
