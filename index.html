@@ -480,7 +480,14 @@
         <label>📅 TANGGAL AWAL TANAM</label>
         <input type="date" id="inputTglTanam" class="form-input">
     </div>
-    
+    <div class="form-group">
+    <label>🌱 UMUR VARIETAS PADI</label>
+    <select id="umurVarietasKalender" class="form-select">
+        <option value="genjah">Genjah (< 95 Hari)</option>
+        <option value="sedang" selected>Sedang (95 - 115 Hari)</option>
+        <option value="dalam">Dalam (>= 116 Hari)</option>
+    </select>
+</div>
     <button class="btn-main" style="background: var(--accent-kalender); color: #fff;" onclick="prosesAnalisisKalender()">
         🚀 TAMPILKAN GRAFIK ANCAMAN IKLIM
     </button>
@@ -707,7 +714,14 @@
         <label style="text-align: center; display: block; margin-bottom: 8px;">📅 MASUKKAN TANGGAL AWAL TANAM</label>
         <input type="date" id="tglTanamCuaca" class="form-input">
     </div>
-    
+    <div class="form-group" style="text-align: left; margin-bottom: 24px;">
+    <label style="text-align: center; display: block; margin-bottom: 8px;">🌱 UMUR VARIETAS PADI</label>
+    <select id="umurVarietasCuaca" class="form-select">
+        <option value="genjah">Genjah (< 95 Hari)</option>
+        <option value="sedang" selected>Sedang (95 - 115 Hari)</option>
+        <option value="dalam">Dalam (>= 116 Hari)</option>
+    </select>
+</div>
     <button class="btn-main btn-live" onclick="aktifkanGPS()">SINKRONKAN GPS & SATELIT</button>
 </div>
 
@@ -1065,14 +1079,12 @@ function getMovingAverage(data, windowSize = 3) {
         }
 
         function analisisFaseTanaman() {
-    // Ambil data secara dinamis dari input menu Cuaca, Kalender, atau Pupuk
     let tglInput = document.getElementById("tglTanamCuaca")?.value ||
                    document.getElementById("inputTglTanam")?.value ||
                    document.getElementById("tanggalTanam")?.value;
 
     const sekarang = new Date();
 
-    // Jika user belum mengisi tanggal sama sekali, tampilkan peringatan di antarmuka
     if (!tglInput) {
         return {
             musim: "Belum Diset",
@@ -1083,7 +1095,22 @@ function getMovingAverage(data, windowSize = 3) {
         };
     }
 
-    // Kalkulasi selisih hari persis seperti hitungan Kalender Iklim
+    // Tangkap nilai umur varietas berdasarkan menu yang sedang aktif
+    let umurPilihan = "sedang";
+    if (currentMode === 'cuaca') {
+        umurPilihan = document.getElementById("umurVarietasCuaca")?.value || "sedang";
+    } else if (currentMode === 'kalender') {
+        umurPilihan = document.getElementById("umurVarietasKalender")?.value || "sedang";
+    }
+
+    // Set batas umur dinamis
+    let batasVeg = 45, batasGen = 80, batasPanen = 110; 
+    if (umurPilihan === "genjah") {
+        batasVeg = 35; batasGen = 65; batasPanen = 90;
+    } else if (umurPilihan === "dalam") {
+        batasVeg = 50; batasGen = 90; batasPanen = 125;
+    }
+
     const awalTanam = new Date(tglInput);
     const selisihWaktu = sekarang.getTime() - awalTanam.getTime();
     const umurHari = Math.floor(selisihWaktu / (1000 * 3600 * 24));
@@ -1092,20 +1119,20 @@ function getMovingAverage(data, windowSize = 3) {
     let fase = "";
     let risikoFase = 1;
 
-    // Klasifikasi fase berdasarkan umur tanaman (hari)
+    // Klasifikasi fase menggunakan batas dinamis
     if (umurHari < 0) {
         fase = "Pengolahan Lahan / Persiapan";
         risikoFase = 0.5;
     } else if (umurHari <= 15) {
         fase = "Penanaman / Persemaian";
         risikoFase = 1.2;
-    } else if (umurHari <= 45) {
+    } else if (umurHari <= batasVeg) {
         fase = "Vegetatif (Pertumbuhan Daun & Batang)";
         risikoFase = 1.4;
-    } else if (umurHari <= 80) {
+    } else if (umurHari <= batasGen) {
         fase = "Generatif (Bunting & Pengisian Malai)";
         risikoFase = 1.6;
-    } else if (umurHari <= 110) {
+    } else if (umurHari <= batasPanen) {
         fase = "Panen / Pasca Panen";
         risikoFase = 0.8;
     } else {
@@ -1113,7 +1140,6 @@ function getMovingAverage(data, windowSize = 3) {
         risikoFase = 0.5;
     }
 
-    // Penamaan Musim Dinamis berdasarkan bulan awal tanam, bukan patokan kaku
     let musim = (bulanTanam >= 4 && bulanTanam <= 9)
         ? `Musim Gadu (Tanam: ${awalTanam.toLocaleDateString("id-ID", { month: "short", year: "numeric" })})`
         : `Musim Rendeng (Tanam: ${awalTanam.toLocaleDateString("id-ID", { month: "short", year: "numeric" })})`;
@@ -2904,11 +2930,20 @@ async function prosesAnalisisKalender() {
             baselineData = polaTerpilih.baseline;
         }
 
-        // 4. Kalkulasi Fase Tanam
+        // 4. Kalkulasi Fase Tanam secara Dinamis
+        const umurPilihan = document.getElementById("umurVarietasKalender").value;
+        let offsetVeg = 35, offsetGen = 50, offsetPanen = 110;
+
+        if (umurPilihan === "genjah") { 
+            offsetVeg = 25; offsetGen = 40; offsetPanen = 90; 
+        } else if (umurPilihan === "dalam") { 
+            offsetVeg = 40; offsetGen = 60; offsetPanen = 125; 
+        }
+
         const awalTanam = new Date(tglInput);
-        const tglVegetatif = new Date(awalTanam); tglVegetatif.setDate(tglVegetatif.getDate() + 35);
-        const tglGeneratif = new Date(awalTanam); tglGeneratif.setDate(tglGeneratif.getDate() + 50);
-        const tglPanen = new Date(awalTanam); tglPanen.setDate(tglPanen.getDate() + 110);
+        const tglVegetatif = new Date(awalTanam); tglVegetatif.setDate(tglVegetatif.getDate() + offsetVeg);
+        const tglGeneratif = new Date(awalTanam); tglGeneratif.setDate(tglGeneratif.getDate() + offsetGen);
+        const tglPanen = new Date(awalTanam); tglPanen.setDate(tglPanen.getDate() + offsetPanen);
 
         const formatTgl = (d) => d.toLocaleDateString("id-ID", { day: 'numeric', month: 'short' });
         const labels = [
@@ -2983,17 +3018,17 @@ async function prosesAnalisisKalender() {
             </div>
             <div class="info-box" style="border-left-color: ${getWarnaRisiko(riskVeg.skor)};">
                 <strong>🌱 Vegetatif (${tglVegetatif.toLocaleDateString("id-ID", {month: 'long'})})</strong><br>
-                <span style="color: var(--accent-kalender); font-size: 0.75rem; font-weight: bold;">[ Iklim: ${riskVeg.statusCuaca} ]</span><br>
+                <span style="color: var(--accent-kalender); font-size: 0.75rem; font-weight: bold;">Iklim: ${riskVeg.statusCuaca} </span><br>
                 <span style="color: #cbd5e1; font-size: 0.8rem;">Dampak: ${riskVeg.masalah}</span>
             </div>
             <div class="info-box" style="border-left-color: ${getWarnaRisiko(riskGen.skor)};">
                 <strong>🌾 Generatif (${tglGeneratif.toLocaleDateString("id-ID", {month: 'long'})})</strong><br>
-                <span style="color: var(--accent-kalender); font-size: 0.75rem; font-weight: bold;">[ Iklim: ${riskGen.statusCuaca} ]</span><br>
+                <span style="color: var(--accent-kalender); font-size: 0.75rem; font-weight: bold;">Iklim: ${riskGen.statusCuaca} </span><br>
                 <span style="color: #cbd5e1; font-size: 0.8rem;">Dampak: <b>${riskGen.masalah}</b></span>
             </div>
             <div class="info-box" style="border-left-color: ${getWarnaRisiko(riskPanen.skor)};">
                 <strong>🚜 Panen (${tglPanen.toLocaleDateString("id-ID", {month: 'long'})})</strong><br>
-                <span style="color: var(--accent-kalender); font-size: 0.75rem; font-weight: bold;">[ Iklim: ${riskPanen.statusCuaca} ]</span><br>
+                <span style="color: var(--accent-kalender); font-size: 0.75rem; font-weight: bold;">Iklim: ${riskPanen.statusCuaca} </span><br>
                 <span style="color: #cbd5e1; font-size: 0.8rem;">Dampak: ${riskPanen.masalah}</span>
             </div>
         `;
