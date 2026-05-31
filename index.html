@@ -2246,15 +2246,17 @@ const iodSmooth = getMovingAverage(iod.anomalies, 2);
         }
 
         function tampilkanHasil(data) {
-            let out = data;
-            if (currentMode !== 'gulma') {
-                out = Array.isArray(data) ? data[0] : data;
-                if (out.outputs && out.outputs[0]) out = out.outputs[0];
-            }
+    let out = data;
+    if (currentMode !== 'gulma') {
+        out = Array.isArray(data) ? data[0] : data;
+        if (out.outputs && out.outputs[0]) out = out.outputs[0];
+    }
 
-            document.getElementById('result').style.display = 'block';
-            document.getElementById('boxPenyakit').style.display = currentMode === 'daun' ? 'block' : 'none';
-            document.getElementById('boxHama').style.display = currentMode === 'hama' ? 'block' : 'none'; 
+    document.getElementById('result').style.display = 'block';
+    document.getElementById('resConf').style.display = 'block'; // 👈 TAMBAHKAN BARIS INI
+
+    document.getElementById('boxPenyakit').style.display = currentMode === 'daun' ? 'block' : 'none';
+    document.getElementById('boxHama').style.display = currentMode === 'hama' ? 'block' : 'none'; 
             document.getElementById('boxGulma').style.display = currentMode === 'gulma' ? 'block' : 'none';
             document.getElementById('boxTanah').style.display = currentMode === 'tanah' ? 'block' : 'none';
             document.getElementById('boxBWD').style.display = currentMode === 'bwd' ? 'block' : 'none';
@@ -2352,7 +2354,10 @@ document.getElementById('resPenyebabHama').innerHTML = (hasilHama.penyebab || "-
                     document.getElementById('resLabel').innerText = "Gagal Identifikasi";
                     document.getElementById('containerListGulma').innerHTML = `<div class="info-box" style="border-left-color: var(--red-alert);"><strong>⚠️ Error:</strong><br>${out.error}</div>`;
                     conf = 0;
-                    document.getElementById('resConf').innerText = `Tingkat Keyakinan: ${conf}%`;
+                    document.getElementById('resConf').innerHTML = `
+    <strong style="color: var(--accent-kalender); font-size: 0.75rem; letter-spacing: 1px;">🤖 SKOR KEPERCAYAAN DIRI AI</strong><br>
+    <span style="font-size: 1.8rem; color: var(--accent-kalender); font-weight: 800; text-shadow: 0 0 10px rgba(217, 70, 239, 0.4);">${parseFloat(conf).toFixed(1)}%</span>
+`;
                     return;
                 }
 
