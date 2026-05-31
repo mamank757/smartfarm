@@ -630,10 +630,16 @@
 
         <div id="result">
             <div id="resLabel" style="font-size: 1.2rem; font-weight: 800; color: var(--accent-green); text-align: center;">-</div>
-            <div id="resConf" style="font-size: 0.8rem; text-align: center; margin-bottom: 20px; color: var(--accent-soil); font-weight: 600;">Akurasi: 0%</div>
+            <div id="resConf" class="info-box" style="border-left-color: var(--accent-kalender); background: rgba(217, 70, 239, 0.05); text-align: center; margin-bottom: 20px;">
+    </div>
              
             <div id="boxPenyakit" style="display:none;">
-                <div class="info-box"><strong>🔍 Gejala:</strong><br><span id="resGejala">-</span></div>
+    <div class="info-box" style="border-left-color:var(--red-alert); background: rgba(239, 68, 68, 0.05);">
+        <strong>⚠️ Tingkat Risiko / Keparahan:</strong><br>
+        <span id="resRisiko" style="font-size: 1.1rem; font-weight: 800;">-</span>
+    </div>
+    
+    <div class="info-box"><strong>🔍 Gejala:</strong><br><span id="resGejala">-</span></div>
                 <div class="info-box" style="border-left-color:var(--red-alert);"><strong>🧬 Penyebab:</strong><br><span id="resPenyebab">-</span></div>
                 <div class="info-box" style="border-left-color:var(--accent-soil);"><strong>✅ Solusi:</strong><br><span id="resSolusi">-</span></div>
                 <div class="info-box" style="border-left-color:var(--accent-soil);"><strong>✅ Merek Produk:</strong><br><span id="resMerek">-</span></div>
@@ -641,7 +647,12 @@
             </div>
 
             <div id="boxHama" style="display:none;">
-                <div class="info-box" style="border-left-color: var(--accent-hama);"><strong>🔍 Gejala Serangan di Sawah:</strong><br><span id="resGejalaHama">-</span></div>
+    <div class="info-box" style="border-left-color:var(--red-alert); background: rgba(239, 68, 68, 0.05);">
+        <strong>⚠️ Status Ledakan / Risiko:</strong><br>
+        <span id="resRisikoHama" style="font-size: 1.1rem; font-weight: 800;">-</span>
+    </div>
+    
+    <div class="info-box" style="border-left-color: var(--accent-hama);"><strong>🔍 Gejala Serangan di Sawah:</strong><br><span id="resGejalaHama">-</span></div>
                 <div class="info-box" style="border-left-color: var(--red-alert);"><strong>🧬 Karakteristik / Faktor Lapangan:</strong><br><span id="resPenyebabHama">-</span></div>
                 <div class="info-box" style="border-left-color: var(--accent-green);"><strong>✅ Solusi Teknis (Agens / Budidaya):</strong><br><span id="resSolusiHama">-</span></div>
                 <div class="info-box" style="border-left-color: var(--accent-soil);"><strong>🔬 Rekomendasi Insektisida:</strong><br><span id="resMerekHama">-</span></div>
@@ -661,14 +672,18 @@
             </div>
 
             <div id="boxBWD" style="display: none; text-align: center;">
-                <div id="cameraContainer" style="position: relative; width: 100%; max-width: 300px; margin: 0 auto; overflow: hidden; border-radius: 20px; background: #000;">
-                    <video id="videoElement" autoplay playsinline muted style="width: 100%; height: 300px; object-fit: cover;"></video>
-                    <div id="focusBox" style="position: absolute; top: 25%; left: 42%; width: 16%; height: 50%; border: 3px solid var(--accent-green); border-radius: 8px; box-shadow: 0 0 0 999px rgba(0,0,0,0.5);"></div>
-                </div>
-                <button class="btn-main" id="btnCapture" style="margin-top: 20px; background: var(--accent-green);">📸 AMBIL & ANALISIS DAUN</button>
-                <canvas id="hiddenCanvas" style="display:none;"></canvas>
-                <div id="outputBWD" style="margin-top: 20px; text-align: left;"></div>
-            </div>
+    <div id="cameraContainer" style="position: relative; width: 100%; max-width: 300px; margin: 0 auto; overflow: hidden; border-radius: 20px; background: #000;">
+        <video id="videoElement" autoplay playsinline muted style="width: 100%; height: 300px; object-fit: cover;"></video>
+        
+        <img id="bwdPreviewImage" style="display: none; width: 100%; height: 300px; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 10;">
+        
+        <div id="focusBox" style="position: absolute; top: 25%; left: 42%; width: 16%; height: 50%; border: 3px solid var(--accent-green); border-radius: 8px; box-shadow: 0 0 0 999px rgba(0,0,0,0.5); z-index: 15;"></div>
+    </div>
+    
+    <button class="btn-main" id="btnCapture" style="margin-top: 20px; background: var(--accent-green);">AMBIL DAN ANALISIS DAUN</button>
+    <canvas id="hiddenCanvas" style="display:none;"></canvas>
+    <div id="outputBWD" style="margin-top: 20px; text-align: left;"></div>
+</div>
 
             <div id="boxMalai" style="display:none;">
                 <div id="listMalai"></div>
@@ -840,13 +855,17 @@
         let hasilTeksWAVarietas = "";
         let macroChartInstance = null;
         let localChartInstance = null;
+        
+        let currentStream = null; // Tambahan untuk memanajemen stream kamera
 
-        const URL_DAUN = "https://script.google.com/macros/s/AKfycby2arYHCsqKV3FZm14JB0W0LMGn1PfJ_26EoTAeVERAL0OsN0B0-4enXzap5KN9RMPsag/exec";
+        const URL_DAUN = "https://script.google.com/macros/s/AKfycbyoXrNqEtO5O56QcY64anDJ5ZGC2nHsfOqPr9mNMCVouNkYD57HqZcmfxPOmBIE12HK6A/exec";
         const URL_HAMA = "https://script.google.com/macros/s/AKfycbyTGmbTGlnaJWuSgrhzHneqYHlzzybJtYssAT-C4kwemFGtGnn0AR27CcsvXQKBeqU9/exec"; 
         const URL_GULMA = "https://script.google.com/macros/s/AKfycbxGBDW3g9NmpHoijkvtRC5onwV02EBDLCuszLPLu1tY8NMv74fpnKVKwc4LWQ_GQ-SGZg/exec";
         const URL_TANAH = "https://script.google.com/macros/s/AKfycbwlryQ9ZZvgc1WjZAavj1J4KbUaaJPluZorOLzIEM12fOy19bKP56mdaITAt7jDZ5XYKg/exec";
         const URL_MALAI = "https://script.google.com/macros/s/AKfycbzVPK1I_81gFU07Q_tNsWxUK1SZ_1tmwNlASp8P5_IR5hApq3XZb8koYufA46fIOacd/exec";
         const URL_IKLIM = "https://script.google.com/macros/s/AKfycbx2l8qiuAQ0vf_eeqx36VJSeDkjC61mrdoyE8fuLU8YGK_nOCBDyTwjp4MxYIRL3SkA/exec";
+        // Tambahkan baris ini di bawah URL_PUPUK / URL_IKLIM
+const URL_BWD = "https://script.google.com/macros/s/AKfycbwGAPTPnLJyg-OtcbFt1aG_I2uy6FQjd-5eE2p1UuhQTde2lEbokpAquACyutg8kBDi/exec";
         const URL_PUPUK = "https://script.google.com/macros/s/AKfycbyZkyLEeLi7Igk-JXLuYuRsV0ZqTmbevRUQu6rY10rptwNyZ7y3d-YNmJCDn3QgM0Dm/exec";
         const URL_POLA_HUJAN = "https://script.google.com/macros/s/AKfycbyc3eEBcxqr_YqRKJ6lPnS4nAzz9TVrKQwKcgBJAg3KSulTdrYKeVvQbUjDVSIjYVLI/exec";
         const URL_ZOM_LOKAL = "https://script.google.com/macros/s/AKfycbw4oqbO59e789P9KU2mucMf2jmoFEiUow_-GDqWw2lp26EwWturqzId4m87PlTHFx292g/exec";
@@ -917,6 +936,26 @@
             setTimeout(() => { warning.style.display = 'none'; }, 15000);
         }
 
+        // Tambahan fungsi stopCamera
+        function stopCamera() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+            }
+        }
+
+// Fungsi untuk menghaluskan fluktuasi (Moving Average)
+function getMovingAverage(data, windowSize = 3) {
+    let result = [];
+    for (let i = 0; i < data.length; i++) {
+        let sum = 0, count = 0;
+        for (let j = i - windowSize + 1; j <= i; j++) {
+            if (j >= 0) { sum += data[j]; count++; }
+        }
+        result.push(parseFloat((sum / count).toFixed(2)));
+    }
+    return result;
+}
         function dapatkanHariSiklusBulan() {
             const kranBulanMati = new Date("2026-01-18T17:00:00Z"); 
             const sekarang = new Date();
@@ -1095,6 +1134,10 @@
         }
 
         function switchMode(mode) {
+    if (mode !== 'bwd') {
+        stopCamera();
+    }
+    
     currentMode = mode;
     let color = '#4fc3f7'; 
     let title = 'Cuaca & Risiko Penyakit Tanaman';
@@ -1123,6 +1166,18 @@
         document.getElementById('result').style.display = 'block'; 
         document.getElementById('resConf').style.display = 'none';
         document.getElementById('resLabel').innerText = "Arahkan Kamera ke Daun Padi";
+        
+        // --- KODE BARU: RESET UI BWD KEMBALI KE KAMERA LIVE ---
+        const previewImg = document.getElementById('bwdPreviewImage');
+        if(previewImg) previewImg.style.display = 'none';
+        
+        const focusBox = document.getElementById('focusBox');
+        if(focusBox) focusBox.style.display = 'block';
+        
+        const outBWD = document.getElementById('outputBWD');
+        if(outBWD) outBWD.innerHTML = '';
+        // --- AKHIR KODE BARU ---
+
         startBWDCamera();
     }
 
@@ -1529,10 +1584,11 @@
         async function startBWDCamera() {
             const video = document.getElementById('videoElement');
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
+                // Diupdate untuk menyimpan stream ke variabel global
+                currentStream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: 'environment' } 
                 });
-                video.srcObject = stream;
+                video.srcObject = currentStream;
                 video.onloadedmetadata = () => {
                     video.play().catch(e => console.error("Gagal play video:", e));
                 };
@@ -1542,20 +1598,91 @@
             }
         }
 
-        document.getElementById('btnCapture').addEventListener('click', () => {
-            const video = document.getElementById('videoElement');
-            const canvas = document.getElementById('hiddenCanvas');
-            const ctx = canvas.getContext('2d');
+        document.getElementById('btnCapture').addEventListener('click', async () => {
+    const video = document.getElementById('videoElement');
+    const canvas = document.getElementById('hiddenCanvas');
+    const ctx = canvas.getContext('2d');
+    const btn = document.getElementById('btnCapture');
 
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0);
+    // Pastikan video sedang berjalan dan kamera aktif
+    if (!video.videoWidth || !currentStream) {
+        alert("Kamera belum siap, mohon tunggu sebentar.");
+        return;
+    }
 
-            // Nilai diselaraskan dengan masker visual (X: 42%, Y: 25%, Lebar: 16%, Tinggi: 50%)
-            const frame = ctx.getImageData(canvas.width * 0.42, canvas.height * 0.25, canvas.width * 0.16, canvas.height * 0.50);
-            analisisWarnaDaun(frame);
+    // Ambil ukuran asli frame video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    // Resize gambar agar pengiriman ke server lebih ringan dan cepat
+    const exportCanvas = document.createElement('canvas');
+    const exportCtx = exportCanvas.getContext('2d');
+    const targetWidth = 800; // Resolusi aman untuk AI Roboflow
+    exportCanvas.width = targetWidth;
+    exportCanvas.height = (video.videoHeight * targetWidth) / video.videoWidth;
+    
+    // Tambahkan filter brightness & contrast sedikit agar AI lebih akurat membaca warna
+    exportCtx.filter = 'brightness(1.05) contrast(1.1)';
+    exportCtx.drawImage(canvas, 0, 0, exportCanvas.width, exportCanvas.height);
+
+    // Ubah gambar menjadi format base64
+    const base64Img = exportCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+    // --- TAMPILKAN PREVIEW FOTO ---
+    const previewImg = document.getElementById('bwdPreviewImage');
+    if (previewImg) {
+        previewImg.src = canvas.toDataURL('image/jpeg'); 
+        previewImg.style.display = 'block';
+    }
+    
+    // Sembunyikan kotak fokus hijau agar tidak menimpa hasil jepretan di layar
+    const focusBox = document.getElementById('focusBox');
+    if (focusBox) focusBox.style.display = 'none';
+
+    // Ubah status tombol UI menjadi loading
+    const originalText = btn.innerText;
+    btn.innerHTML = "MENGANALISIS AI..."; 
+    btn.disabled = true;
+    btn.style.opacity = "0.7";
+    
+    const outputDiv = document.getElementById('outputBWD');
+    outputDiv.innerHTML = `
+        <div style="text-align: center; color: var(--accent-bwd); font-size: 0.85rem; margin-top: 15px;">
+            <div class="animasi-loading-kalender" style="color:var(--accent-bwd);">Menganalisis tingkat Nitrogen daun...</div>
+        </div>`;
+
+    try {
+        // Kirim HTTP POST ke Web App Google Apps Script BWD
+        const res = await fetch(URL_BWD, {
+            method: 'POST',
+            body: JSON.stringify({ image: base64Img })
         });
+        
+        const data = await res.json();
+        
+        // Hentikan kamera perangkat untuk menghemat baterai HP
+        stopCamera();
+        
+        // Teruskan data ke fungsi global penampil hasil AI
+        currentMode = 'bwd';
+        tampilkanHasil(data);
 
+    } catch (err) {
+        console.error(err);
+        outputDiv.innerHTML = `<div class="error" style="display:block; text-align:center;">Gagal memproses gambar. Periksa koneksi internet atau URL Apps Script.</div>`;
+        
+        // Jika terjadi error (misal sinyal putus), kembalikan UI ke mode kamera live
+        if (previewImg) previewImg.style.display = 'none';
+        if (focusBox) focusBox.style.display = 'block';
+        
+    } finally {
+        // Kembalikan tombol ke kondisi semula
+        btn.innerText = originalText;
+        btn.disabled = false;
+        btn.style.opacity = "1";
+    }
+});
         async function mulaiAnalisis() {
             document.getElementById('scanWindow').classList.add('is-scanning');
             document.getElementById('loader').style.display = 'block';
@@ -2002,6 +2129,9 @@ async function getLocalSSTTimeseries() {
                     getLocalSSTTimeseries()
                 ]);
                 
+                const ensoSmooth = getMovingAverage(enso.anomalies, 2);
+const iodSmooth = getMovingAverage(iod.anomalies, 2);
+
                 renderMacroChart(enso.labels, enso.anomalies, iod.anomalies);
                 renderLocalChart(sstLokal.labels, sstLokal.boneData, sstLokal.makassarData);
                 
@@ -2152,8 +2282,8 @@ async function getLocalSSTTimeseries() {
                     }
                     document.getElementById('resGejala').innerHTML = hasil.gejala;
                     let warnaKepaparan = hasil.tingkat_keparahan === "Sangat Tinggi" || hasil.tingkat_keparahan === "Tinggi" ? "var(--red-alert)" : "var(--accent-soil)";
-                    let keparahanText = hasil.tingkat_keparahan && hasil.tingkat_keparahan !== "-" ? `<span style="color: ${warnaKepaparan}; font-weight: 700;">[Risiko: ${hasil.tingkat_keparahan}]</span><br>` : "";
-                    document.getElementById('resPenyebab').innerHTML = keparahanText + (hasil.penyebab || "-");
+document.getElementById('resRisiko').innerHTML = `<span style="color: ${warnaKepaparan};">${hasil.tingkat_keparahan || "-"}</span>`;
+document.getElementById('resPenyebab').innerHTML = (hasil.penyebab || "-");
                     document.getElementById('resSolusi').innerHTML = hasil.solusi;
                     document.getElementById('resMerek').innerHTML = hasil.merek || "-";
                     
@@ -2195,8 +2325,8 @@ async function getLocalSSTTimeseries() {
                     }
                     document.getElementById('resGejalaHama').innerHTML = hasilHama.gejala || "-";
                     let warnaKepaparan = hasilHama.tingkat_keparahan === "Sangat Tinggi" || hasilHama.tingkat_keparahan === "Tinggi" ? "var(--red-alert)" : "var(--accent-soil)";
-                    let keparahanText = hasilHama.tingkat_keparahan && hasilHama.tingkat_keparahan !== "-" ? `<span style="color: ${warnaKepaparan}; font-weight: 700;">[Status Ledakan: ${hasilHama.tingkat_keparahan}]</span><br>` : "";
-                    document.getElementById('resPenyebabHama').innerHTML = keparahanText + (hasilHama.penyebab || "-");
+document.getElementById('resRisikoHama').innerHTML = `<span style="color: ${warnaKepaparan};">${hasilHama.tingkat_keparahan || "-"}</span>`;
+document.getElementById('resPenyebabHama').innerHTML = (hasilHama.penyebab || "-");
                     document.getElementById('resSolusiHama').innerHTML = hasilHama.solusi || "-";
                     document.getElementById('resMerekHama').innerHTML = hasilHama.merek || "-";
                     
@@ -2590,7 +2720,7 @@ async function getLocalSSTTimeseries() {
             let rc = (pendapatan / totalBiaya).toFixed(2);
 
             let bepProduksi = totalBiaya / harga; 
-            let bepHarga = totalBiaya / hasil;    
+            let bepHarga = totalBiaya / hasil;   
 
             let status = "";
             if(rc < 1) status = "❌ Rugi";
@@ -2989,7 +3119,6 @@ async function prosesAnalisisKalender() {
         }
         
         // 1. Fungsi untuk merender grafik batang (Bar Chart) Kalender Iklim
-// 1. Fungsi untuk merender grafik batang (Bar Chart) Kalender Iklim
 function renderKalenderChart(labels, dataSkor) {
     const ctx = document.getElementById('kalenderChart').getContext('2d');
     
