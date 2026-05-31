@@ -426,7 +426,7 @@
             <p>Internet of Things. Developed by PPL MILENIAL WAJO</p>
         </div>
         <div class="tab-container">
-            <button class="tab-btn" id="tabCuaca" onclick="switchMode('cuaca')">CUACA/IKLIM</button>
+            <button class="tab-btn" id="tabCuaca" onclick="switchMode('cuaca')">RISIKO CUACA</button>
             <button class="tab-btn" id="tabKalender" onclick="switchMode('kalender')">RISIKO IKLIM</button>
             <button class="tab-btn" id="tabVarietas" onclick="switchMode('varietas')">VARIETAS PADI</button>
             <button class="tab-btn" id="tabPupuk" onclick="switchMode('pupuk')">DOSIS PUPUK</button> 
@@ -2217,35 +2217,90 @@ const iodSmooth = getMovingAverage(iod.anomalies, 2);
             if (nilaiEnso > 0.5 && nilaiIod > 0.4) {
                 judulKesimpulan = "🚨 WASPADA RISIKO KEKERINGAN (EL NINO + IOD POSITIF)";
                 warnaAksen = "var(--red-alert)";
-                teksAnalisis = `🌏 NASIONAL: Kombinasi El Nino (+${nilaiEnso}°C) dan IOD Positif (+${nilaiIod}°C) menekan curah hujan di Indonesia timur.\n\n📍 SULSEL: SST Teluk Bone ${sstBone}°C, Selat Makassar ${sstMakassar}°C. Pasokan uap air berkurang, risiko defisit air di lahan sawah beberapa wilayah Sulsel meningkat.`;
-                rekomendasiPPL = "⚡ SARAN DAN TINDAKAN: (1) Potensi mundurnya musim hujan 1-2 bulan, (2) Rekomendasi varietas tahan kering (Inpari 42, Inpari 43), (3) Alihkan ke palawija jika air terbatas.";
+                teksAnalisis = `<ul style="margin: 0 0 12px 0; padding-left: 20px;">
+                    <li><b>🌏 NASIONAL:</b> Kombinasi El Nino (+${nilaiEnso}°C) dan IOD Positif (+${nilaiIod}°C) menekan curah hujan di Indonesia timur.</li>
+                    <li><b>📍 SULSEL:</b> SST Teluk Bone ${sstBone}°C, Selat Makassar ${sstMakassar}°C. Pasokan uap air berkurang, risiko defisit air di lahan sawah beberapa wilayah Sulsel meningkat.</li>
+                </ul>`;
+                rekomendasiPPL = `⚡ <b>SARAN DAN TINDAKAN:</b>
+                <ul style="margin: 5px 0 0 0; padding-left: 20px;">
+                    <li>Potensi mundurnya musim hujan 1-2 bulan</li>
+                    <li>Rekomendasi varietas tahan kering (Inpari 42, Inpari 43)</li>
+                    <li>Alihkan ke palawija jika air terbatas</li>
+                </ul>`;
             } else if (nilaiEnso > 0.5 && nilaiIod <= 0.4) {
                 judulKesimpulan = "⚠️ WASPADA MUSIM KEMARAU PANJANG (EL NINO MODERAT)";
                 warnaAksen = "var(--accent-soil)";
                 if (sstBone >= 29.0) {
-                    teksAnalisis = `🌏 NASIONAL: El Nino (+${nilaiEnso}°C) mengurangi curah hujan 20-40% di Indonesia timur.\n\n📍 SULSEL: SST Teluk Bone hangat (${sstBone}°C). Masih ada potensi hujan lokal singkat di beberapa wilayah Sulsel.`;
-                    rekomendasiPPL = "🌾 SARAN DAN TINDAKAN: (1) Gunakan varietas genjah (Inpari 32, Inpari 42, Cakrabuana), (2) Terapkan jajar legowo 2:1, (3) Pantau wereng, (4) Optimalisasi irigasi sumur bor.";
+                    teksAnalisis = `<ul style="margin: 0 0 12px 0; padding-left: 20px;">
+                        <li><b>🌏 NASIONAL:</b> El Nino (+${nilaiEnso}°C) mengurangi curah hujan 20-40% di Indonesia timur.</li>
+                        <li><b>📍 SULSEL:</b> SST Teluk Bone hangat (${sstBone}°C). Masih ada potensi hujan lokal singkat di beberapa wilayah Sulsel.</li>
+                    </ul>`;
+                    rekomendasiPPL = `🌾 <b>SARAN DAN TINDAKAN:</b>
+                    <ul style="margin: 5px 0 0 0; padding-left: 20px;">
+                        <li>Gunakan varietas genjah (Inpari 32, Inpari 42, Cakrabuana)</li>
+                        <li>Terapkan jajar legowo 2:1</li>
+                        <li>Pantau wereng</li>
+                        <li>Optimalisasi irigasi sumur bor</li>
+                    </ul>`;
                 } else {
-                    teksAnalisis = `🌏 NASIONAL: El Nino (+${nilaiEnso}°C) aktif. Dampak utama pengurangan intensitas hujan.\n\n📍 SULSEL: SST Teluk Bone dingin (${sstBone}°C). Pasokan uap air sangat berkurang, risiko defisit air berkepanjangan di beberapa wilayah Sulsel tinggi.`;
-                    rekomendasiPPL = "🚜 SARAN DAN TINDAKAN: (1) Jangan paksakan tanam padi jika air tidak cukup, (2) Alihkan ke jagung/kacang tanah/sorgum, (3) Gunakan varietas genjah (Inpari 32, Inpari 42, Cakrabuana) (4) Gunakan sistem Tapin.";
+                    teksAnalisis = `<ul style="margin: 0 0 12px 0; padding-left: 20px;">
+                        <li><b>🌏 NASIONAL:</b> El Nino (+${nilaiEnso}°C) aktif. Dampak utama pengurangan intensitas hujan.</li>
+                        <li><b>📍 SULSEL:</b> SST Teluk Bone dingin (${sstBone}°C). Pasokan uap air sangat berkurang, risiko defisit air berkepanjangan di beberapa wilayah Sulsel tinggi.</li>
+                    </ul>`;
+                    rekomendasiPPL = `🚜 <b>SARAN DAN TINDAKAN:</b>
+                    <ul style="margin: 5px 0 0 0; padding-left: 20px;">
+                        <li>Jangan paksakan tanam padi jika air tidak cukup</li>
+                        <li>Alihkan ke jagung/kacang tanah/sorgum</li>
+                        <li>Gunakan varietas genjah (Inpari 32, Inpari 42, Cakrabuana)</li>
+                        <li>Gunakan sistem Tapin</li>
+                    </ul>`;
                 }
             } else if (nilaiEnso < -0.5) {
                 judulKesimpulan = "🌧️ WASPADA RISIKO HUJAN TINGGI & BANJIR (LA NINA)";
                 warnaAksen = "var(--accent-bwd)";
-                teksAnalisis = `🌏 NASIONAL: La Nina (-${Math.abs(nilaiEnso)}°C) meningkatkan curah hujan 30-50% di Indonesia timur.\n\n📍 SULSEL: SST Teluk Bone ${sstBone}°C. Potensi hujan sangat tinggi (40-60% di atas normal), risiko banjir dan genangan di lahan sawah beberapa wilayah Sulsel meningkat.`;
-                rekomendasiPPL = "🌊 SARAN DAN TINDAKAN: (1) Perbaiki drainase lahan, (2) Gunakan varietas tahan rendaman (Inpari 30, Inpari 33), (3) Kurangi Urea 25%, (4) Waspada Blast dan Sheath Blight, (5) Siapkan pompa air portable.";
+                teksAnalisis = `<ul style="margin: 0 0 12px 0; padding-left: 20px;">
+                    <li><b>🌏 NASIONAL:</b> La Nina (-${Math.abs(nilaiEnso)}°C) meningkatkan curah hujan 30-50% di Indonesia timur.</li>
+                    <li><b>📍 SULSEL:</b> SST Teluk Bone ${sstBone}°C. Potensi hujan sangat tinggi (40-60% di atas normal), risiko banjir dan genangan di lahan sawah beberapa wilayah Sulsel meningkat.</li>
+                </ul>`;
+                rekomendasiPPL = `🌊 <b>SARAN DAN TINDAKAN:</b>
+                <ul style="margin: 5px 0 0 0; padding-left: 20px;">
+                    <li>Perbaiki drainase lahan</li>
+                    <li>Gunakan varietas tahan rendaman (Inpari 30, Inpari 33)</li>
+                    <li>Kurangi Urea 25%</li>
+                    <li>Waspada Blast dan Sheath Blight</li>
+                    <li>Siapkan pompa air portable</li>
+                </ul>`;
             } else if (nilaiEnso <= 0.5 && nilaiEnso >= -0.5 && nilaiIod <= 0.4 && nilaiIod >= -0.4) {
                 judulKesimpulan = "✅ KONDISI IKLIM NORMAL / NETRAL";
                 warnaAksen = "var(--accent-green)";
-                teksAnalisis = `🌏 NASIONAL: ENSO (${nilaiEnso > 0 ? '+' : ''}${nilaiEnso}°C) dan IOD (${nilaiIod > 0 ? '+' : ''}${nilaiIod}°C) netral. Tidak ada anomali iklim signifikan.\n\n📍 SULSEL: SST Teluk Bone ${sstBone}°C, Selat Makassar ${sstMakassar}°C normal. Pola hujan mengikuti kalender tanam.`;
-                rekomendasiPPL = "🌟 SARAN DAN TINDAKAN: (1) Lanjutkan pola tanam sesuai kalender, (2) Gunakan varietas unggul (Ciherang, Mekongga, Inpari 32), (3) Pemupukan berimbang sesuai BWD, (4) Pantau OPT rutin tiap minggu.";
+                teksAnalisis = `<ul style="margin: 0 0 12px 0; padding-left: 20px;">
+                    <li><b>🌏 NASIONAL:</b> ENSO (${nilaiEnso > 0 ? '+' : ''}${nilaiEnso}°C) dan IOD (${nilaiIod > 0 ? '+' : ''}${nilaiIod}°C) netral. Tidak ada anomali iklim signifikan.</li>
+                    <li><b>📍 SULSEL:</b> SST Teluk Bone ${sstBone}°C, Selat Makassar ${sstMakassar}°C normal. Pola hujan mengikuti kalender tanam.</li>
+                </ul>`;
+                rekomendasiPPL = `🌟 <b>SARAN DAN TINDAKAN:</b>
+                <ul style="margin: 5px 0 0 0; padding-left: 20px;">
+                    <li>Lanjutkan pola tanam sesuai kalender</li>
+                    <li>Gunakan varietas unggul (Ciherang, Mekongga, Inpari 32)</li>
+                    <li>Pemupukan berimbang sesuai BWD</li>
+                    <li>Pantau OPT rutin tiap minggu</li>
+                </ul>`;
             } else {
                 let ensoStatus = nilaiEnso > 0.5 ? "El Nino lemah" : (nilaiEnso < -0.5 ? "La Nina lemah" : "netral");
                 let iodStatus = nilaiIod > 0.4 ? "IOD Positif" : (nilaiIod < -0.4 ? "IOD Negatif" : "netral");
                 judulKesimpulan = "⚠️ KONDISI IKLIM TRANSISI / CAMPURAN";
                 warnaAksen = "var(--accent-soil)";
-                teksAnalisis = `🌏 NASIONAL: ENSO ${ensoStatus} (${nilaiEnso > 0 ? '+' : ''}${nilaiEnso}°C) dengan IOD ${iodStatus} (${nilaiIod > 0 ? '+' : ''}${nilaiIod}°C). Pola hujan tidak menentu.\n\n📍 SULSEL: SST Teluk Bone ${sstBone}°C, Selat Makassar ${sstMakassar}°C. Beberapa wilayah Sulsel berisiko kekeringan dan banjir lokal dalam satu musim.`;
-                rekomendasiPPL = "🌾 SARAN DAN TINDAKAN: (1) Monitor curah hujan mingguan, (2) Siapkan strategi adaptasi ganda, (3) Sosialisasi fleksibilitas jadwal tanam, (4) Dokumentasikan ke Dinas TPHP, (5) Gunakan varietas adaptif (Inpari 42 untuk kering / Inpari 33 untuk basah).";
+                teksAnalisis = `<ul style="margin: 0 0 12px 0; padding-left: 20px;">
+                    <li><b>🌏 NASIONAL:</b> ENSO ${ensoStatus} (${nilaiEnso > 0 ? '+' : ''}${nilaiEnso}°C) dengan IOD ${iodStatus} (${nilaiIod > 0 ? '+' : ''}${nilaiIod}°C). Pola hujan tidak menentu.</li>
+                    <li><b>📍 SULSEL:</b> SST Teluk Bone ${sstBone}°C, Selat Makassar ${sstMakassar}°C. Beberapa wilayah Sulsel berisiko kekeringan dan banjir lokal dalam satu musim.</li>
+                </ul>`;
+                rekomendasiPPL = `🌾 <b>SARAN DAN TINDAKAN:</b>
+                <ul style="margin: 5px 0 0 0; padding-left: 20px;">
+                    <li>Monitor curah hujan mingguan</li>
+                    <li>Siapkan strategi adaptasi ganda</li>
+                    <li>Sosialisasi fleksibilitas jadwal tanam</li>
+                    <li>Dokumentasikan ke Dinas TPHP</li>
+                    <li>Gunakan varietas adaptif (Inpari 42 untuk kering / Inpari 33 untuk basah)</li>
+                </ul>`;
             }
             
             let terpaduBox = document.getElementById('iklimTerpaduBox');
@@ -2257,7 +2312,7 @@ const iodSmooth = getMovingAverage(iod.anomalies, 2);
                         🔮 KESIMPULAN PREDIKSI IKLIM TERPADU
                     </div>
                     <h4 style="margin: 0 0 10px 0; font-size: 1.05rem; color: #fff; font-weight: 700;">${judulKesimpulan}</h4>
-                    <p style="font-size: 0.8rem; line-height: 1.55; color: #cbd5e1; margin: 0 0 12px 0;">${teksAnalisis}</p>
+                    <div style="font-size: 0.8rem; line-height: 1.55; color: #cbd5e1;">${teksAnalisis}</div>
                     <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 10px; font-size: 0.8rem; color: #f8fafc; border-left: 3px solid ${warnaAksen};">
                         ${rekomendasiPPL}
                     </div>`;
