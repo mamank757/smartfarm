@@ -425,20 +425,21 @@
             <h1>SMART FARMING - IOT</h1>
             <p>Internet of Things. Developed by PPL MILENIAL WAJO</p>
         </div>
-        <div class="tab-container">
-            <button class="tab-btn" id="tabCuaca" onclick="switchMode('cuaca')">RISIKO CUACA</button>
-            <button class="tab-btn" id="tabKalender" onclick="switchMode('kalender')">RISIKO IKLIM</button>
-            <button class="tab-btn" id="tabVarietas" onclick="switchMode('varietas')">VARIETAS PADI</button>
-            <button class="tab-btn" id="tabPupuk" onclick="switchMode('pupuk')">DOSIS PUPUK</button> 
-            <button class="tab-btn" id="tabBiaya" onclick="switchMode('biaya')">BIAYA TANI</button>
-            <button class="tab-btn" id="tabMalai" onclick="switchMode('malai')">HASIL PANEN</button>
-            <button class="tab-btn" id="tabDaun" onclick="switchMode('daun')">PENYAKIT PADI</button>
-            <button class="tab-btn" id="tabHama" onclick="switchMode('hama')">HAMA PADI</button>
-            <button class="tab-btn" id="tabGulma" onclick="switchMode('gulma')">JENIS GULMA</button>
-            <button class="tab-btn" id="tabTanah" onclick="switchMode('tanah')">FISIK TANAH</button>
-            <button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">UJI BWD</button>
-        </div>
-    </div>
+       <div class="tab-container">
+    <button class="tab-btn" id="tabCuaca" onclick="switchMode('cuaca')">RISIKO CUACA</button>
+    <button class="tab-btn" id="tabKalender" onclick="switchMode('kalender')">RISIKO IKLIM</button>
+    <button class="tab-btn" id="tabVarietas" onclick="switchMode('varietas')">VARIETAS PADI</button>
+    <button class="tab-btn" id="tabPupuk" onclick="switchMode('pupuk')">DOSIS PUPUK</button> 
+    <button class="tab-btn" id="tabBiaya" onclick="switchMode('biaya')">BIAYA TANI</button>
+    <button class="tab-btn" id="tabMalai" onclick="switchMode('malai')">HASIL PANEN</button>
+    <button class="tab-btn" id="tabDaun" onclick="switchMode('daun')">PENYAKIT PADI</button>
+    <button class="tab-btn" id="tabHama" onclick="switchMode('hama')">HAMA PADI</button>
+    <button class="tab-btn" id="tabGulma" onclick="switchMode('gulma')">JENIS GULMA</button>
+    <button class="tab-btn" id="tabTanah" onclick="switchMode('tanah')">FISIK TANAH</button>
+    <button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">UJI BWD</button>
+    <button class="tab-btn" id="tabChat" onclick="toggleChatbox()">KONSULTASI</button>
+</div>
+</div>
 
     <div class="card">
         <h3 id="modeTitle">Deteksi Penyakit Padi</h3>
@@ -960,7 +961,22 @@ const URL_BWD = "https://script.google.com/macros/s/AKfycbwGAPTPnLJyg-OtcbFt1aG_
                 currentStream = null;
             }
         }
-
+// Fungsi khusus untuk menampilkan dan menyembunyikan Chatbox AI
+function toggleChatbox() {
+    const chatbox = document.getElementById('chatboxAI');
+    const tabChat = document.getElementById('tabChat');
+    
+    if (chatbox.style.display === 'none' || chatbox.style.display === '') {
+        chatbox.style.display = 'flex';
+        tabChat.classList.add('active');
+        // Sembunyikan floating button biar tidak double
+        const btnBuka = document.getElementById('btnBukaChat');
+        if (btnBuka) btnBuka.style.display = 'none';
+    } else {
+        chatbox.style.display = 'none';
+        tabChat.classList.remove('active');
+    }
+}
 // Fungsi untuk menghaluskan fluktuasi (Moving Average)
 function getMovingAverage(data, windowSize = 3) {
     let result = [];
@@ -3393,7 +3409,185 @@ function getWarnaRisiko(skor) {
     if (skor >= 40) return 'var(--accent-soil)';    // Sedang
     return 'var(--accent-green)';                   // Rendah / Aman
 }
-    </script>
+</script>
+<button id="btnBukaChat" style="position: fixed; bottom: 20px; right: 20px; z-index: 999; padding: 12px 20px; background: #10b981; color: #fff; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4); font-family: inherit;">
+    KONSULTASI
+</button>
+
+<div id="chatboxAI" style="display: none; position: fixed; bottom: 80px; right: 20px; z-index: 1000; width: 320px; max-height: 500px; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+    
+    <div style="background: rgba(255,255,255,0.05); padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: #10b981; font-weight: bold; letter-spacing: 1px;">Tanya King Mamank</span>
+        <button id="btnTutupChat" style="background: transparent; color: #ef4444; border: 1px solid #ef4444; padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; cursor: pointer;">
+            TUTUP
+        </button>
+    </div>
+
+    <div id="areaPesan" style="flex: 1; min-height: 300px; max-height: 300px; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="background: rgba(16, 185, 129, 0.1); color: #e2e8f0; padding: 10px; border-radius: 8px; border-left: 3px solid #10b981; font-size: 0.85rem; line-height: 1.5;">
+            Halo! Ada yang bisa saya bantu terkait masalah pertanian hari ini?
+        </div>
+    </div>
+
+    <div style="padding: 15px; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05);">
+        <textarea id="inputPesan" placeholder="Ketik keluhan lahan di sini..." style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px; border-radius: 6px; resize: none; height: 60px; font-family: inherit; margin-bottom: 10px;"></textarea>
+        <button id="btnKirimPesan" style="width: 100%; background: #3b82f6; color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; letter-spacing: 1px;">
+            KIRIM PESAN
+        </button>
+    </div>
+</div>
+
+<script>
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyg9NGGeP0cmZ90zljg2YEWnypHoFNaRfz9_je9ApnibFUi9aT0-jGyTjA7oLr6aag8xA/exec";
+
+const chatboxAI = document.getElementById('chatboxAI');
+const btnBukaChat = document.getElementById('btnBukaChat');
+const btnTutupChat = document.getElementById('btnTutupChat');
+const areaPesan = document.getElementById('areaPesan');
+const inputPesan = document.getElementById('inputPesan');
+const btnKirimPesan = document.getElementById('btnKirimPesan');
+
+chatboxAI.style.display = 'none';
+
+btnBukaChat.addEventListener('click', () => {
+    chatboxAI.style.display = 'flex';
+    btnBukaChat.style.display = 'none';
+});
+
+btnTutupChat.addEventListener('click', () => {
+    chatboxAI.style.display = 'none';
+    btnBukaChat.style.display = 'block';
+});
+
+btnKirimPesan.addEventListener('click', kirimPesan);
+
+inputPesan.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        kirimPesan();
+    }
+});
+
+async function kirimPesan() {
+
+    const teksPesan = inputPesan.value.trim();
+
+    if (!teksPesan) return;
+
+    tambahkanPesanLayar("Anda", teksPesan, "#3b82f6");
+
+    inputPesan.value = "";
+
+    btnKirimPesan.disabled = true;
+    inputPesan.disabled = true;
+    btnKirimPesan.textContent = "MEMPROSES...";
+
+    try {
+
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                pesan: teksPesan
+            })
+        });
+
+        const rawText = await response.text();
+
+        console.log("STATUS:", response.status);
+        console.log("RAW:", rawText);
+
+        let data;
+
+        try {
+            data = JSON.parse(rawText);
+        } catch {
+
+            tambahkanPesanLayar(
+                "DEBUG",
+                rawText,
+                "#f59e0b"
+            );
+
+            return;
+        }
+
+        // Jika ini response langsung dari Groq
+        if (data.choices &&
+            data.choices[0] &&
+            data.choices[0].message) {
+
+            tambahkanPesanLayar(
+                "King Mamank",
+                data.choices[0].message.content,
+                "#10b981"
+            );
+
+            return;
+        }
+
+        // Jika format custom Apps Script
+        if (data.status === "sukses") {
+
+            tambahkanPesanLayar(
+                "King Mamank",
+                data.jawaban,
+                "#10b981"
+            );
+
+            return;
+        }
+
+        tambahkanPesanLayar(
+            "DEBUG",
+            JSON.stringify(data, null, 2),
+            "#ef4444"
+        );
+
+    } catch (err) {
+
+        console.error(err);
+
+        tambahkanPesanLayar(
+            "Sistem",
+            err.message || err.toString(),
+            "#ef4444"
+        );
+
+    } finally {
+
+        btnKirimPesan.disabled = false;
+        inputPesan.disabled = false;
+        btnKirimPesan.textContent = "KIRIM PESAN";
+
+    }
+}
+
+function tambahkanPesanLayar(pengirim, teks, warnaAksen) {
+
+    const bubble = document.createElement("div");
+
+    bubble.style.cssText = `
+        background: rgba(255,255,255,0.05);
+        color: #e2e8f0;
+        padding: 10px;
+        border-radius: 8px;
+        border-left: 3px solid ${warnaAksen};
+        margin-bottom: 10px;
+        line-height: 1.5;
+    `;
+
+    bubble.innerHTML = `
+        <strong style="color:${warnaAksen}">
+            ${pengirim}
+        </strong>
+        <br>
+        ${teks.replace(/\n/g,"<br>")}
+    `;
+
+    areaPesan.appendChild(bubble);
+
+    areaPesan.scrollTop = areaPesan.scrollHeight;
+}
+</script>
         <div id="customAlertModal">
     <div class="modal-card">
         <div id="customAlertIcon" style="font-size: 2rem; margin-bottom: 12px;">📢</div>
