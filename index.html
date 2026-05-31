@@ -4,8 +4,11 @@
     <meta charset="UTF-8">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0b1528">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>PPL Milenial Wajo - Smart Farming</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -194,11 +197,11 @@
         .btn-main:active { transform: scale(0.99); opacity: 0.9; }
         
         .btn-camera { 
-            background: #233147; 
+            background: #2563EB; 
             color: #ffffff; 
             margin-bottom: 16px; 
         }
-        .btn-camera:active { background: #2a3b55; }
+        .btn-camera:active { background: #1d4ed8; }
 
         .scan-window {
             position: relative; 
@@ -1208,6 +1211,14 @@ function getMovingAverage(data, windowSize = 3) {
     }
 
     if (sub !== '') { subEl.innerText = sub; subEl.style.display = 'block'; } else { subEl.style.display = 'none'; }
+    // --- RESET AMAN UNTUK TOMBOL ANALISIS ---
+    const btnAnal = document.getElementById('btnAnalisis');
+    if (btnAnal) {
+        btnAnal.innerText = "🚀 MULAI ANALISIS";
+        btnAnal.onclick = mulaiAnalisis;
+        btnAnal.style.background = "#3b82f6";
+        btnAnal.style.color = "#ffffff";
+    }
 
     if (mode !== 'malai') {
         hasilSampelBulir = [];
@@ -1243,6 +1254,7 @@ function getMovingAverage(data, windowSize = 3) {
     document.getElementById('boxBWD').style.display = mode === 'bwd' ? 'block' : 'none';
     document.getElementById('boxCuaca').style.display = mode === 'cuaca' ? 'block' : 'none';
     document.getElementById('boxMalai').style.display = mode === 'malai' ? 'block' : 'none';
+    document.getElementById('formParameterLahan').style.display = mode === 'malai' ? 'block' : 'none';
     document.getElementById('boxBiayaTani').style.display = mode === 'biaya' ? 'block' : 'none';
     document.getElementById('boxKalkulatorPupuk').style.display = mode === 'pupuk' ? 'block' : 'none';
     // Tambahan untuk menampilkan box kalender
@@ -1282,26 +1294,41 @@ function getMovingAverage(data, windowSize = 3) {
 }
 
         function handleFile(event) {
-            const file = event.target.files[0];
-            const reader = new FileReader();
-            reader.onload = e => {
-                const img = new Image();
-                img.src = e.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    canvas.width = 800; canvas.height = (img.height * 800) / img.width;
-                    ctx.filter = 'brightness(0.9) contrast(1.1)';
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    base64Image = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
-                    document.getElementById('preview').src = canvas.toDataURL('image/jpeg');
-                    document.getElementById('preview').style.display = 'block';
-                    document.getElementById('msg').style.display = 'none';
-                    document.getElementById('btnAnalisis').style.display = 'block';
-                }
-            };
-            reader.readAsDataURL(file);
+    const file = event.target.files[0];
+    const reader = new FileReader();
+    reader.onload = e => {
+        const img = new Image();
+        img.src = e.target.result;
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 800; canvas.height = (img.height * 800) / img.width;
+            ctx.filter = 'brightness(0.9) contrast(1.1)';
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            base64Image = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+            document.getElementById('preview').src = canvas.toDataURL('image/jpeg');
+            document.getElementById('preview').style.display = 'block';
+            document.getElementById('msg').style.display = 'none';
+            
+            // --- KONTROL TOMBOL DINAMIS ---
+            const btnAnalisis = document.getElementById('btnAnalisis');
+            btnAnalisis.style.display = 'block';
+            btnAnalisis.onclick = mulaiAnalisis; // Kembalikan ke fungsi kirim AI
+            btnAnalisis.style.background = "#3b82f6"; // Kembalikan warna biru neon
+            btnAnalisis.style.color = "#ffffff";
+            
+            if (currentMode === 'malai') {
+                document.getElementById('btnCamera').style.display = 'none'; // Sembunyikan kamera asli agar rapi
+                if (hasilSampelBulir.length === 0) btnAnalisis.innerText = "🚀 ANALISIS SAMPEL 1";
+                else if (hasilSampelBulir.length === 1) btnAnalisis.innerText = "🚀 ANALISIS SAMPEL 2";
+                else if (hasilSampelBulir.length === 2) btnAnalisis.innerText = "📊 TAMPILKAN HASIL ANALISIS";
+            } else {
+                btnAnalisis.innerText = "🚀 MULAI ANALISIS";
+            }
         }
+    };
+    reader.readAsDataURL(file);
+}
 
         async function aktifkanGPS() {
     const btn = document.querySelector('.btn-live'); 
@@ -2541,7 +2568,7 @@ document.getElementById('resPenyebabHama').innerHTML = (hasilHama.penyebab || "-
                 let finalConfidence = (1 - akumulasiSalah) * 100; if (finalConfidence > 99.9) finalConfidence = 99.9;
                 conf = finalConfidence.toFixed(1);
             }
-            else if (currentMode === 'malai') {
+           else if (currentMode === 'malai') {
                 const listM = document.getElementById('listMalai'); let totalBulirFotoIni = out.count || 0; 
                 if (hasilSampelBulir.length < 3) { hasilSampelBulir.push(totalBulirFotoIni); }
                 listM.innerHTML = "";
@@ -2550,6 +2577,8 @@ document.getElementById('resPenyebabHama').innerHTML = (hasilHama.penyebab || "-
                 });
 
                 document.getElementById('resLabel').innerText = `Sampel ke-${hasilSampelBulir.length} Tersimpan`; conf = 100;
+
+                const btnAnalisis = document.getElementById('btnAnalisis');
 
                 if (hasilSampelBulir.length === 3) {
                     let rataBulir = (hasilSampelBulir[0] + hasilSampelBulir[1] + hasilSampelBulir[2]) / 3;
@@ -2578,11 +2607,37 @@ document.getElementById('resPenyebabHama').innerHTML = (hasilHama.penyebab || "-
                         🌾 <b>Karakteristik:</b> ${namaVarietas} (Bobot G1000: ${berat1000Butir}g | Faktor Bernas: ${(persenBernas*100)}%)<br>
                         <div style="margin-top:8px; font-size:0.75rem; opacity:0.6; border-top:1px dashed rgba(255,255,255,0.1); padding-top:5px;">⚠️ <i>Sudah dipotong faktor luasan pematang (-15%) & susut tercecer panen (-10%).</i></div>
                         <h3 style="color:var(--accent-green); margin:12px 0 0 0; font-size:1.25rem;">🌾 Estimasi Riil Lahan: ${hasilRiilTonPerHa.toFixed(2)} Ton/Ha</h3>`;
+                    
                     hasilSampelBulir = []; 
+                    
+                    // Reset tombol dengan gaya tulisan standar
+                    btnAnalisis.innerText = "HITUNG LAHAN LAIN";
+                    btnAnalisis.onclick = () => {
+                        document.getElementById('preview').style.display = 'none';
+                        document.getElementById('msg').style.display = 'block';
+                        document.getElementById('result').style.display = 'none';
+                        document.getElementById('btnCamera').style.display = 'block';
+                        btnAnalisis.style.display = 'none';
+                        listM.innerHTML = "";
+                        document.getElementById('resUbinanTeks').innerHTML = "Ambil 3 foto malai padi secara bergantian untuk memunculkan estimasi produktivitas lahan per Hektar.";
+                        btnAnalisis.onclick = mulaiAnalisis;
+                        btnAnalisis.style.background = "#3b82f6";
+                    };
+                    btnAnalisis.style.background = "var(--accent-biaya)"; 
+
                 } else {
-                    document.getElementById('resUbinanTeks').innerHTML = `⏳ <b>Antrean Sampel:</b> Baru terkumpul <b>${hasilSampelBulir.length} dari 3</b> foto sampel.<br>Silakan ambil foto sampel malai berikutnya lalu klik analisis kembali.`;
+                    document.getElementById('resUbinanTeks').innerHTML = `⏳ <b>Antrean Sampel:</b> Baru terkumpul <b>${hasilSampelBulir.length} dari 3</b> foto sampel.<br>Silakan ambil foto sampel malai berikutnya.`;
+                    
+                    if (hasilSampelBulir.length === 1) {
+                        btnAnalisis.innerText = "AMBIL FOTO KEDUA";
+                    } else if (hasilSampelBulir.length === 2) {
+                        btnAnalisis.innerText = "AMBIL FOTO KETIGA";
+                    }
+                    
+                   btnAnalisis.onclick = bukaKamera; 
+                    btnAnalisis.style.background = "#2563EB"; 
                 }
-            }
+            } // Penutup dari blok malai
 
             document.getElementById('resConf').innerText = `Tingkat Keyakinan: ${parseFloat(conf).toFixed(1)}%`;
         }
