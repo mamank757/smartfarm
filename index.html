@@ -80,17 +80,18 @@
             opacity: 0.8;
         }
 
-        .tab-container {
-            display: flex; flex-wrap: wrap; justify-content: center;
-            gap: 6px;
-            background: #111c2e;
-            padding: 6px; 
-            border-radius: 14px;
-            width: 100%; 
-            max-width: 480px; 
-            box-sizing: border-box;
-            margin-top: 5px;
-        }
+       .tab-container {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr); /* Membagi menu jadi 3 kolom sama rata */
+    gap: 6px;
+    background: #111c2e;
+    padding: 6px; 
+    border-radius: 14px;
+    width: 100%; 
+    max-width: 480px; 
+    box-sizing: border-box;
+    margin-top: 5px;
+}
           
         .tab-btn {
             padding: 10px 2px;
@@ -439,6 +440,7 @@
     <button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">UJI BWD</button>
     <button class="tab-btn" id="tabChat1" onclick="toggleChatbox(1)">KONSULTASI 1</button>
     <button class="tab-btn" id="tabChat2" onclick="toggleChatbox(2)">KONSULTASI 2</button>
+    <button class="tab-btn" id="tabChat3" onclick="toggleChatbox(3)">KONSULTASI 3</button>
 </div>
 </div>
 
@@ -970,6 +972,7 @@ function toggleChatbox(type = 1) {
     const chatbox = document.getElementById('chatboxAI');
     const tabChat1 = document.getElementById('tabChat1');
     const tabChat2 = document.getElementById('tabChat2');
+    const tabChat3 = document.getElementById('tabChat3');
     const chatTitle = document.getElementById('chatTitleText');
 
     const isCurrentlyOpen = chatbox.style.display === 'flex';
@@ -980,20 +983,25 @@ function toggleChatbox(type = 1) {
         chatbox.style.display = 'none';
         if(tabChat1) tabChat1.classList.remove('active');
         if(tabChat2) tabChat2.classList.remove('active');
+        if(tabChat3) tabChat3.classList.remove('active');
     } else {
         activeChatType = type;
         chatbox.style.display = 'flex';
         
         if(tabChat1) tabChat1.classList.remove('active');
         if(tabChat2) tabChat2.classList.remove('active');
+        if(tabChat3) tabChat3.classList.remove('active');
 
         // Sesuaikan nama tab dan judul sesuai tipe AI
         if (type === 1) {
             if(tabChat1) tabChat1.classList.add('active');
             if(chatTitle) chatTitle.innerText = "KING MAMANK";
-        } else {
+        } else if (type === 2) {
             if(tabChat2) tabChat2.classList.add('active');
             if(chatTitle) chatTitle.innerText = "PPL WAJO";
+        } else if (type === 3) {
+            if(tabChat3) tabChat3.classList.add('active');
+            if(chatTitle) chatTitle.innerText = "PPL MILENIAL"; // Silakan ubah judulnya sesuai keinginan
         }
 
         // Sembunyikan floating button biar tidak double
@@ -3458,14 +3466,14 @@ function getWarnaRisiko(skor) {
      min-height:0;
 ">
         <div style="background: rgba(16, 185, 129, 0.1); color: #e2e8f0; padding: 10px; border-radius: 8px; border-left: 3px solid #10b981; font-size: 0.85rem; line-height: 1.5;">
-            Halo! Ada yang bisa saya bantu terkait masalah pertanian hari ini?
+            Halo! Ada yang bisa saya bantu terkait masalah pertanian?
         </div>
     </div>
 
     <div style="padding: 15px; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05);">
         <textarea id="inputPesan" placeholder="Ketik pertanyaan di sini..." style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px; border-radius: 6px; resize: none; height: 60px; font-family: inherit; margin-bottom: 10px;"></textarea>
         <button id="btnKirimPesan" style="width: 100%; background: #3b82f6; color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; letter-spacing: 1px;">
-            KIRIM PESAN
+            KIRIM PERTANYAAN
         </button>
     </div>
 </div>
@@ -3473,6 +3481,7 @@ function getWarnaRisiko(skor) {
 <script>
 const GAS_URL_1 = "https://script.google.com/macros/s/AKfycbzJfQzgWnMJKqiaT8YP-GEPI_PNyYgjMkdL7LWQeostDueXwhRcY8ihHsPxNVTvIgRv/exec";
 const GAS_URL_2 = "https://script.google.com/macros/s/AKfycbyvSjJziHRXDf_sj0HX1zKOr3P57uzvBBwT1EZzedVhzykUB4JN5H-WCuJNH43dhXcX/exec"; 
+const GAS_URL_3 = "https://script.google.com/macros/s/AKfycbyocjMjOe-XT4icdDKhdmWGCsUV_snCY6a2X0GXnFUs_tM60d5U5VsNvAiECJ6rM7Y/exec"; 
 
 const chatboxAI = document.getElementById('chatboxAI');
 const btnBukaChat = document.getElementById('btnBukaChat');
@@ -3512,11 +3521,14 @@ async function kirimPesan() {
 
     btnKirimPesan.disabled = true;
     inputPesan.disabled = true;
-    btnKirimPesan.textContent = "MEMPROSES...";
+    btnKirimPesan.textContent = "MENUNGGU JAWABAN...";
 
     try {
 
-        const targetUrl = activeChatType === 1 ? GAS_URL_1 : GAS_URL_2;
+        let targetUrl;
+        if (activeChatType === 1) targetUrl = GAS_URL_1;
+        else if (activeChatType === 2) targetUrl = GAS_URL_2;
+        else targetUrl = GAS_URL_3;
         const response = await fetch(targetUrl, {
             method: "POST",
             body: JSON.stringify({
