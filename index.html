@@ -1038,57 +1038,298 @@ function getMovingAverage(data, windowSize = 3) {
         }
 
         function hitungRisikoWereng(suhu, kelembapan, curahHujan, faseTanaman) {
-    let skor = 0; let level = "RENDAH"; let warna = "var(--accent-green)"; let detail = ""; let saran = "";
-    if (suhu >= 26 && suhu <= 30) { skor += 35; } else if (suhu >= 23 && suhu < 26) { skor += 20; } else if (suhu > 30) { skor += 15; }
-    if (kelembapan >= 85) { skor += 30; } else if (kelembapan >= 75) { skor += 15; }
-    if (curahHujan >= 20) { skor -= 10; } else if (curahHujan >= 5 && curahHujan < 20) { skor += 10; }
-    
-    // LOGIKA FASE TANAMAN
-    if (faseTanaman.fase.includes("Vegetatif") || faseTanaman.fase.includes("Generatif")) {
-        skor += 20; // Tanaman hijau dan rimbun, wereng suka
-    } else if (faseTanaman.fase.includes("Panen") || faseTanaman.fase.includes("Bera")) {
-        skor -= 40; // Batang sudah keras/kering, wereng tidak suka
+    let skor = 0;
+    let level = "RENDAH";
+    let warna = "var(--accent-green)";
+    let detail = "";
+    let saran = "";
+
+    // ─────────────────────────────────────────────
+    // 1. FAKTOR SUHU
+    // Sumber: Baehaki & Mejaya (2014), Jurnal Iptek Tanaman Pangan
+    // Suhu optimal WBC: 25–30°C
+    // ─────────────────────────────────────────────
+    if (suhu >= 25 && suhu <= 30) {
+        skor += 35; // Zona optimal perkembangan WBC
+    } else if (suhu > 30) {
+        skor += 10; // Suhu tinggi menekan reproduksi nimfa
+    } else if (suhu >= 22 && suhu < 25) {
+        skor += 15; // Suboptimal tapi masih bisa berkembang
+    }
+    // suhu < 22°C → tidak ada penambahan skor (tidak kondusif)
+
+    // ─────────────────────────────────────────────
+    // 2. FAKTOR KELEMBAPAN
+    // Sumber: Baehaki & Mejaya (2014) — threshold kritis RH > 80%
+    // Urutan: dari TERTINGGI ke TERENDAH agar tidak overlap
+    // ─────────────────────────────────────────────
+    if (kelembapan >= 90) {
+        skor += 45; // Kondisi ekstrem basah, telur menetas massal
+    } else if (kelembapan >= 85) {
+        skor += 35; // Sangat kondusif
+    } else if (kelembapan >= 80) {
+        skor += 20; // Mulai kondusif (threshold ilmiah Baehaki)
+    }
+    // kelembapan < 80% → tidak ada penambahan skor
+
+    // ─────────────────────────────────────────────
+    // 3. FAKTOR CURAH HUJAN
+    // Hujan lebat membilas koloni WBC dari batang (efek knockdown)
+    // Hujan ringan justru meningkatkan kelembapan mikro kanopi
+    // ─────────────────────────────────────────────
+    if (curahHujan >= 20) {
+        skor -= 15; // Hujan lebat: efek knockdown mekanis
+    } else if (curahHujan >= 5 && curahHujan < 20) {
+        skor += 10; // Hujan ringan: tingkatkan RH mikro kanopi
+    } else if (curahHujan === 0) {
+        skor += 5;  // Kering total: WBC bebas bergerak antar rumpun
     }
 
-    if (skor >= 70) { level = "TINGGI"; warna = "var(--red-alert)"; detail = "Kondisi cuaca dan fase padi sangat mendukung ledakan Wereng Batang Coklat."; saran = "✅ Lakukan pengamatan intensif di pangkal batang. Jika wereng > 5 ekor/rumpun, segera aplikasikan insektisida sistemik (BPMC, Imidakloprid)."; } 
-    else if (skor >= 45) { level = "SEDANG"; warna = "var(--accent-soil)"; detail = "Kondisi mendukung perkembangan wereng, terutama jika jarak tanam rapat."; saran = "✅ Pantau tanaman. Hindari pupuk Urea berlebih agar batang tidak terlalu lunak."; } 
-    else { level = "RENDAH"; warna = "var(--accent-green)"; detail = "Kondisi saat ini kurang mendukung ledakan wereng."; saran = "✅ Tetap waspada dan amati secara rutin tiap minggu."; }
+    // ─────────────────────────────────────────────
+    // 4. FAKTOR FASE TANAMAN
+    // Sumber: IRRI Rice Knowledge Bank — WBC dominan saat
+    // kanopi rapat & batang masih lunak (Vegetatif–Generatif)
+    // ─────────────────────────────────────────────
+    if (faseTanaman.fase.includes("Vegetatif")) {
+        skor += 20; // Kanopi mulai rapat, batang lunak, sumber nutrisi tinggi
+    } else if (faseTanaman.fase.includes("Generatif")) {
+        skor += 25; // Kanopi paling rapat, kelembapan mikro maksimal
+    } else if (faseTanaman.fase.includes("Panen") || faseTanaman.fase.includes("Bera")) {
+        skor -= 30; // Batang mengeras/kering, tidak cocok untuk WBC
+    } else if (faseTanaman.fase.includes("Persemaian") || faseTanaman.fase.includes("Penanaman")) {
+        skor += 10; // Tanaman muda, populasi awal bisa masuk
+    }
+
+    // ─────────────────────────────────────────────
+    // 5. PASTIKAN SKOR TIDAK NEGATIF
+    // ─────────────────────────────────────────────
+    if (skor < 0) skor = 0;
+
+    // ─────────────────────────────────────────────
+    // 6. KLASIFIKASI LEVEL RISIKO
+    // Ambang batas mengacu pada skala PHT (Pengendalian Hama Terpadu)
+    // Kementan RI: ambang ekonomi WBC = 10 ekor/rumpun
+    // ─────────────────────────────────────────────
+    if (skor >= 75) {
+        level  = "TINGGI / BAHAYA";
+        warna  = "var(--red-alert)";
+        detail = "Kondisi suhu, kelembapan, dan fase tanaman sangat mendukung "
+               + "ledakan populasi Wereng Batang Coklat (WBC). "
+               + "Potensi kerusakan masif jika tidak segera ditangani.";
+        saran  = "✅ Lakukan pengamatan intensif di pangkal batang minimal 2x seminggu. "
+               + "Jika populasi ≥ 10 ekor/rumpun (ambang ekonomi PHT), "
+               + "segera aplikasikan insektisida sistemik berbahan aktif "
+               + "Imidakloprid, BPMC, atau Buprofezin sesuai dosis anjuran.";
+
+    } else if (skor >= 50) {
+        level  = "SEDANG / WASPADA";
+        warna  = "var(--accent-soil)";
+        detail = "Kondisi mendukung perkembangan WBC, terutama jika jarak tanam "
+               + "terlalu rapat atau pemupukan Urea berlebihan.";
+        saran  = "✅ Pantau populasi WBC tiap minggu. Hindari pemupukan Urea "
+               + "melebihi dosis anjuran agar batang tidak terlalu lunak. "
+               + "Pertahankan jarak tanam Legowo untuk sirkulasi udara optimal.";
+
+    } else if (skor >= 25) {
+        level  = "RENDAH / SIAGA";
+        warna  = "var(--accent-bwd)";
+        detail = "Kondisi belum kritis, namun beberapa faktor lingkungan "
+               + "mulai mendukung awal kolonisasi WBC.";
+        saran  = "✅ Lakukan monitoring rutin mingguan. "
+               + "Jaga keseimbangan ekosistem dengan mempertahankan "
+               + "musuh alami (laba-laba, Cyrtorhinus lividipennis).";
+
+    } else {
+        level  = "SANGAT RENDAH";
+        warna  = "var(--accent-green)";
+        detail = "Kondisi saat ini tidak kondusif untuk perkembangan WBC.";
+        saran  = "✅ Pertahankan sanitasi lahan dan pemupukan NPK berimbang. "
+               + "Tetap lakukan pengamatan rutin sebagai tindakan preventif.";
+    }
+
     return { skor, level, warna, detail, saran };
 }
 
   function hitungRisikoSheathBlight(suhu, kelembapan, faseTanaman) {
-    let skor = 0; let level = "RENDAH"; let warna = "var(--accent-green)"; let detail = ""; let saran = "";
-    if (suhu >= 28 && suhu <= 32) { skor += 35; } else if (suhu >= 25 && suhu < 28) { skor += 20; } else if (suhu > 32) { skor += 15; }
-    if (kelembapan >= 95) { skor += 40; } else if (kelembapan >= 90) { skor += 30; } else if (kelembapan >= 85) { skor += 15; }
-    
-    // LOGIKA FASE TANAMAN
+    let skor = 0;
+    let level = "RENDAH";
+    let warna = "var(--accent-green)";
+    let detail = "";
+    let saran  = "";
+
+    // FAKTOR SUHU
+    // Sumber: Sumartini (2010) & CIMMYT
+    // Rhizoctonia solani optimal pada 28–32°C
+    if (suhu >= 28 && suhu <= 32) {
+        skor += 35; // Zona optimal sporulasi jamur
+    } else if (suhu >= 25 && suhu < 28) {
+        skor += 20; // Sub-optimal, tetap berkembang
+    } else if (suhu > 32) {
+        skor += 15; // Panas ekstrem, pertumbuhan melambat
+    }
+    // suhu < 25°C → tidak kondusif
+
+    // FAKTOR KELEMBAPAN
+    // Sumber: Sumartini (2010) — infeksi dimulai pada RH > 80%
+    // WAJIB urutan dari TERTINGGI ke TERENDAH agar tidak overlap
+    if (kelembapan >= 95) {
+        skor += 45; // Saturasi udara, kondisi ideal sporulasi masif
+    } else if (kelembapan >= 90) {
+        skor += 35; // Sangat kondusif
+    } else if (kelembapan >= 85) {
+        skor += 25; // Kondusif
+    } else if (kelembapan >= 80) {
+        skor += 15; // Mulai kondusif — threshold ilmiah Sumartini (2010)
+    }
+    // kelembapan < 80% → tidak kondusif
+
+    // FAKTOR FASE TANAMAN
+    // Sumber: IRRI — Sheath Blight paling parah saat kanopi rapat
     if (faseTanaman.fase.includes("Generatif")) {
-        skor += 25; // Kanopi sangat rapat, kelembapan mikro tinggi
-    } else if (faseTanaman.umurHari > 30 && faseTanaman.umurHari <= 45) {
-        skor += 15; // Pembentukan anakan maksimal
+        skor += 30; // Kanopi sangat rapat, kelembapan mikro tertinggi
+    } else if (faseTanaman.umurHari > 30 &&
+               faseTanaman.umurHari <= 45) {
+        skor += 20; // Anakan maksimal, kanopi mulai menutup
+    } else if (faseTanaman.umurHari > 45 &&
+               !faseTanaman.fase.includes("Generatif")) {
+        skor += 10; // Pertumbuhan vegetatif lanjut
+    } else if (faseTanaman.fase.includes("Panen") ||
+               faseTanaman.fase.includes("Bera")) {
+        skor -= 20; // Kanopi terbuka kembali, kelembapan mikro turun
     }
 
-    if (skor >= 65) { level = "TINGGI"; warna = "var(--red-alert)"; detail = "Sangat mendukung perkembangan jamur Rhizoctonia solani pada pelepah batang."; saran = "✅ Kurangi Urea, tingkatkan sirkulasi air (keringkan sesaat), dan gunakan fungisida berbahan aktif Validamycin/Hexaconazole."; } 
-    else if (skor >= 45) { level = "SEDANG"; warna = "var(--accent-soil)"; detail = "Cuaca mendukung serangan, terutama di petakan yang terlalu subur dan rapat."; saran = "✅ Pantau pelepah daun bagian bawah. Jaga air tidak menggenang terus menerus."; } 
-    else { level = "RENDAH"; warna = "var(--accent-green)"; detail = "Kondisi kurang mendukung Hawar Pelepah."; saran = "✅ Pertahankan sanitasi lahan dan pemupukan NPK berimbang."; }
+    // Pastikan skor tidak negatif
+    if (skor < 0) skor = 0;
+
+    // KLASIFIKASI LEVEL
+    if (skor >= 70) {
+        level  = "TINGGI / BAHAYA";
+        warna  = "var(--red-alert)";
+        detail = "Kondisi sangat mendukung perkembangan jamur Rhizoctonia "
+               + "solani pada pelepah batang padi.";
+        saran  = "✅ Kurangi dosis Urea, tingkatkan sirkulasi air "
+               + "(keringkan sesaat / intermittent irrigation). "
+               + "Aplikasikan fungisida berbahan aktif Validamycin "
+               + "atau Hexaconazole pada pangkal batang.";
+
+    } else if (skor >= 45) {
+        level  = "SEDANG / WASPADA";
+        warna  = "var(--accent-soil)";
+        detail = "Cuaca mendukung serangan, terutama di petakan yang "
+               + "terlalu subur, rapat, dan tergenang terus-menerus.";
+        saran  = "✅ Pantau pelepah daun bagian bawah untuk bercak "
+               + "coklat berbatas tegas. Jaga agar air tidak menggenang "
+               + "lebih dari 5 hari berturut-turut.";
+
+    } else if (skor >= 20) {
+        level  = "RENDAH / SIAGA";
+        warna  = "var(--accent-bwd)";
+        detail = "Beberapa faktor mulai kondusif untuk awal infeksi. "
+               + "Belum kritis namun perlu kewaspadaan.";
+        saran  = "✅ Pertahankan sanitasi lahan. Hindari pemupukan "
+               + "Nitrogen berlebih yang membuat batang terlalu lunak.";
+
+    } else {
+        level  = "SANGAT RENDAH";
+        warna  = "var(--accent-green)";
+        detail = "Kondisi kurang kondusif untuk Hawar Pelepah saat ini.";
+        saran  = "✅ Pertahankan pemupukan NPK berimbang dan "
+               + "sanitasi lahan antar musim tanam.";
+    }
+
     return { skor, level, warna, detail, saran };
 }     
         function hitungRisikoTungro(suhu, kelembapan, curahHujan, faseTanaman) {
-    let skor = 0; let level = "RENDAH"; let warna = "var(--accent-green)"; let detail = ""; let saran = "";
-    if (suhu >= 25 && suhu <= 29) { skor += 35; } else if (suhu >= 22 && suhu < 25) { skor += 20; }
-    if (kelembapan >= 85) { skor += 30; } else if (kelembapan >= 75) { skor += 15; }
-    if (curahHujan >= 5 && curahHujan <= 25) { skor += 15; } else if (curahHujan > 30) { skor -= 10; }
-    
-    // LOGIKA FASE TANAMAN (Tungro paling mematikan saat tanaman muda)
-    if (faseTanaman.umurHari > 0 && faseTanaman.umurHari <= 45) {
-        skor += 25; 
-    } else if (faseTanaman.umurHari > 60) {
-        skor -= 30; // Tanaman tua sudah jaringan keras, virus tungro sulit berkembang
+    let skor = 0;
+    let level = "RENDAH";
+    let warna = "var(--accent-green)";
+    let detail = "";
+    let saran  = "";
+
+    // FAKTOR SUHU
+    // Sumber: IRRI (2013) & Azzam & Chancellor (2002)
+    // Vektor Wereng Hijau (Nephotettix virescens) aktif pada 20–27°C
+    // Aktivitas menurun tajam di atas 28°C
+    if (suhu >= 20 && suhu <= 27) {
+        skor += 40; // Zona optimal vektor
+    } else if (suhu > 27 && suhu <= 30) {
+        skor += 20; // Masih aktif namun mulai tertekan
+    } else if (suhu > 30) {
+        skor -= 20; // Suhu tinggi menekan aktivitas vektor secara signifikan
+    } else if (suhu >= 16 && suhu < 20) {
+        skor += 10; // Dingin, aktivitas lambat
+    }
+    // suhu < 16°C → tidak kondusif
+
+    // FAKTOR KELEMBAPAN
+    // Kelembapan tinggi mendukung kelangsungan hidup wereng hijau dewasa
+    if (kelembapan >= 90) {
+        skor += 35;
+    } else if (kelembapan >= 85) {
+        skor += 25;
+    } else if (kelembapan >= 75) {
+        skor += 15;
     }
 
-    if (skor >= 70) { level = "TINGGI"; warna = "var(--red-alert)"; detail = "Fase dan cuaca sangat mendukung penularan Virus Tungro oleh Wereng Hijau."; saran = "✅ Cek daun kuning/oranye dari ujung. Jika terlihat wereng hijau, kendalikan segera, cabut dan bakar tanaman yang sudah terinfeksi parah."; } 
-    else if (skor >= 45) { level = "SEDANG"; warna = "var(--accent-soil)"; detail = "Waspada penularan jika di sekitar ada lahan endemik Tungro."; saran = "✅ Lakukan monitoring populasi Wereng Hijau di pesemaian atau pertanaman muda."; } 
-    else { level = "RENDAH"; warna = "var(--accent-green)"; detail = "Risiko penyebaran Tungro relatif kecil."; saran = "✅ Pastikan pembersihan gulma sisa yang bisa jadi inang virus."; }
+    // FAKTOR CURAH HUJAN
+    // Hujan sedang: kondisi lembap ideal untuk wereng hijau bertelur
+    // Hujan lebat: membilas dan menghambat mobilitas serangga
+    if (curahHujan >= 5 && curahHujan <= 25) {
+        skor += 15;
+    } else if (curahHujan > 30) {
+        skor -= 10;
+    }
+
+    // FAKTOR FASE TANAMAN
+    // Tungro paling mematikan saat tanaman MUDA (< 45 HST)
+    // Sumber: IRRI Rice Knowledge Bank — Tungro Virus Disease
+    if (faseTanaman.umurHari >= 0 && faseTanaman.umurHari <= 45) {
+        skor += 30; // Fase kritis: tanaman muda sangat rentan infeksi virus
+    } else if (faseTanaman.umurHari > 45 && faseTanaman.umurHari <= 60) {
+        skor += 10; // Masih rentan namun jaringan mulai mengeras
+    } else if (faseTanaman.umurHari > 60) {
+        skor -= 30; // Batang tua: jaringan keras, virus sulit berkembang
+    }
+
+    // Pastikan skor tidak negatif
+    if (skor < 0) skor = 0;
+
+    // KLASIFIKASI LEVEL
+    if (skor >= 70) {
+        level  = "TINGGI / BAHAYA";
+        warna  = "var(--red-alert)";
+        detail = "Fase tanaman dan kondisi cuaca sangat mendukung penularan "
+               + "Virus Tungro oleh Wereng Hijau. Tanaman muda dalam zona "
+               + "risiko tertinggi.";
+        saran  = "✅ Cek daun untuk gejala kuning/oranye dari ujung. "
+               + "Jika ditemukan wereng hijau, kendalikan segera. "
+               + "Cabut dan bakar tanaman yang terinfeksi parah "
+               + "untuk hentikan penyebaran virus.";
+
+    } else if (skor >= 45) {
+        level  = "SEDANG / WASPADA";
+        warna  = "var(--accent-soil)";
+        detail = "Waspada penularan jika di sekitar lahan ada pertanaman "
+               + "atau gulma sisa yang menjadi inang endemik Tungro.";
+        saran  = "✅ Monitoring populasi Wereng Hijau di pesemaian dan "
+               + "pertanaman muda. Bersihkan gulma inang di sekitar lahan.";
+
+    } else if (skor >= 20) {
+        level  = "RENDAH / SIAGA";
+        warna  = "var(--accent-bwd)";
+        detail = "Risiko sedang mulai muncul. Faktor suhu atau fase belum "
+               + "kritis namun perlu kewaspadaan.";
+        saran  = "✅ Lakukan sanitasi gulma sisa dan pantau munculnya "
+               + "wereng hijau secara rutin.";
+
+    } else {
+        level  = "SANGAT RENDAH";
+        warna  = "var(--accent-green)";
+        detail = "Kondisi saat ini tidak kondusif untuk penyebaran Tungro.";
+        saran  = "✅ Pastikan pembersihan gulma sisa yang bisa menjadi "
+               + "inang virus antar musim tanam.";
+    }
+
     return { skor, level, warna, detail, saran };
 }
 
@@ -2989,13 +3230,30 @@ function hitungJarakHaversine(lat1, lon1, lat2, lon2) {
 }
 
 function normalisasiCurahHujan(curahHujan) {
-    // Mengubah curah hujan riil (mm) menjadi indeks (-1.5 s/d 1.5) agar sinkron dengan algoritma lama
-    if (curahHujan < 50) return -1.5;
-    if (curahHujan < 100) return -0.8;
-    if (curahHujan < 200) return 0;
-    if (curahHujan < 300) return 0.5;
-    if (curahHujan < 400) return 1.0;
-    return 1.5;
+    // Konversi curah hujan riil (mm/bulan) → indeks risiko (-1.5 s/d +1.5)
+    // Kalibrasi khusus iklim MONSUNAL Sulawesi Selatan
+    //
+    // Sumber referensi:
+    //   • BMKG Stasiun Klimatologi Maros — Data historis curah hujan Sulsel
+    //   • Aldrian & Susanto (2003) — Klasifikasi iklim monsunal Indonesia
+    //
+    // Catatan: Baseline "normal" Sulsel = 50–150 mm/bulan (musim gadu)
+    // BERBEDA dengan Jawa Barat/Kalimantan yang bisa 200–300 mm/bulan
+    // Jangan gunakan fungsi ini untuk wilayah luar Sulsel tanpa kalibrasi ulang
+
+    if (curahHujan < 30) {
+        return -1.5; // Sangat kering / ekstrem — hampir tidak ada hujan
+    }
+    if (curahHujan < 75) {
+        return -0.8; // Kering — di bawah normal Sulsel
+    }
+    if (curahHujan < 150) {
+        return 0;    // NORMAL untuk iklim monsunal Sulsel
+    }
+    if (curahHujan < 250) {
+        return 0.8;  // Basah — di atas normal
+    }
+    return 1.5;      // Sangat basah / ekstrem — potensi banjir
 }
 // --- AKHIR KODE BARU ---
 async function prosesAnalisisKalender() {
