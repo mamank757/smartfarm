@@ -437,10 +437,11 @@
     <button class="tab-btn" id="tabHama" onclick="switchMode('hama')">HAMA PADI</button>
     <button class="tab-btn" id="tabGulma" onclick="switchMode('gulma')">JENIS GULMA</button>
     <button class="tab-btn" id="tabTanah" onclick="switchMode('tanah')">FISIK TANAH</button>
-    <button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">UJI BWD</button>
-    <button class="tab-btn" id="tabChat1" onclick="toggleChatbox(1)">KONSUL 1</button>
-    <button class="tab-btn" id="tabChat2" onclick="toggleChatbox(2)">KONSUL 2</button>
-    <button class="tab-btn" id="tabChat3" onclick="toggleChatbox(3)">KONSUL 3</button>
+    <button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">UJI BWD UREA</button>
+    <button class="tab-btn" id="tabChat1" onclick="toggleChatbox(1)">KONSUL ASISTEN 1</button>
+    <button class="tab-btn" id="tabChat2" onclick="toggleChatbox(2)">KONSUL ASISTEN 2</button>
+    <button class="tab-btn" id="tabChat3" onclick="toggleChatbox(3)">KONSUL ASISTEN 3</button>
+    <button class="tab-btn" id="tabChat4" onclick="toggleChatbox(4)">KONSUL ASISTEN 4</button>
 </div>
 </div>
 
@@ -973,6 +974,7 @@ function toggleChatbox(type = 1) {
     const tabChat1 = document.getElementById('tabChat1');
     const tabChat2 = document.getElementById('tabChat2');
     const tabChat3 = document.getElementById('tabChat3');
+    const tabChat4 = document.getElementById('tabChat4'); // Tambahan Tab 4
     const chatTitle = document.getElementById('chatTitleText');
 
     const isCurrentlyOpen = chatbox.style.display === 'flex';
@@ -984,6 +986,7 @@ function toggleChatbox(type = 1) {
         if(tabChat1) tabChat1.classList.remove('active');
         if(tabChat2) tabChat2.classList.remove('active');
         if(tabChat3) tabChat3.classList.remove('active');
+        if(tabChat4) tabChat4.classList.remove('active');
     } else {
         activeChatType = type;
         chatbox.style.display = 'flex';
@@ -991,6 +994,7 @@ function toggleChatbox(type = 1) {
         if(tabChat1) tabChat1.classList.remove('active');
         if(tabChat2) tabChat2.classList.remove('active');
         if(tabChat3) tabChat3.classList.remove('active');
+        if(tabChat4) tabChat4.classList.remove('active');
 
         // Sesuaikan nama tab dan judul sesuai tipe AI
         if (type === 1) {
@@ -1001,7 +1005,10 @@ function toggleChatbox(type = 1) {
             if(chatTitle) chatTitle.innerText = "PPL WAJO";
         } else if (type === 3) {
             if(tabChat3) tabChat3.classList.add('active');
-            if(chatTitle) chatTitle.innerText = "PPL MILENIAL"; // Silakan ubah judulnya sesuai keinginan
+            if(chatTitle) chatTitle.innerText = "PPL MILENIAL";
+        } else if (type === 4) { // Logika untuk Tab 4
+            if(tabChat4) tabChat4.classList.add('active');
+            if(chatTitle) chatTitle.innerText = "PPL BOLA"; // Silakan ubah judul sesuai keinginan
         }
 
         // Sembunyikan floating button biar tidak double
@@ -3483,6 +3490,7 @@ function getWarnaRisiko(skor) {
 const GAS_URL_1 = "https://script.google.com/macros/s/AKfycbzJfQzgWnMJKqiaT8YP-GEPI_PNyYgjMkdL7LWQeostDueXwhRcY8ihHsPxNVTvIgRv/exec";
 const GAS_URL_2 = "https://script.google.com/macros/s/AKfycbyvSjJziHRXDf_sj0HX1zKOr3P57uzvBBwT1EZzedVhzykUB4JN5H-WCuJNH43dhXcX/exec"; 
 const GAS_URL_3 = "https://script.google.com/macros/s/AKfycbwldD-I2QuQew6mDuZ2YCjy7dA21yGT8QIab4sDJF88_Hcs1Jr8BrAduz1ZpSy-6CQN/exec"; 
+const GAS_URL_4 = "https://script.google.com/macros/s/AKfycbxFXv4RlK2hztotRkjt-J8tyd9kBEGm-EoQTpdTZ503q7UfTuW5CUrfrtAe546CTEqZ/exec";
 
 const chatboxAI = document.getElementById('chatboxAI');
 const btnBukaChat = document.getElementById('btnBukaChat');
@@ -3529,7 +3537,8 @@ async function kirimPesan() {
         let targetUrl;
         if (activeChatType === 1) targetUrl = GAS_URL_1;
         else if (activeChatType === 2) targetUrl = GAS_URL_2;
-        else targetUrl = GAS_URL_3;
+        else if (activeChatType === 3) targetUrl = GAS_URL_3;
+        else targetUrl = GAS_URL_4; // Eksekusi URL ke-4
         const response = await fetch(targetUrl, {
             method: "POST",
             body: JSON.stringify({
