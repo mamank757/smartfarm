@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#0b1528">
 <meta name="mobile-web-app-capable" content="yes">
@@ -438,10 +442,10 @@
     <button class="tab-btn" id="tabGulma" onclick="switchMode('gulma')">JENIS GULMA</button>
     <button class="tab-btn" id="tabTanah" onclick="switchMode('tanah')">FISIK TANAH</button>
     <button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">UJI BWD UREA</button>
+    <button class="tab-btn" id="tabUkur" onclick="switchMode('ukur')">UKUR LUAS LAHAN</button>
     <button class="tab-btn" id="tabChat1" onclick="toggleChatbox(1)">KONSUL ASISTEN 1</button>
     <button class="tab-btn" id="tabChat2" onclick="toggleChatbox(2)">KONSUL ASISTEN 2</button>
-    <button class="tab-btn" id="tabChat3" onclick="toggleChatbox(3)">KONSUL ASISTEN 3</button>
-    <button class="tab-btn" id="tabChat4" onclick="toggleChatbox(4)">KONSUL ASISTEN 4</button>
+    <button class="tab-btn" id="tabChat4" onclick="toggleChatbox(4)">KONSUL ASISTEN 3</button>
 </div>
 </div>
 
@@ -544,7 +548,37 @@
                 📋 SALIN DATA REKOMENDASI
             </button>
         </div>
+        <!-- BOX UKUR LUAS LAHAN (POSISI BENAR) -->
+        <div id="boxUkurLahan" style="display: none;">
+            <div class="info-box" style="border-left-color: #22d3ee; background: rgba(34, 211, 238, 0.08);">
+                <strong>📐 UKUR LUAS LAHAN SAWAH</strong><br>
+                <small>Gambar di peta atau jalan keliling lahan menggunakan GPS</small>
+            </div>
 
+            <div style="margin: 15px 0; display: flex; gap: 8px;">
+                <button class="btn-main" id="btnPetaMode" style="background:#22d3ee; flex:1;" onclick="modePeta()">
+                    🗺️ Gambar di Peta
+                </button>
+                <button class="btn-main" id="btnJalanMode" style="background:#eab308; flex:1;" onclick="modeJalan()">
+                    🚶 Jalan Keliling
+                </button>
+            </div>
+
+            <button id="btnSelesaiJalan" class="btn-main" style="display:none; background:#10b981; margin: 8px 0 12px 0; width: 100%;" onclick="selesaiJalan()">
+                ✅ SELESAI BERKELILING LAHAN
+            </button>
+
+            <div id="mapContainer" style="height: 380px; border-radius: 20px; overflow: hidden; border: 2px solid rgba(255,255,255,0.1); margin-bottom: 15px;"></div>
+
+            <div id="ukurResult" class="info-box" style="display:none; border-left-color: #22d3ee;">
+                <strong>📏 Hasil Pengukuran:</strong><br>
+                <span id="luasDisplay" style="font-size: 1.4rem; font-weight: 800; color:#22d3ee;"></span>
+                <br><small id="luasDetail"></small>
+            </div>
+
+            <button class="btn-main" onclick="resetPengukuran()" style="background:#64748b; margin-top: 10px;">🔄 Reset Pengukuran</button>
+            <button class="btn-main" onclick="kirimLuasKeWA()" style="background:#25D366; margin-top: 8px;">💬 Kirim ke WhatsApp</button>
+        </div>
         <div id="boxKalkulatorPupuk" style="display: none;">
             <div class="form-group">
                 <label>📍 CARI KECAMATAN</label>
@@ -837,6 +871,7 @@
                     <div class="info-box" id="boxBlastRisk" style="border-left-color: var(--red-alert); margin-top: 16px;">
                         <strong>⚠️ Risiko Penyakit Tanaman (Blast)</strong><br>
                         <span id="riskResult" style="display: block; margin-top: 4px;"></span>
+                        
                     </div>
                 </div> 
             </div> 
@@ -1457,6 +1492,12 @@ function getMovingAverage(data, windowSize = 3) {
             const customBox = document.getElementById('customPopulasiBox');
             if (metode === 'custom') { customBox.style.display = 'block'; } else { customBox.style.display = 'none'; }
         }
+let map = null;
+let drawnItems = null;
+let currentModeUkur = 'peta';
+let gpsPoints = [];
+let watchId = null;
+let currentLine = null;
 
         function switchMode(mode) {
     if (mode !== 'bwd') {
@@ -1467,47 +1508,66 @@ function getMovingAverage(data, windowSize = 3) {
     let color = '#4fc3f7'; 
     let title = 'Cuaca & Risiko Penyakit Tanaman';
     let sub = '';
+    
     const subEl = document.getElementById('tabSubtitleDisplay');
     const boxLokal = document.getElementById('localSstBox');
     if (boxLokal) boxLokal.style.display = 'none';
 
-    if (mode === 'daun') { color = '#ff4a5a'; title = 'Deteksi Penyakit Padi'; }
-    if (mode === 'hama') { color = 'var(--accent-hama)'; title = 'Pendeteksi & Solusi Hama Padi'; } 
-    if (mode === 'gulma') { color = '#0ea5e9'; title = 'Identifikasi & Solusi Gulma'; }
-    if (mode === 'tanah') { color = '#d19b08'; title = 'Analisis Jenis Tanah'; }
-    if (mode === 'malai') { color = '#ffcc00'; title = 'Estimasi Panen - Ambil 3 foto malai'; }
-    if (mode === 'varietas') { color = 'var(--accent-green)'; title = 'Rekomendasi Varietas Padi Ahli'; }
-    if (mode === 'biaya') { color = '#b388ff'; title = '📱 Analisis Usaha Tani'; sub = 'Menghitung Kebutuhan, Keuntungan dan Perencanaan'; }
-    if (mode === 'pupuk') { color = 'var(--accent-pupuk)'; title = '🧮 Kalkulator Pupuk E-RDKK'; sub = 'Rekomendasi Dosis Berdasarkan Wilayah Nasional'; }
-    // Tambahan untuk Kalender
-    if (mode === 'kalender') { color = 'var(--accent-kalender)'; title = 'Kalender & Ancaman Iklim'; }
+    // Pengaturan Title & Warna
+    switch(mode) {
+        case 'daun':
+            color = '#ff4a5a'; title = 'Deteksi Penyakit Padi'; break;
+        case 'hama':
+            color = 'var(--accent-hama)'; title = 'Pendeteksi & Solusi Hama Padi'; break;
+        case 'gulma':
+            color = '#0ea5e9'; title = 'Identifikasi & Solusi Gulma'; break;
+        case 'tanah':
+            color = '#d19b08'; title = 'Analisis Jenis Tanah'; break;
+        case 'malai':
+            color = '#ffcc00'; title = 'Estimasi Panen - Ambil 3 foto malai'; break;
+        case 'varietas':
+            color = 'var(--accent-green)'; title = 'Rekomendasi Varietas Padi Ahli'; break;
+        case 'biaya':
+            color = '#b388ff'; title = '📱 Analisis Usaha Tani'; 
+            sub = 'Menghitung Kebutuhan, Keuntungan dan Perencanaan'; break;
+        case 'pupuk':
+            color = 'var(--accent-pupuk)'; title = '🧮 Kalkulator Pupuk E-RDKK'; 
+            sub = 'Rekomendasi Dosis Berdasarkan Wilayah Nasional'; break;
+        case 'kalender':
+            color = 'var(--accent-kalender)'; title = 'Kalender & Ancaman Iklim'; break;
+        case 'ukur':
+            color = '#22d3ee'; title = '📐 Ukuran Luas Lahan'; break;
+        case 'bwd':
+            color = '#00ff9d'; title = 'Uji BWD Urea'; break;
+    }
 
-    if (mode === 'bwd') { 
-        color = '#00ff9d'; 
-        title = 'Uji BWD Urea'; 
+    // Reset UI BWD
+    if (mode === 'bwd') {
         document.getElementById('btnCamera').style.display = 'none';
         document.getElementById('scanWindow').style.display = 'none';
         document.getElementById('btnAnalisis').style.display = 'none';
-        document.getElementById('result').style.display = 'block'; 
+        document.getElementById('result').style.display = 'block';
         document.getElementById('resConf').style.display = 'none';
         document.getElementById('resLabel').innerText = "Arahkan Kamera ke Daun Padi";
         
-        // --- KODE BARU: RESET UI BWD KEMBALI KE KAMERA LIVE ---
         const previewImg = document.getElementById('bwdPreviewImage');
         if(previewImg) previewImg.style.display = 'none';
-        
         const focusBox = document.getElementById('focusBox');
         if(focusBox) focusBox.style.display = 'block';
-        
         const outBWD = document.getElementById('outputBWD');
         if(outBWD) outBWD.innerHTML = '';
-        // --- AKHIR KODE BARU ---
 
-        startBWDCamera();
+        if (typeof startBWDCamera === 'function') startBWDCamera();
     }
 
-    if (sub !== '') { subEl.innerText = sub; subEl.style.display = 'block'; } else { subEl.style.display = 'none'; }
-    // --- RESET AMAN UNTUK TOMBOL ANALISIS ---
+    if (sub !== '') { 
+        subEl.innerText = sub; 
+        subEl.style.display = 'block'; 
+    } else { 
+        subEl.style.display = 'none'; 
+    }
+
+    // Reset tombol analisis
     const btnAnal = document.getElementById('btnAnalisis');
     if (btnAnal) {
         btnAnal.innerText = "🚀 MULAI ANALISIS";
@@ -1522,29 +1582,20 @@ function getMovingAverage(data, windowSize = 3) {
         if (listM) listM.innerHTML = "";
     }
 
-    document.getElementById('tabCuaca').className = mode === 'cuaca' ? 'tab-btn active' : 'tab-btn';
-    document.getElementById('tabBiaya').className = mode === 'biaya' ? 'tab-btn active biaya-mode' : 'tab-btn';
-    document.getElementById('tabPupuk').className = mode === 'pupuk' ? 'tab-btn active pupuk-mode' : 'tab-btn';
-    document.getElementById('tabDaun').className = mode === 'daun' ? 'tab-btn active daun-mode' : 'tab-btn';
-    document.getElementById('tabHama').className = mode === 'hama' ? 'tab-btn active hama-mode' : 'tab-btn'; 
-    document.getElementById('tabGulma').className = mode === 'gulma' ? 'tab-btn active gulma-mode' : 'tab-btn';
-    document.getElementById('tabTanah').className = mode === 'tanah' ? 'tab-btn active tanah-mode' : 'tab-btn';
-    document.getElementById('tabBWD').className = mode === 'bwd' ? 'tab-btn active bwd-mode' : 'tab-btn';
-    document.getElementById('tabMalai').className = mode === 'malai' ? 'tab-btn active malai-mode' : 'tab-btn';
-    if(document.getElementById('tabVarietas')) {
-        document.getElementById('tabVarietas').className = mode === 'varietas' ? 'tab-btn active' : 'tab-btn';
-    }
-    // Tambahan untuk aktivasi tombol Kalender
-    if(document.getElementById('tabKalender')) {
-        document.getElementById('tabKalender').className = mode === 'kalender' ? 'tab-btn active kalender-mode' : 'tab-btn';
-    }
+    // Update Tab Active
+    const tabs = ['Cuaca','Kalender','Varietas','Pupuk','Biaya','Malai','Daun','Hama','Gulma','Tanah','BWD','Ukur'];
+    tabs.forEach(tab => {
+        const el = document.getElementById('tab' + tab);
+        if (el) el.className = (mode === tab.toLowerCase()) ? 'tab-btn active' : 'tab-btn';
+    });
 
+    // Update Title
     document.getElementById('modeTitle').innerText = title;
     document.getElementById('modeTitle').style.color = color;
-    document.getElementById('laser').style.background = color;
 
+    // Tampilkan / Sembunyikan Box
     document.getElementById('boxPenyakit').style.display = mode === 'daun' ? 'block' : 'none';
-    document.getElementById('boxHama').style.display = mode === 'hama' ? 'block' : 'none'; 
+    document.getElementById('boxHama').style.display = mode === 'hama' ? 'block' : 'none';
     document.getElementById('boxGulma').style.display = mode === 'gulma' ? 'block' : 'none';
     document.getElementById('boxTanah').style.display = mode === 'tanah' ? 'block' : 'none';
     document.getElementById('boxBWD').style.display = mode === 'bwd' ? 'block' : 'none';
@@ -1553,42 +1604,264 @@ function getMovingAverage(data, windowSize = 3) {
     document.getElementById('formParameterLahan').style.display = mode === 'malai' ? 'block' : 'none';
     document.getElementById('boxBiayaTani').style.display = mode === 'biaya' ? 'block' : 'none';
     document.getElementById('boxKalkulatorPupuk').style.display = mode === 'pupuk' ? 'block' : 'none';
-    // Tambahan untuk menampilkan box kalender
-    if (document.getElementById('boxKalender')) {
-        document.getElementById('boxKalender').style.display = mode === 'kalender' ? 'block' : 'none';
+    document.getElementById('boxKalender').style.display = mode === 'kalender' ? 'block' : 'none';
+    document.getElementById('boxVarietasPadi').style.display = mode === 'varietas' ? 'block' : 'none';
+    document.getElementById('boxUkurLahan').style.display = mode === 'ukur' ? 'block' : 'none';
+
+    // Khusus Mode Ukur
+    if (mode === 'ukur') {
+        setTimeout(() => {
+            if (typeof initMap === 'function') initMap();
+        }, 200);
     }
 
-    if(document.getElementById('boxVarietasPadi')) {
-        document.getElementById('boxVarietasPadi').style.display = mode === 'varietas' ? 'block' : 'none';
-    }
-
-    // Tambahkan 'kalender' agar kamera sembunyi di menu ini
+    // Logika Kamera & Result
     if (mode === 'cuaca' || mode === 'biaya' || mode === 'pupuk' || mode === 'varietas' || mode === 'kalender') {
         document.getElementById('btnCamera').style.display = 'none';
         document.getElementById('scanWindow').style.display = 'none';
         document.getElementById('btnAnalisis').style.display = 'none';
         document.getElementById('result').style.display = (mode === 'cuaca' || mode === 'varietas') ? 'block' : 'none';
-        document.getElementById('resConf').style.display = (mode === 'cuaca' || mode === 'varietas') ? 'none' : 'block';
-        
-        if (mode === 'cuaca') {
-            document.getElementById('gpsPrompt').style.display = isGpsSynced ? 'none' : 'block';
-            document.getElementById('weatherData').style.display = isGpsSynced ? 'block' : 'none';
-            if (isGpsSynced) {
-                if (boxLokal) boxLokal.style.display = 'block';
-                setTimeout(() => { loadGlobalClimateIndices(); }, 100);
-            }
-        } else {
-            document.getElementById('gpsPrompt').style.display = 'none';
-        }
-    } else if (mode !== 'bwd') {
+    } 
+    else if (mode !== 'bwd' && mode !== 'ukur') {
         document.getElementById('btnCamera').style.display = 'block';
         document.getElementById('scanWindow').style.display = 'flex';
-        document.getElementById('gpsPrompt').style.display = 'none';
         document.getElementById('result').style.display = 'none';
-        document.getElementById('btnAnalisis').style.display = base64Image !== "" ? 'block' : 'none';
     }
 }
 
+// ==================== UKUR LUAS LAHAN (PERFECTED) ====================
+
+function initMap() {
+    if (map) {
+        map.invalidateSize();
+        return;
+    }
+
+    map = L.map('mapContainer', { 
+        zoomControl: true, 
+        attributionControl: false 
+    }).setView([-4.0, 120.0], 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 22,
+        className: 'map-tiles'
+    }).addTo(map);
+
+    // Tambahan Layer Satelit agar batas lahan terlihat lebih jelas
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        opacity: 0.6
+    }).addTo(map);
+
+    drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    // Toolbar Draw
+    new L.Control.Draw({
+        draw: {
+            polygon: { 
+                shapeOptions: { 
+                    color: '#22d3ee', 
+                    weight: 4,
+                    opacity: 0.9 
+                } 
+            },
+            rectangle: { 
+                shapeOptions: { 
+                    color: '#22d3ee', 
+                    weight: 4 
+                } 
+            },
+            polyline: false,
+            circle: false,
+            marker: false,
+            circlemarker: false
+        },
+        edit: { featureGroup: drawnItems }
+    }).addTo(map);
+
+    map.on(L.Draw.Event.CREATED, function(e) {
+        // Hapus ukuran sebelumnya agar fokus pada 1 lahan yang baru digambar
+        drawnItems.clearLayers(); 
+        drawnItems.addLayer(e.layer);
+        hitungLuas(e.layer);
+    });
+
+    // Panggil fungsi auto-lokasi khusus Android saat peta dimuat
+    fokusLokasiSekarang();
+}
+
+// Fungsi baru untuk memaksa auto-posisi di Android
+function fokusLokasiSekarang() {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition((position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        
+        map.flyTo([lat, lng], 18, { duration: 1.5 });
+
+        // Beri marker kecil agar tahu titik awal
+        if(markerLokasi) map.removeLayer(markerLokasi);
+        markerLokasi = L.circleMarker([lat, lng], {
+            radius: 8, fillColor: "#3b82f6", color: "#fff", weight: 2, opacity: 1, fillOpacity: 0.9
+        }).addTo(map);
+
+    }, (error) => {
+        console.warn("Auto-posisi terhalang:", error.message);
+    }, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+    });
+}
+
+function hitungLuas(layer) {
+    let latlngs = layer.getLatLngs();
+    
+    // Handle both polygon and rectangle
+    if (Array.isArray(latlngs[0])) latlngs = latlngs[0];
+
+    if (!latlngs || latlngs.length < 3) {
+        alert("Minimal 3 titik diperlukan untuk menghitung luas.");
+        return;
+    }
+
+    let area = 0;
+    
+    // Metode paling akurat
+    if (typeof L.GeometryUtil !== 'undefined' && L.GeometryUtil.geodesicArea) {
+        area = L.GeometryUtil.geodesicArea(latlngs);
+    } else {
+        area = calculatePolygonArea(latlngs);
+    }
+
+    luasTotalHa = (area / 10000).toFixed(4);
+    luasTotalM2 = Math.round(area).toLocaleString('id-ID');
+
+    document.getElementById('ukurResult').style.display = 'block';
+    document.getElementById('luasDisplay').innerHTML = `${luasTotalHa} <small style="font-size:0.95rem; opacity:0.9;">Hektar</small>`;
+    document.getElementById('luasDetail').innerHTML = `
+        ${luasTotalM2} m²<br>
+        <small style="opacity:0.7;">Akurasi tinggi • Metode geodesik</small>
+    `;
+}
+
+// Fallback rumus manual yang lebih akurat
+function calculatePolygonArea(latlngs) {
+    let area = 0;
+    const n = latlngs.length;
+    
+    for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        const lat1 = latlngs[i].lat * Math.PI / 180;
+        const lon1 = latlngs[i].lng * Math.PI / 180;
+        const lat2 = latlngs[j].lat * Math.PI / 180;
+        const lon2 = latlngs[j].lng * Math.PI / 180;
+        
+        area += (lon2 - lon1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+    }
+    
+    return Math.abs(area) * 6378137 * 6378137 / 2; // Earth radius in meters
+}
+
+function modePeta() {
+    alert("🗺️ Cara Menggunakan:\n\n1. Klik beberapa titik mengelilingi lahan\n2. Klik titik pertama lagi untuk menutup polygon");
+}
+
+// Tambahkan ini di deretan variabel global paling atas (bersama map, currentLine, dll)
+let userMarker = null;
+
+// ==========================================
+
+async function modeJalan() {
+    gpsPoints = [];
+    document.getElementById('btnSelesaiJalan').style.display = 'block';
+
+    if (!navigator.geolocation) {
+        alert("Browser tidak mendukung GPS.");
+        return;
+    }
+
+    let gpsMonitor = document.getElementById('gpsMonitor');
+    if (!gpsMonitor) {
+        gpsMonitor = document.createElement('div');
+        gpsMonitor.id = 'gpsMonitor';
+        gpsMonitor.style.cssText = 'position:fixed; top:60px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:#22d3ee; padding:8px 15px; border-radius:20px; z-index:1000; font-size:13px; font-weight:bold; border: 1px solid #22d3ee; text-align:center;';
+        document.body.appendChild(gpsMonitor);
+    }
+    gpsMonitor.innerHTML = '🔄 Mencari sinyal satelit...';
+
+    alert("🚶 MULAI BERJALAN!\n\nUntuk akurasi maksimal, berhentilah sejenak di setiap sudut pematang sawah agar titik terkunci dengan baik.");
+
+    watchId = navigator.geolocation.watchPosition((pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const akurasi = Math.round(pos.coords.accuracy); 
+        
+        const latlng = L.latLng(lat, lng);
+        
+        // 1. UPDATE MARKER POSISI VISUAL
+        // Marker titik selalu mengikuti asalkan akurasi masuk akal (< 30m)
+        // agar user tahu bahwa GPS HP-nya merespon
+        if (akurasi <= 30) {
+            if (!userMarker) {
+                userMarker = L.circleMarker(latlng, {
+                    radius: 7, color: 'white', weight: 2, fillColor: '#eab308', fillOpacity: 1
+                }).addTo(map);
+            } else {
+                userMarker.setLatLng(latlng);
+            }
+        }
+
+        // 2. FILTER KETAT UNTUK PENGUKURAN (AKURASI TINGGI)
+        // Garis batas lahan hanya akan direkam jika sinyal benar-benar bagus (<= 15m)
+        if (akurasi <= 15) {
+            if (gpsPoints.length === 0) {
+                // Titik pertama langsung dimasukkan
+                gpsPoints.push(latlng);
+            } else {
+                // Hitung jarak dari titik terakhir yang direkam
+                const titikTerakhir = gpsPoints[gpsPoints.length - 1];
+                const jarakLangkah = titikTerakhir.distanceTo(latlng);
+
+                // Titik baru hanya direkam jika user sudah bergeser minimal 2.5 meter
+                if (jarakLangkah >= 2.5) {
+                    gpsPoints.push(latlng);
+
+                    if (!currentLine) {
+                        currentLine = L.polyline(gpsPoints, { 
+                            color: '#eab308', weight: 6, opacity: 0.9 
+                        }).addTo(map);
+                    } else {
+                        currentLine.setLatLngs(gpsPoints);
+                    }
+                }
+            }
+        }
+
+        // Update informasi di layar
+        if (gpsMonitor) {
+            let statusTeks = `📍 Titik Terekam: ${gpsPoints.length}<br>Akurasi: ±${akurasi}m`;
+            
+            if (akurasi > 15) {
+                gpsMonitor.style.color = '#f87171'; // Merah (Tunggu sinyal bagus)
+                statusTeks += " (Sinyal Lemah)";
+            } else {
+                gpsMonitor.style.color = '#4ade80'; // Hijau (Siap merekam)
+            }
+            gpsMonitor.innerHTML = statusTeks;
+        }
+
+        map.flyTo(latlng, 19, { duration: 1 });
+    }, (err) => {
+        console.warn("GPS Error:", err);
+    }, { 
+        enableHighAccuracy: true, 
+        maximumAge: 0, 
+        timeout: 10000 
+    });
+}
         function handleFile(event) {
     const file = event.target.files[0];
     const reader = new FileReader();
