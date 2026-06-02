@@ -1783,28 +1783,42 @@ async function modeJalan() {
         return;
     }
 
+    // PENTING: Membuat elemen monitor GPS di layar
     let gpsMonitor = document.getElementById('gpsMonitor');
     if (!gpsMonitor) {
         gpsMonitor = document.createElement('div');
         gpsMonitor.id = 'gpsMonitor';
-        gpsMonitor.style.cssText = 'position:fixed; top:60px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:#22d3ee; padding:8px 15px; border-radius:20px; z-index:1000; font-size:13px; font-weight:bold; border: 1px solid #22d3ee; text-align:center;';
+        gpsMonitor.style.cssText = 'position:fixed; top:60px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:#22d3ee; padding:8px 15px; border-radius:20px; z-index:1000; font-size:13px; font-weight:bold; border: 1px solid #22d3ee;';
         document.body.appendChild(gpsMonitor);
     }
-    gpsMonitor.innerHTML = '🔄 Mencari sinyal satelit...';
+    gpsMonitor.innerHTML = '🔄 Sedang mencari satelit...';
 
-    alert("🚶 MULAI BERJALAN!\n\nUntuk akurasi maksimal, berhentilah sejenak di setiap sudut pematang sawah agar titik terkunci dengan baik.");
+    alert("🚶 MULAI BERJALAN!\n\nPastikan Anda berada di luar ruangan (langit terbuka) agar GPS merespon pergerakan.");
 
     watchId = navigator.geolocation.watchPosition((pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        const akurasi = Math.round(pos.coords.accuracy); 
+        const akurasi = Math.round(pos.coords.accuracy); // Angka akurasi dalam meter
         
         const latlng = L.latLng(lat, lng);
         
-        // 1. UPDATE MARKER POSISI VISUAL
-        // Marker titik selalu mengikuti asalkan akurasi masuk akal (< 30m)
-        // agar user tahu bahwa GPS HP-nya merespon
-        if (akurasi <= 30) {
+        // Update monitor di layar
+        if(gpsMonitor) {
+            gpsMonitor.innerHTML = `📍 Titik: ${gpsPoints.length + 1} | Akurasi: ±${akurasi} meter`;
+            
+            // Ubah warna teks peringatan jika akurasi buruk (di atas 15 meter)
+            if(akurasi > 15) {
+                gpsMonitor.style.color = '#f87171'; // Merah (Kurang akurat)
+            } else {
+                gpsMonitor.style.color = '#4ade80'; // Hijau (Akurat)
+            }
+        }
+
+        // Filter: Hanya simpan titik jika akurasinya lumayan bagus (di bawah 30 meter)
+        // Ini mencegah garis melompat-lompat sendiri saat sinyal jelek
+        if (akurasi < 30) {
+            gpsPoints.push(latlng);
+
             if (!userMarker) {
                 userMarker = L.circleMarker(latlng, {
                     radius: 7, color: 'white', weight: 2, fillColor: '#eab308', fillOpacity: 1
@@ -1812,45 +1826,16 @@ async function modeJalan() {
             } else {
                 userMarker.setLatLng(latlng);
             }
-        }
 
-        // 2. FILTER KETAT UNTUK PENGUKURAN (AKURASI TINGGI)
-        // Garis batas lahan hanya akan direkam jika sinyal benar-benar bagus (<= 15m)
-        if (akurasi <= 15) {
-            if (gpsPoints.length === 0) {
-                // Titik pertama langsung dimasukkan
-                gpsPoints.push(latlng);
-            } else {
-                // Hitung jarak dari titik terakhir yang direkam
-                const titikTerakhir = gpsPoints[gpsPoints.length - 1];
-                const jarakLangkah = titikTerakhir.distanceTo(latlng);
-
-                // Titik baru hanya direkam jika user sudah bergeser minimal 2.5 meter
-                if (jarakLangkah >= 2.5) {
-                    gpsPoints.push(latlng);
-
-                    if (!currentLine) {
-                        currentLine = L.polyline(gpsPoints, { 
-                            color: '#eab308', weight: 6, opacity: 0.9 
-                        }).addTo(map);
-                    } else {
-                        currentLine.setLatLngs(gpsPoints);
-                    }
+            if (gpsPoints.length > 1) {
+                if (!currentLine) {
+                    currentLine = L.polyline(gpsPoints, { 
+                        color: '#eab308', weight: 6, opacity: 0.9 
+                    }).addTo(map);
+                } else {
+                    currentLine.setLatLngs(gpsPoints);
                 }
             }
-        }
-
-        // Update informasi di layar
-        if (gpsMonitor) {
-            let statusTeks = `📍 Titik Terekam: ${gpsPoints.length}<br>Akurasi: ±${akurasi}m`;
-            
-            if (akurasi > 15) {
-                gpsMonitor.style.color = '#f87171'; // Merah (Tunggu sinyal bagus)
-                statusTeks += " (Sinyal Lemah)";
-            } else {
-                gpsMonitor.style.color = '#4ade80'; // Hijau (Siap merekam)
-            }
-            gpsMonitor.innerHTML = statusTeks;
         }
 
         map.flyTo(latlng, 19, { duration: 1 });
@@ -1861,6 +1846,81 @@ async function modeJalan() {
         maximumAge: 0, 
         timeout: 10000 
     });
+}
+
+function selesaiJalan() {
+    if (gpsPoints.length < 3) {
+        alert("Minimal 3 titik GPS diperlukan untuk membentuk area lahan.");
+        return;
+    }
+
+    if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+    }
+
+    // Hapus monitor GPS
+    const gpsMonitor = document.getElementById('gpsMonitor');
+    if (gpsMonitor) gpsMonitor.remove();
+
+    drawnItems.clearLayers(); 
+    const polygon = L.polygon(gpsPoints, { color: '#22d3ee', weight: 4 });
+    drawnItems.addLayer(polygon);
+    
+    if (currentLine) {
+        map.removeLayer(currentLine);
+        currentLine = null;
+    }
+    if (userMarker) {
+        map.removeLayer(userMarker);
+        userMarker = null;
+    }
+
+    hitungLuas(polygon);
+
+    document.getElementById('btnSelesaiJalan').style.display = 'none';
+}
+
+function resetPengukuran() {
+    if (drawnItems) drawnItems.clearLayers();
+    if (currentLine) {
+        map.removeLayer(currentLine);
+        currentLine = null;
+    }
+    if (userMarker) {
+        map.removeLayer(userMarker);
+        userMarker = null;
+    }
+    
+    const gpsMonitor = document.getElementById('gpsMonitor');
+    if (gpsMonitor) gpsMonitor.remove();
+
+    gpsPoints = [];
+    luasTotalHa = "0";
+    luasTotalM2 = "0";
+    
+    if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+    }
+
+    document.getElementById('ukurResult').style.display = 'none';
+    document.getElementById('btnSelesaiJalan').style.display = 'none';
+}
+
+function kirimLuasKeWA() {
+    if(luasTotalHa === "0") {
+        alert("Belum ada area yang diukur!");
+        return;
+    }
+
+    const teks = `*📐 UKUR LUAS LAHAN SAWAH - PPL MILENIAL WAJO*\n\n` +
+                 `📍 Luas: ${luasTotalHa} Hektar\n` +
+                 `📏 Detail: ${luasTotalM2} m²\n` +
+                 `🕒 Waktu: ${new Date().toLocaleString('id-ID')}\n\n` +
+                 `_Dihitung menggunakan aplikasi Smart Farming_`;
+
+    window.open("https://wa.me/?text=" + encodeURIComponent(teks), "_blank");
 }
         function handleFile(event) {
     const file = event.target.files[0];
