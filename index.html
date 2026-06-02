@@ -2587,12 +2587,12 @@ async function getLocalSSTTimeseries() {
 
         // Deteksi kondisi upwelling aktif
         // Kriteria: SST Selat < 27.5°C di bulan Jun–Okt = upwelling aktif
-        const bulanSekarang = now.getMonth();
-        const upwellingAktif = (
-            suhuSekarangMks < 27.5 &&
-            bulanSekarang >= 5 &&  // Juni
-            bulanSekarang <= 9     // Oktober
-        );
+        const bulanSekarang = new Date().getMonth(); // 0=Jan, 5=Jun, 9=Okt
+const upwellingAktif = (
+    (suhuSekarangMks < 27.5 || suhuSekarangBone < 27.2) &&
+    bulanSekarang >= 5 &&
+    bulanSekarang <= 9
+);
 
         return {
             labels: labelsMasaDepan,
@@ -2792,7 +2792,7 @@ const iodSmooth = getMovingAverage(iod.anomalies, 2);
                 updateENSOIODStatus(enso, iod);
                 updateLocalWarning(sstLokal);
                 
-                showSSTRekomendasi(sstLokal.boneData[sstLokal.boneData.length - 1]);
+                showSSTRekomendasi(sstLokal);
                 simpulkanPrediksiIklimTerpadu(enso, iod, sstLokal);
                 
             } catch (error) {
@@ -2945,101 +2945,214 @@ const iodSmooth = getMovingAverage(iod.anomalies, 2);
         }
 
         function showSSTRekomendasi(sstLokal) {
-    // Ambil nilai dan status upwelling dari objek hasil getLocalSSTTimeseries
-    const boneSST        = sstLokal.sstBoneTerkini   || sstLokal;
-    const makassarSST    = sstLokal.sstMksTerkini     || null;
-    const upwellingAktif = sstLokal.upwellingAktif    || false;
+    const boneSST = parseFloat(
+        sstLokal.sstBoneTerkini ?? sstLokal.boneData?.[0]
+    );
 
-    if (!boneSST) return;
+    const makassarSST = parseFloat(
+        sstLokal.sstMksTerkini ?? sstLokal.makassarData?.[0]
+    );
 
-    // Dapatkan bulan saat ini untuk konteks musim
-    const bulanSekarang  = new Date().getMonth(); // 0 = Jan
-    const musimTimur     = bulanSekarang >= 5 && bulanSekarang <= 9; // Jun–Okt
-    const musimBarat     = bulanSekarang >= 10 || bulanSekarang <= 2; // Nov–Mar
+    const upwellingAktif = Boolean(sstLokal.upwellingAktif);
 
-    let rekomendasi = '';
-    let warna = '';
-
-    // ── LOGIKA BERBASIS MUSIM (BUKAN THRESHOLD STATIS) ──
-    // Sumber: Kunarso et al. (2022) & Labania et al. (2018)
-
-    if (upwellingAktif) {
-        // Kondisi upwelling aktif (Jun–Okt, SST Selat < 27.5°C)
-        // Upwelling = dingin tapi NORMAL untuk musim ini
-        rekomendasi = `🌊 <b>UPWELLING AKTIF</b> — SST Selat Makassar mendingin ` +
-            `(${makassarSST ? makassarSST + '°C' : 'di bawah 27.5°C'}). ` +
-            `Ini adalah kondisi NORMAL musim timur (Jun–Okt). ` +
-            `Pasokan nutrisi laut meningkat, namun massa udara dingin dari selatan ` +
-            `dapat menekan pembentukan awan hujan di daratan Sulsel. ` +
-            `Waspadai potensi defisit air irigasi di wilayah tadah hujan.`;
-        warna = 'var(--accent-bwd)';
-
-    } else if (musimTimur && boneSST >= 29.5) {
-        // Musim timur tapi SST justru hangat = anomali, potensi El Niño
-        rekomendasi = `⚠️ <b>ANOMALI SST MUSIM TIMUR</b> — Teluk Bone lebih hangat ` +
-            `dari normal (${boneSST}°C vs baseline ~27.0–27.5°C). ` +
-            `Ini mengindikasikan upwelling tertekan, berpotensi terkait El Niño. ` +
-            `Risiko defisit curah hujan di Sulsel meningkat signifikan.`;
-        warna = 'var(--red-alert)';
-
-    } else if (musimBarat && boneSST >= 30.0) {
-        // Musim barat & SST sangat hangat = kondisi ekstrem
-        rekomendasi = `⚠️ <b>PERINGATAN SST TINGGI</b> — Teluk Bone sangat hangat ` +
-            `(${boneSST}°C). ` +
-            `Potensi curah hujan ekstrem dan badai konvektif lokal meningkat. ` +
-            `Risiko banjir kilat di daerah aliran sungai sekitar Teluk Bone. ` +
-            `Pantau CAPE dan kelembapan udara secara intensif.`;
-        warna = 'var(--red-alert)';
-
-    } else if (musimBarat && boneSST >= 29.0) {
-        // Musim barat, SST hangat normal — kondisi waspada biasa
-        rekomendasi = `⚠️ <b>WASPADA</b> — SST Teluk Bone menghangat (${boneSST}°C). ` +
-            `Kelembapan udara di daratan Sulsel cenderung meningkat. ` +
-            `Waspadai perkembangan penyakit Blast dan Hawar Pelepah. ` +
-            `Batasi pupuk Nitrogen agar batang tidak terlalu lunak.`;
-        warna = 'var(--accent-soil)';
-
-    } else if (!musimTimur && boneSST <= 27.0) {
-        // Di luar musim timur tapi SST dingin = anomali La Niña
-        rekomendasi = `⚠️ <b>ANOMALI SST DINGIN (DI LUAR MUSIM TIMUR)</b> — ` +
-            `Teluk Bone lebih dingin dari normal (${boneSST}°C). ` +
-            `Di luar musim timur, kondisi ini tidak lazim dan bisa ` +
-            `mengindikasikan pengaruh La Niña. ` +
-            `Potensi curah hujan di atas normal untuk beberapa wilayah Sulsel.`;
-        warna = 'var(--accent-bwd)';
-
-    } else {
-        // Kondisi normal
-        rekomendasi = `✅ <b>KONDISI SST LOKAL NORMAL</b> — ` +
-            `Teluk Bone ${boneSST}°C` +
-            `${makassarSST ? `, Selat Makassar ${makassarSST}°C` : ''}. ` +
-            `Suhu permukaan laut dalam batas klimatologi normal ` +
-            `untuk musim ini. Pasokan massa uap air ke daratan ` +
-            `Sulsel dalam kondisi wajar.`;
-        warna = 'var(--accent-green)';
+    if (!Number.isFinite(boneSST) || !Number.isFinite(makassarSST)) {
+        return;
     }
 
-    // Tampilkan ke UI
-    let rekomBox = document.getElementById('sstRekomendasiBox');
+    // Gunakan tanggal data jika tersedia
+    const tanggalReferensi = sstLokal.tanggalData
+        ? new Date(sstLokal.tanggalData)
+        : new Date();
+
+    const bulan = tanggalReferensi.getMonth(); // 0-11
+
+    // Juni–Oktober
+    const musimTimur = bulan >= 5 && bulan <= 9;
+
+    const bone = boneSST.toFixed(1);
+    const makassar = makassarSST.toFixed(1);
+
+    let judul = "";
+    let rekomendasi = "";
+    let warna = "var(--accent-green)";
+    let tingkatRisiko = "RENDAH";
+
+    // ====================================================================
+    // ANALISIS SST LOKAL SULSEL
+    // ====================================================================
+
+    // 1. UPWELLING KUAT
+    if (
+        musimTimur &&
+        upwellingAktif &&
+        makassarSST <= 28.3
+    ) {
+        judul = "🌊 UPWELLING AKTIF";
+        warna = "var(--accent-bwd)";
+        tingkatRisiko = "RENDAH";
+
+        rekomendasi = `
+            Selat Makassar berada pada suhu <b>${makassar}°C</b>, menunjukkan indikasi upwelling yang masih aktif selama musim timur.<br><br>
+
+            Massa air yang lebih dingin dan kaya nutrisi berpotensi naik ke permukaan sehingga kondisi laut relatif normal untuk periode Juni–Oktober.<br><br>
+
+            <b>Implikasi:</b><br>
+            • Curah hujan cenderung normal hingga sedikit di bawah normal<br>
+            • Risiko kekeringan masih rendah<br>
+            • Produktivitas perairan berpotensi meningkat
+        `;
+    }
+
+    // 2. ANOMALI HANGAT KUAT
+    else if (
+        musimTimur &&
+        makassarSST >= 29.0 &&
+        boneSST >= 29.5
+    ) {
+        judul = "⚠️ ANOMALI SUHU LAUT HANGAT";
+        warna = "var(--red-alert)";
+        tingkatRisiko = "TINGGI";
+
+        rekomendasi = `
+            Suhu Teluk Bone mencapai <b>${bone}°C</b> dan Selat Makassar <b>${makassar}°C</b>.<br><br>
+
+            Nilai ini tergolong sangat hangat untuk musim timur dan mengindikasikan pelemahan proses upwelling di perairan Sulawesi Selatan.<br><br>
+
+            <b>Dampak Potensial:</b><br>
+            • Curah hujan berpotensi lebih rendah dari normal<br>
+            • Risiko kekeringan meningkat apabila monsun timur tetap dominan<br>
+            • Ketersediaan air irigasi perlu dipantau lebih ketat<br><br>
+
+            <b>Rekomendasi:</b><br>
+            • Prioritaskan efisiensi penggunaan air<br>
+            • Siapkan cadangan air irigasi bila tersedia<br>
+            • Pantau perkembangan hama yang sering meningkat pada kondisi lebih kering
+        `;
+    }
+
+    // 3. HANGAT SEDANG
+    else if (
+        musimTimur &&
+        makassarSST >= 28.5
+    ) {
+        judul = "⚠️ PERAIRAN LEBIH HANGAT DARI NORMAL";
+        warna = "var(--accent-soil)";
+        tingkatRisiko = "SEDANG";
+
+        rekomendasi = `
+            Selat Makassar berada pada suhu <b>${makassar}°C</b>, lebih hangat dibanding kondisi upwelling yang biasanya terjadi pada musim timur.<br><br>
+
+            Kondisi ini menunjukkan pelemahan upwelling namun belum tergolong ekstrem.<br><br>
+
+            <b>Implikasi:</b><br>
+            • Curah hujan diperkirakan normal hingga sedikit di bawah normal<br>
+            • Pemantauan kelembapan tanah dan ketersediaan air tetap diperlukan
+        `;
+    }
+
+    // 4. TELUK BONE HANGAT (MUSIM BARAT)
+    else if (
+        !musimTimur &&
+        boneSST >= 29.3
+    ) {
+        judul = "🌧️ SUHU TELUK BONE HANGAT";
+        warna = "var(--accent-bwd)";
+        tingkatRisiko = "SEDANG";
+
+        rekomendasi = `
+            Suhu Teluk Bone mencapai <b>${bone}°C</b> yang cukup hangat untuk mendukung penguapan dan pembentukan awan konvektif.<br><br>
+
+            <b>Implikasi:</b><br>
+            • Potensi hujan lokal dapat meningkat<br>
+            • Kelembapan tinggi dapat mendukung perkembangan penyakit tanaman berbasis jamur<br><br>
+
+            <b>Rekomendasi:</b><br>
+            • Perhatikan drainase lahan<br>
+            • Tingkatkan pemantauan penyakit daun
+        `;
+    }
+
+    // 5. PERAIRAN DINGIN DI LUAR MUSIM TIMUR
+    else if (
+        !musimTimur &&
+        makassarSST <= 27.0
+    ) {
+        judul = "🌧️ ANOMALI SUHU LAUT LEBIH DINGIN";
+        warna = "var(--accent-bwd)";
+        tingkatRisiko = "SEDANG";
+
+        rekomendasi = `
+            Selat Makassar berada pada suhu <b>${makassar}°C</b>, lebih rendah dari kondisi umum pada musim hujan.<br><br>
+
+            Kondisi ini dapat berkaitan dengan peningkatan aktivitas atmosfer yang mendukung curah hujan lebih tinggi dari normal.<br><br>
+
+            <b>Rekomendasi:</b><br>
+            • Pastikan sistem drainase berfungsi baik<br>
+            • Waspadai genangan pada lahan rendah
+        `;
+    }
+
+    // 6. NORMAL
+    else {
+        judul = "✅ KONDISI SST LOKAL NORMAL";
+        warna = "var(--accent-green)";
+        tingkatRisiko = "RENDAH";
+
+        rekomendasi = `
+            Suhu Teluk Bone <b>${bone}°C</b> dan Selat Makassar <b>${makassar}°C</b> masih berada dalam kisaran yang wajar untuk periode saat ini.<br><br>
+
+            Tidak terdapat indikasi kuat adanya gangguan oseanografi lokal yang signifikan. Pola cuaca diperkirakan mengikuti kondisi musiman normal.
+        `;
+    }
+
+    // ====================================================================
+    // TAMPILKAN KE UI
+    // ====================================================================
+
+    let rekomBox = document.getElementById("sstRekomendasiBox");
+
     if (!rekomBox) {
-        const weatherData = document.getElementById('weatherData');
-        if (weatherData) {
-            weatherData.insertAdjacentHTML('beforeend',
-                `<div id="sstRekomendasiBox" class="info-box" style="margin-top: 16px;"></div>`
+        const container = document.getElementById("weatherData");
+
+        if (container) {
+            container.insertAdjacentHTML(
+                "beforeend",
+                `
+                <div
+                    id="sstRekomendasiBox"
+                    class="info-box"
+                    style="margin-top:16px;">
+                </div>
+                `
             );
-            rekomBox = document.getElementById('sstRekomendasiBox');
+
+            rekomBox = document.getElementById("sstRekomendasiBox");
         }
     }
 
     if (rekomBox) {
         rekomBox.style.borderLeftColor = warna;
-        rekomBox.innerHTML =
-            `<strong>📢 STATUS LAUT LOKAL SULSEL:</strong><br>` +
-            `<span style="font-size: 0.825rem; line-height:1.6;">${rekomendasi}</span>` +
-            `<div style="font-size: 0.7rem; opacity: 0.5; margin-top: 8px; ` +
-            `border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 6px;">` +
-            `⚠️ Estimasi berbasis data SST aktual. Bukan prakiraan iklim resmi BMKG.` +
-            `</div>`;
+
+        rekomBox.innerHTML = `
+            <strong style="font-size:0.95rem;">
+                ${judul}
+            </strong>
+            <br><br>
+
+            <span style="font-size:0.82rem; line-height:1.65;">
+                ${rekomendasi}
+            </span>
+
+            <div style="
+                margin-top:12px;
+                padding-top:8px;
+                border-top:1px dashed rgba(255,255,255,0.15);
+                font-size:0.73rem;
+                opacity:0.7;
+            ">
+                📍 Analisis SST Lokal Real-time • Risiko ${tingkatRisiko}
+            </div>
+        `;
     }
 }
 
