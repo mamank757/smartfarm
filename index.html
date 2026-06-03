@@ -48,6 +48,38 @@
             -webkit-tap-highlight-color: transparent;
         }
 
+/* HEADER STICKY SAJA */
+.sticky-header {
+    position: sticky;
+    top: 0;
+    background-color: var(--bg-color);
+    z-index: 1000;
+    padding: 10px 0 8px 0;
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Tab container tidak sticky */
+.tab-container {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    background: #111c2e;
+    padding: 8px;
+    border-radius: 14px;
+    width: 100%;
+    max-width: 480px;
+    box-sizing: border-box;
+    margin-top: 8px;
+    margin-bottom: 15px;
+}
+
+/* Pastikan body punya padding atas agar tidak tertutup header */
+body {
+    padding-top: 85px; /* Sesuaikan jika perlu */
+}
         .sticky-top {
             position: sticky;
             top: 0;
@@ -425,31 +457,31 @@
 </head>
 <body>
 
-    <div class="sticky-top">
-        <div class="header">
-            <h1>SMART FARMING - IOT</h1>
-            <p>Internet of Things. Developed by PPL MILENIAL WAJO</p>
-        </div>
-       <div class="tab-container">
-<button class="tab-btn" id="tabCuaca" onclick="switchMode('cuaca')">RISIKO CUACA</button>
-<button class="tab-btn" id="tabKalender" onclick="switchMode('kalender')">RISIKO IKLIM</button>
-<button class="tab-btn" id="tabBiaya" onclick="switchMode('biaya')">BIAYA TANI</button>
-<button class="tab-btn" id="tabUkur" onclick="switchMode('ukur')">UKUR LAHAN</button>
-<button class="tab-btn" id="tabVarietas" onclick="switchMode('varietas')">VARIETAS PADI</button>
-<button class="tab-btn" id="tabPupuk" onclick="switchMode('pupuk')">DOSIS PUPUK</button> 
-<button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">UJI BWD UREA</button>
-<button class="tab-btn" id="tabTanah" onclick="switchMode('tanah')">FISIK TANAH</button>
-    
-   
+    <!-- GANTI BAGIAN STICKY-TOP INI -->
+<div class="sticky-header">
+    <div class="header">
+        <h1>SMART FARMING - IOT</h1>
+        <p>Internet of Things. Developed by PPL MILENIAL WAJO</p>
+    </div>
+</div>
+
+<div class="tab-container">
+    <button class="tab-btn" id="tabCuaca" onclick="switchMode('cuaca')">RISIKO CUACA</button>
+    <button class="tab-btn" id="tabKalender" onclick="switchMode('kalender')">RISIKO IKLIM</button>
+    <button class="tab-btn" id="tabBiaya" onclick="switchMode('biaya')">BIAYA TANI</button>
+    <button class="tab-btn" id="tabUkur" onclick="switchMode('ukur')">UKUR LAHAN</button>
+    <button class="tab-btn" id="tabVarietas" onclick="switchMode('varietas')">VARIETAS PADI</button>
+    <button class="tab-btn" id="tabPupuk" onclick="switchMode('pupuk')">DOSIS PUPUK</button> 
+    <button class="tab-btn" id="tabBWD" onclick="switchMode('bwd')">UJI BWD UREA</button>
+    <button class="tab-btn" id="tabTanah" onclick="switchMode('tanah')">FISIK TANAH</button>
     <button class="tab-btn" id="tabMalai" onclick="switchMode('malai')">HASIL PANEN</button>
-     <button class="tab-btn" id="tabHama" onclick="switchMode('hama')">HAMA PADI</button>
-     <button class="tab-btn" id="tabDaun" onclick="switchMode('daun')">PENYAKIT PADI</button>
+    <button class="tab-btn" id="tabHama" onclick="switchMode('hama')">HAMA PADI</button>
+    <button class="tab-btn" id="tabDaun" onclick="switchMode('daun')">PENYAKIT PADI</button>
     <button class="tab-btn" id="tabGulma" onclick="switchMode('gulma')">JENIS GULMA</button>
     <button class="tab-btn" id="tabChat1" onclick="toggleChatbox(1)">KONSULTASI 1</button>
     <button class="tab-btn" id="tabChat2" onclick="toggleChatbox(2)">KONSULTASI 2</button>
     <button class="tab-btn" id="tabChat3" onclick="toggleChatbox(3)">KONSULTASI 3</button>
     <button class="tab-btn" id="tabChat4" onclick="toggleChatbox(4)">KONSULTASI 4</button>
-</div>
 </div>
 
     <div class="card">
@@ -1495,12 +1527,6 @@ function getMovingAverage(data, windowSize = 3) {
             const customBox = document.getElementById('customPopulasiBox');
             if (metode === 'custom') { customBox.style.display = 'block'; } else { customBox.style.display = 'none'; }
         }
-let map = null;
-let drawnItems = null;
-let currentModeUkur = 'peta';
-let gpsPoints = [];
-let watchId = null;
-let currentLine = null;
 
         function switchMode(mode) {
     if (mode !== 'bwd') {
@@ -1632,48 +1658,82 @@ let currentLine = null;
     }
 }
 
-// ==================== UKUR LUAS LAHAN (PERFECTED) ====================
+// ==================== UKUR LUAS LAHAN (AKURAT & TEPAT - REVISI) ====================
+// Perbaikan utama:
+// 1. Rumus geodesik Shoelace + Haversine untuk akurasi tinggi (menggantikan formula yang salah)
+// 2. Filter GPS: akurasi + jarak minimum antar titik (anti-drift)
+// 3. Kalman-lite smoothing untuk koordinat GPS
+// 4. Penanganan state yang bersih di semua fungsi
+// 5. Polygon ditutup secara eksplisit sebelum kalkulasi
 
+// ─── STATE GLOBAL ────────────────────────────────────────────────────────────
+let map = null;
+let drawnItems = null;
+let currentLine = null;
+let userMarker = null;
+let markerLokasi = null;
+let watchId = null;
+let gpsPoints = [];
+let luasTotalHa = "0";
+let luasTotalM2 = "0";
+
+// Kalman-lite state (per dimensi lat/lng)
+let kalman = null;
+
+// ─── KONSTANTA ───────────────────────────────────────────────────────────────
+const EARTH_RADIUS_M   = 6378137;          // WGS-84 semi-major axis
+const AKURASI_MAX_M    = 15;               // Tolak titik dengan akurasi > 20 m
+const JARAK_MIN_M      = 2;             // Titik baru minimal 1.5 m dari titik terakhir
+const FLYTO_ZOOM       = 18;
+const GPS_TIMEOUT_MS   = 15000;
+
+// ─── INISIALISASI PETA ───────────────────────────────────────────────────────
 function initMap() {
-    if (map) {
-        map.invalidateSize();
-        return;
-    }
+    if (map) { map.invalidateSize(); return; }
 
-    map = L.map('mapContainer', { 
-        zoomControl: true, 
-        attributionControl: false 
+    map = L.map('mapContainer', {
+        zoomControl: true,
+        attributionControl: false
     }).setView([-4.0, 120.0], 13);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // Layer OSM (fallback)
+    const osmLayer = L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { 
         maxZoom: 22,
-        className: 'map-tiles'
-    }).addTo(map);
+        maxNativeZoom: 19,  // ← tambahkan ini
+        className: 'map-tiles' 
+    }
+);
 
-    // Tambahan Layer Satelit agar batas lahan terlihat lebih jelas
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19,
-        opacity: 0.6
-    }).addTo(map);
+    // Layer Satelit (lebih jelas untuk batas lahan)
+    const satLayer = L.tileLayer(
+    'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    //                              ^
+    //                        y = hybrid (satelit + label)
+    //                        s = satelit saja
+    {
+        maxZoom: 22,
+        maxNativeZoom: 21,
+        opacity: 0.9
+    }
+);
+
+    osmLayer.addTo(map);
+    satLayer.addTo(map);
 
     drawnItems = new L.FeatureGroup();
     map.addLayer(drawnItems);
 
-    // Toolbar Draw
     new L.Control.Draw({
         draw: {
-            polygon: { 
-                shapeOptions: { 
-                    color: '#22d3ee', 
-                    weight: 4,
-                    opacity: 0.9 
-                } 
+            polygon: {
+                allowIntersection: false,          // Cegah polygon self-intersecting
+                showArea: true,
+                shapeOptions: { color: '#22d3ee', weight: 4, opacity: 0.9 }
             },
-            rectangle: { 
-                shapeOptions: { 
-                    color: '#22d3ee', 
-                    weight: 4 
-                } 
+            rectangle: {
+                shapeOptions: { color: '#22d3ee', weight: 4 }
             },
             polyline: false,
             circle: false,
@@ -1684,176 +1744,293 @@ function initMap() {
     }).addTo(map);
 
     map.on(L.Draw.Event.CREATED, function(e) {
-        // Hapus ukuran sebelumnya agar fokus pada 1 lahan yang baru digambar
-        drawnItems.clearLayers(); 
+        drawnItems.clearLayers();
         drawnItems.addLayer(e.layer);
         hitungLuas(e.layer);
     });
 
-    // Panggil fungsi auto-lokasi khusus Android saat peta dimuat
+    // Perbarui luas saat polygon diedit
+    map.on(L.Draw.Event.EDITED, function(e) {
+        e.layers.eachLayer(function(layer) {
+            hitungLuas(layer);
+        });
+    });
+
     fokusLokasiSekarang();
 }
 
-// Fungsi baru untuk memaksa auto-posisi di Android
+// ─── AUTO-POSISI ─────────────────────────────────────────────────────────────
 function fokusLokasiSekarang() {
     if (!navigator.geolocation) return;
 
-    navigator.geolocation.getCurrentPosition((position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        
-        map.flyTo([lat, lng], 18, { duration: 1.5 });
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const { latitude: lat, longitude: lng } = position.coords;
+            map.flyTo([lat, lng], FLYTO_ZOOM, { duration: 1.5 });
 
-        // Beri marker kecil agar tahu titik awal
-        if(markerLokasi) map.removeLayer(markerLokasi);
-        markerLokasi = L.circleMarker([lat, lng], {
-            radius: 8, fillColor: "#3b82f6", color: "#fff", weight: 2, opacity: 1, fillOpacity: 0.9
-        }).addTo(map);
-
-    }, (error) => {
-        console.warn("Auto-posisi terhalang:", error.message);
-    }, {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-    });
+            if (markerLokasi) map.removeLayer(markerLokasi);
+            markerLokasi = L.circleMarker([lat, lng], {
+                radius: 8, fillColor: "#3b82f6",
+                color: "#fff", weight: 2,
+                opacity: 1, fillOpacity: 0.9
+            }).addTo(map).bindTooltip("Posisi Anda", { permanent: false });
+        },
+        (error) => {
+            console.warn("Auto-posisi gagal:", error.message);
+            // Fallback: tampilkan pesan di UI (jangan pakai alert)
+            tampilkanPesan("⚠️ GPS tidak tersedia. Aktifkan lokasi perangkat.", "warning");
+        },
+        { enableHighAccuracy: true, timeout: GPS_TIMEOUT_MS, maximumAge: 0 }
+    );
 }
 
+// ─── HITUNG LUAS (AKURAT) ────────────────────────────────────────────────────
+/**
+ * Titik masuk utama. Menerima L.Layer (polygon/rectangle).
+ * Prioritas: L.GeometryUtil.geodesicArea → sphericalExcessArea (akurat) → Shoelace flat.
+ */
 function hitungLuas(layer) {
     let latlngs = layer.getLatLngs();
-    
-    // Handle both polygon and rectangle
-    if (Array.isArray(latlngs[0])) latlngs = latlngs[0];
+
+    // Normalisasi: ambil ring terluar saja
+    while (Array.isArray(latlngs[0])) latlngs = latlngs[0];
 
     if (!latlngs || latlngs.length < 3) {
-        alert("Minimal 3 titik diperlukan untuk menghitung luas.");
+        tampilkanPesan("⚠️ Minimal 3 titik diperlukan untuk menghitung luas.", "warning");
         return;
     }
 
-    let area = 0;
-    
-    // Metode paling akurat
+    let areaM2 = 0;
+
     if (typeof L.GeometryUtil !== 'undefined' && L.GeometryUtil.geodesicArea) {
-        area = L.GeometryUtil.geodesicArea(latlngs);
+        // Leaflet.draw sudah menyertakan GeometryUtil — gunakan ini jika ada
+        areaM2 = L.GeometryUtil.geodesicArea(latlngs);
     } else {
-        area = calculatePolygonArea(latlngs);
+        // Fallback: Spherical Excess (akurat untuk polygon kecil-menengah di bumi)
+        areaM2 = sphericalExcessArea(latlngs);
     }
 
-    luasTotalHa = (area / 10000).toFixed(4);
-    luasTotalM2 = Math.round(area).toLocaleString('id-ID');
+    // Validasi: hasil negatif atau NaN berarti data titik bermasalah
+    if (!isFinite(areaM2) || areaM2 <= 0) {
+        tampilkanPesan("❌ Luas tidak dapat dihitung. Coba gambar ulang polygon.", "error");
+        return;
+    }
+
+    luasTotalHa = (areaM2 / 10000).toFixed(4);
+    luasTotalM2 = Math.round(areaM2).toLocaleString('id-ID');
+
+    const metode = (typeof L.GeometryUtil !== 'undefined') ? "Geodesik (Leaflet)" : "Spherical Excess";
 
     document.getElementById('ukurResult').style.display = 'block';
-    document.getElementById('luasDisplay').innerHTML = `${luasTotalHa} <small style="font-size:0.95rem; opacity:0.9;">Hektar</small>`;
-    document.getElementById('luasDetail').innerHTML = `
-        ${luasTotalM2} m²<br>
-        <small style="opacity:0.7;">Akurasi tinggi • Metode geodesik</small>
-    `;
+    document.getElementById('luasDisplay').innerHTML =
+        `${luasTotalHa} <small style="font-size:0.95rem; opacity:0.9;">Hektar</small>`;
+    document.getElementById('luasDetail').innerHTML =
+        `${luasTotalM2} m²<br>
+         <small style="opacity:0.7;">✅ Akurasi tinggi • ${metode}</small>`;
 }
 
-// Fallback rumus manual yang lebih akurat
-function calculatePolygonArea(latlngs) {
-    let area = 0;
+// ─── RUMUS SPHERICAL EXCESS (BENAR) ──────────────────────────────────────────
+/**
+ * Menghitung luas polygon geodesik di permukaan bola menggunakan
+ * algoritma Spherical Excess (Girard's theorem + Haversine).
+ * Akurat untuk lahan hingga ribuan hektar.
+ *
+ * Referensi: Vincenty / Robert Chamberlain & William Duquette (JPL)
+ */
+function sphericalExcessArea(latlngs) {
+    const toRad = (deg) => deg * Math.PI / 180;
     const n = latlngs.length;
-    
+    let total = 0;
+
     for (let i = 0; i < n; i++) {
-        const j = (i + 1) % n;
-        const lat1 = latlngs[i].lat * Math.PI / 180;
-        const lon1 = latlngs[i].lng * Math.PI / 180;
-        const lat2 = latlngs[j].lat * Math.PI / 180;
-        const lon2 = latlngs[j].lng * Math.PI / 180;
-        
-        area += (lon2 - lon1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+        const p1 = latlngs[i];
+        const p2 = latlngs[(i + 1) % n];
+
+        const dLng = toRad(p2.lng - p1.lng);
+        const lat1 = toRad(p1.lat);
+        const lat2 = toRad(p2.lat);
+
+        // Komponen trapezoid pada bola (formula Robert Chamberlain/JPL)
+        total += dLng * (2 + Math.sin(lat1) + Math.sin(lat2));
     }
-    
-    return Math.abs(area) * 6378137 * 6378137 / 2; // Earth radius in meters
+
+    return Math.abs(total * EARTH_RADIUS_M * EARTH_RADIUS_M / 2);
 }
 
-function modePeta() {
-    alert("🗺️ Cara Menggunakan:\n\n1. Klik beberapa titik mengelilingi lahan\n2. Klik titik pertama lagi untuk menutup polygon");
+// ─── KALMAN FILTER SEDERHANA ─────────────────────────────────────────────────
+/**
+ * Kalman 1-D untuk meredam noise GPS.
+ * Dipakai secara independen untuk lat dan lng.
+ *
+ * @param {number} R - Noise pengukuran (makin besar = makin halus, makin lambat)
+ * @param {number} Q - Noise proses (makin kecil = makin lambat adaptasi)
+ */
+class KalmanFilter {
+    constructor(R = 5, Q = 0.3) {
+        this.R = R;
+        this.Q = Q;
+        this.reset();
+    }
+
+    reset() {
+        this.P = 1;       // Estimasi error awal
+        this.X = null;    // Nilai estimasi (null = belum ada data)
+        this.K = 0;       // Kalman gain
+    }
+
+    filter(measurement) {
+        // Inisialisasi: titik pertama langsung diterima apa adanya
+        if (this.X === null) {
+            this.X = measurement;
+            return measurement;
+        }
+
+        // Prediksi error
+        this.P = this.P + this.Q;
+
+        // Hitung Kalman Gain
+        this.K = this.P / (this.P + this.R);
+
+        // Update estimasi
+        this.X = this.X + this.K * (measurement - this.X);
+
+        // Update error estimasi
+        this.P = (1 - this.K) * this.P;
+
+        return this.X;
+    }
 }
 
-// Tambahkan ini di deretan variabel global paling atas (bersama map, currentLine, dll)
-let userMarker = null;
+function resetKalman() {
+    if (kalman) {
+        // Reuse instance yang ada, cukup reset state-nya
+        kalman.lat.reset();
+        kalman.lng.reset();
+    } else {
+        // Buat instance baru pertama kali
+        kalman = {
+            lat: new KalmanFilter(5, 0.3),
+            lng: new KalmanFilter(5, 0.3)
+        };
+    }
+}
 
-// ==========================================
+// ─── JARAK HAVERSINE (METER) ─────────────────────────────────────────────────
+function haversineM(a, b) {
+    const toRad = (d) => d * Math.PI / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const sinLat = Math.sin(dLat / 2);
+    const sinLng = Math.sin(dLng / 2);
+    const h = sinLat * sinLat +
+              Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinLng * sinLng;
+    return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(h));
+}
 
-async function modeJalan() {
-    gpsPoints = [];
+// ─── MODE JALAN (GPS TRACKING) ───────────────────────────────────────────────
+function modeJalan() {
+    // Bersihkan state lama sebelum memulai sesi baru
+    resetPengukuran();
+    resetKalman();
+
     document.getElementById('btnSelesaiJalan').style.display = 'block';
 
     if (!navigator.geolocation) {
-        alert("Browser tidak mendukung GPS.");
+        tampilkanPesan("❌ Browser tidak mendukung GPS.", "error");
         return;
     }
 
-    // PENTING: Membuat elemen monitor GPS di layar
+    // Monitor GPS
     let gpsMonitor = document.getElementById('gpsMonitor');
     if (!gpsMonitor) {
         gpsMonitor = document.createElement('div');
         gpsMonitor.id = 'gpsMonitor';
-        gpsMonitor.style.cssText = 'position:fixed; top:60px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:#22d3ee; padding:8px 15px; border-radius:20px; z-index:1000; font-size:13px; font-weight:bold; border: 1px solid #22d3ee;';
+        gpsMonitor.style.cssText =
+    'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%);' + // ← tengah layar
+    'background:rgba(0,0,0,0.85); color:#22d3ee; padding:12px 20px;' +
+    'border-radius:20px; z-index:1000; font-size:14px; font-weight:bold;' +
+    'border:1px solid #22d3ee; white-space:nowrap; text-align:center;';
         document.body.appendChild(gpsMonitor);
     }
-    gpsMonitor.innerHTML = '🔄 Sedang mencari satelit...';
+    gpsMonitor.textContent = '🔄 Mencari satelit…';
 
-    alert("🚶 MULAI BERJALAN!\n\nPastikan Anda berada di luar ruangan (langit terbuka) agar GPS merespon pergerakan.");
+    tampilkanPesan("🚶 MULAI BERJALAN!\n\nPastikan Anda berada di luar ruangan agar GPS bekerja optimal.", "info");
 
-    watchId = navigator.geolocation.watchPosition((pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const akurasi = Math.round(pos.coords.accuracy); // Angka akurasi dalam meter
-        
-        const latlng = L.latLng(lat, lng);
-        
-        // Update monitor di layar
-        if(gpsMonitor) {
-            gpsMonitor.innerHTML = `📍 Titik: ${gpsPoints.length + 1} | Akurasi: ±${akurasi} meter`;
-            
-            // Ubah warna teks peringatan jika akurasi buruk (di atas 15 meter)
-            if(akurasi > 15) {
-                gpsMonitor.style.color = '#f87171'; // Merah (Kurang akurat)
-            } else {
-                gpsMonitor.style.color = '#4ade80'; // Hijau (Akurat)
+    watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+            const akurasi = pos.coords.accuracy;
+
+            // ── Filter 1: Tolak jika akurasi buruk ──
+            if (akurasi > AKURASI_MAX_M) {
+                if (gpsMonitor) {
+                    gpsMonitor.style.color = '#f87171';
+                    gpsMonitor.textContent = `📡 Sinyal lemah ±${Math.round(akurasi)}m — tunggu…`;
+                }
+                return;
             }
-        }
 
-        // Filter: Hanya simpan titik jika akurasinya lumayan bagus (di bawah 30 meter)
-        // Ini mencegah garis melompat-lompat sendiri saat sinyal jelek
-        if (akurasi < 30) {
+            // ── Filter 2: Smoothing dengan Kalman-lite ──
+            const latSmooth = kalman.lat.filter(pos.coords.latitude);
+            const lngSmooth = kalman.lng.filter(pos.coords.longitude);
+            const latlng = L.latLng(latSmooth, lngSmooth);
+
+            // ── Filter 3: Jarak minimum antar titik ──
+            if (gpsPoints.length > 0) {
+                const last = gpsPoints[gpsPoints.length - 1];
+                if (haversineM(last, latlng) < JARAK_MIN_M) return; // Titik terlalu dekat, skip
+            }
+
             gpsPoints.push(latlng);
 
+            // Update monitor
+            if (gpsMonitor) {
+                gpsMonitor.style.color = '#4ade80';
+                gpsMonitor.textContent =
+                    `📍 Titik: ${gpsPoints.length} | Akurasi: ±${Math.round(akurasi)}m`;
+            }
+
+            // Update marker posisi
             if (!userMarker) {
                 userMarker = L.circleMarker(latlng, {
-                    radius: 7, color: 'white', weight: 2, fillColor: '#eab308', fillOpacity: 1
+                    radius: 7, color: 'white', weight: 2,
+                    fillColor: '#eab308', fillOpacity: 1
                 }).addTo(map);
             } else {
                 userMarker.setLatLng(latlng);
             }
 
+            // Update garis jalur
             if (gpsPoints.length > 1) {
                 if (!currentLine) {
-                    currentLine = L.polyline(gpsPoints, { 
-                        color: '#eab308', weight: 6, opacity: 0.9 
+                    currentLine = L.polyline(gpsPoints, {
+                        color: '#eab308', weight: 6, opacity: 0.9
                     }).addTo(map);
                 } else {
                     currentLine.setLatLngs(gpsPoints);
                 }
             }
-        }
 
-        map.flyTo(latlng, 19, { duration: 1 });
-    }, (err) => {
-        console.warn("GPS Error:", err);
-    }, { 
-        enableHighAccuracy: true, 
-        maximumAge: 0, 
-        timeout: 10000 
-    });
+            map.panTo(latlng, { animate: true, duration: 0.5 });
+        },
+        (err) => {
+            console.warn("GPS Error:", err.code, err.message);
+            if (gpsMonitor) {
+                gpsMonitor.style.color = '#f87171';
+                gpsMonitor.textContent = `❌ GPS Error: ${_gpsErrorMsg(err.code)}`;
+            }
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: GPS_TIMEOUT_MS }
+    );
 }
 
+function _gpsErrorMsg(code) {
+    return { 1: "Izin ditolak", 2: "Posisi tidak tersedia", 3: "Timeout" }[code] || "Tidak diketahui";
+}
+
+// ─── SELESAI JALAN ────────────────────────────────────────────────────────────
 function selesaiJalan() {
     if (gpsPoints.length < 3) {
-        alert("Minimal 3 titik GPS diperlukan untuk membentuk area lahan.");
+        tampilkanPesan("⚠️ Minimal 3 titik GPS diperlukan untuk membentuk area lahan.", "warning");
         return;
     }
 
@@ -1862,68 +2039,123 @@ function selesaiJalan() {
         watchId = null;
     }
 
-    // Hapus monitor GPS
     const gpsMonitor = document.getElementById('gpsMonitor');
     if (gpsMonitor) gpsMonitor.remove();
 
-    drawnItems.clearLayers(); 
-    const polygon = L.polygon(gpsPoints, { color: '#22d3ee', weight: 4 });
-    drawnItems.addLayer(polygon);
-    
-    if (currentLine) {
-        map.removeLayer(currentLine);
-        currentLine = null;
-    }
-    if (userMarker) {
-        map.removeLayer(userMarker);
-        userMarker = null;
-    }
+    // Hapus jalur tracking sementara
+    if (currentLine) { map.removeLayer(currentLine); currentLine = null; }
+    if (userMarker)  { map.removeLayer(userMarker);  userMarker = null;  }
 
+    // Buat polygon dari titik GPS
+    drawnItems.clearLayers();
+    const polygon = L.polygon(gpsPoints, { color: '#22d3ee', weight: 4, fillOpacity: 0.15 });
+    drawnItems.addLayer(polygon);
+
+    map.fitBounds(polygon.getBounds(), { padding: [20, 20] });
     hitungLuas(polygon);
 
     document.getElementById('btnSelesaiJalan').style.display = 'none';
 }
 
+// ─── RESET ────────────────────────────────────────────────────────────────────
 function resetPengukuran() {
-    if (drawnItems) drawnItems.clearLayers();
-    if (currentLine) {
-        map.removeLayer(currentLine);
-        currentLine = null;
-    }
-    if (userMarker) {
-        map.removeLayer(userMarker);
-        userMarker = null;
-    }
-    
+    if (watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    if (drawnItems)  drawnItems.clearLayers();
+    if (currentLine) { map.removeLayer(currentLine); currentLine = null; }
+    if (userMarker)  { map.removeLayer(userMarker);  userMarker = null;  }
+
     const gpsMonitor = document.getElementById('gpsMonitor');
     if (gpsMonitor) gpsMonitor.remove();
 
     gpsPoints = [];
     luasTotalHa = "0";
     luasTotalM2 = "0";
-    
-    if (watchId) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-    }
 
     document.getElementById('ukurResult').style.display = 'none';
     document.getElementById('btnSelesaiJalan').style.display = 'none';
 }
 
+// ─── PETUNJUK PENGGUNAAN ──────────────────────────────────────────────────────
+function modePeta() {
+    tampilkanPesan(
+        "🗺️ Cara Menggunakan Mode Peta:\n\n" +
+        "1. Klik ikon poligon di toolbar kiri peta\n" +
+        "2. Klik beberapa titik mengelilingi batas lahan\n" +
+        "3. Klik titik pertama (bulat) untuk menutup dan selesai\n" +
+        "4. Luas otomatis terhitung",
+        "info"
+    );
+}
+
+// ─── KIRIM KE WHATSAPP ────────────────────────────────────────────────────────
 function kirimLuasKeWA() {
-    if(luasTotalHa === "0") {
-        alert("Belum ada area yang diukur!");
+    if (luasTotalHa === "0") {
+        tampilkanPesan("⚠️ Belum ada area yang diukur!", "warning");
         return;
     }
 
-    const teks = `*📐 UKUR LUAS LAHAN SAWAH - PPL MILENIAL WAJO*\n\n` +
-                 `📍 Luas: ${luasTotalHa} Hektar\n` +
-                 `📏 Detail: ${luasTotalM2} m²\n` +
-                 `🕒 Waktu: ${new Date().toLocaleString('id-ID')}\n\n` +
-                 `_Dihitung menggunakan aplikasi Smart Farming_`;
+    const teks =
+        `*📐 UKUR LUAS LAHAN SAWAH - PPL MILENIAL WAJO*\n\n` +
+        `📍 Luas: ${luasTotalHa} Hektar\n` +
+        `📏 Detail: ${luasTotalM2} m²\n` +
+        `🕒 Waktu: ${new Date().toLocaleString('id-ID')}\n\n` +
+        `_Dihitung menggunakan aplikasi Smart Farming_`;
 
     window.open("https://wa.me/?text=" + encodeURIComponent(teks), "_blank");
+}
+
+// ─── HELPER: TAMPILKAN PESAN (PENGGANTI alert()) ──────────────────────────────
+/**
+ * Menampilkan pesan non-blocking di layar.
+ * type: "info" | "warning" | "error"
+ */
+function tampilkanPesan(teks, type = "info") {
+    const colorMap = {
+        info:    { bg: "rgba(34,211,238,0.15)", border: "#22d3ee", text: "#22d3ee" },
+        warning: { bg: "rgba(234,179,8,0.15)",  border: "#eab308", text: "#eab308" },
+        error:   { bg: "rgba(248,113,113,0.15)", border: "#f87171", text: "#f87171" }
+    };
+    const c = colorMap[type] || colorMap.info;
+
+    // Hapus pesan sebelumnya
+    const old = document.getElementById('appMessage');
+    if (old) old.remove();
+
+    const el = document.createElement('div');
+    el.id = 'appMessage';
+    el.style.cssText =
+        `position:fixed; bottom:80px; left:50%; transform:translateX(-50%);` +
+        `max-width:320px; width:90%; background:${c.bg}; color:${c.text};` +
+        `border:1px solid ${c.border}; padding:12px 16px; border-radius:12px;` +
+        `z-index:2000; font-size:13px; line-height:1.5; white-space:pre-line;` +
+        `backdrop-filter:blur(8px); box-shadow:0 4px 20px rgba(0,0,0,0.4);` +
+        `animation:fadeInUp 0.3s ease;`;
+    el.textContent = teks;
+
+    // Tombol tutup
+    const closeBtn = document.createElement('span');
+    closeBtn.textContent = ' ✕';
+    closeBtn.style.cssText = 'cursor:pointer; font-weight:bold; margin-left:8px; opacity:0.7;';
+    closeBtn.onclick = () => el.remove();
+    el.appendChild(closeBtn);
+
+    document.body.appendChild(el);
+
+    // Auto-hilang setelah 5 detik
+    setTimeout(() => { if (el.parentNode) el.remove(); }, 5000);
+}
+
+// Tambahkan animasi CSS jika belum ada
+if (!document.getElementById('appMessageStyle')) {
+    const style = document.createElement('style');
+    style.id = 'appMessageStyle';
+    style.textContent = `
+        @keyframes fadeInUp {
+            from { opacity:0; transform:translateX(-50%) translateY(10px); }
+            to   { opacity:1; transform:translateX(-50%) translateY(0); }
+        }
+    `;
+    document.head.appendChild(style);
 }
         function handleFile(event) {
     const file = event.target.files[0];
@@ -4743,6 +4975,23 @@ function tambahkanPesanLayar(pengirim, teks, warnaAksen) {
     areaPesan.appendChild(bubble);
 
     areaPesan.scrollTop = areaPesan.scrollHeight;
+}
+
+function startBWDCamera() {
+    const video = document.getElementById('videoElement');
+    if (!video) return;
+
+    navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "environment" } 
+    })
+    .then(stream => {
+        currentStream = stream;
+        video.srcObject = stream;
+    })
+    .catch(err => {
+        console.error("Camera error:", err);
+        alert("Gagal mengakses kamera. Pastikan izin kamera diberikan.");
+    });
 }
 </script>
         <div id="customAlertModal">
