@@ -1708,7 +1708,7 @@ function initMap() {
 
     // Layer Satelit (lebih jelas untuk batas lahan)
     const satLayer = L.tileLayer(
-    'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     //                              ^
     //                        y = hybrid (satelit + label)
     //                        s = satelit saja
