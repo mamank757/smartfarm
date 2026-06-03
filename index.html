@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
 <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-image@0.4.0/leaflet-image.js"></script>
     <meta name="theme-color" content="#0b1528">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -586,7 +587,7 @@ body {
         <!-- BOX UKUR LUAS LAHAN (POSISI BENAR) -->
         <div id="boxUkurLahan" style="display: none;">
             <div class="info-box" style="border-left-color: #22d3ee; background: rgba(34, 211, 238, 0.08);">
-                <strong>📐 UKUR LUAS LAHAN SAWAH</strong><br>
+                
                 <small>Gambar di peta atau jalan keliling lahan menggunakan GPS</small>
             </div>
 
@@ -611,9 +612,22 @@ body {
                 <br><small id="luasDetail"></small>
             </div>
 
-            <button class="btn-main" onclick="resetPengukuran()" style="background:#64748b; margin-top: 10px;">🔄 Reset Pengukuran</button>
-            <button class="btn-main" onclick="kirimLuasKeWA()" style="background:#25D366; margin-top: 8px;">💬 Kirim ke WhatsApp</button>
+           <button class="btn-main" onclick="resetPengukuran()" 
+    style="background:#d64253; margin-top: 10px;">
+    🔄 Mulai Ulang Pengukuran
+</button>
+
+<button class="btn-main" onclick="simpanGambarPeta()" 
+    style="background:#3b82f6; margin-top: 8px;">
+    📸 Simpan Gambar Peta
+</button>
+
+<button class="btn-main" onclick="kirimLuasKeWA()" 
+    style="background:#25D366; margin-top: 8px;">
+    💬 Kirim ke WhatsApp
+</button>
         </div>
+        
         <div id="boxKalkulatorPupuk" style="display: none;">
             <div class="form-group">
                 <label>📍 CARI KECAMATAN</label>
@@ -4850,6 +4864,40 @@ inputPesan.addEventListener('keypress', function(e) {
         kirimPesan();
     }
 });
+
+async function simpanGambarPeta() {
+    if (luasTotalHa === "0") {
+        tampilkanPesan("⚠️ Belum ada area yang diukur!", "warning");
+        return;
+    }
+
+    // Perlu library leaflet-image
+    leafletImage(map, function(err, canvas) {
+        if (err) {
+            tampilkanPesan("❌ Gagal membuat gambar peta.", "error");
+            return;
+        }
+
+        // Tambahkan teks info luas di atas canvas
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(10, 10, 280, 60);
+        ctx.fillStyle = '#22d3ee';
+        ctx.font = 'bold 16px sans-serif';
+        ctx.fillText(`Luas: ${luasTotalHa} Hektar`, 20, 35);
+        ctx.fillStyle = 'white';
+        ctx.font = '13px sans-serif';
+        ctx.fillText(`${luasTotalM2} m² • Smart Farming`, 20, 58);
+
+        // Download otomatis
+        const link = document.createElement('a');
+        link.download = `lahan_${luasTotalHa}ha.png`;
+        link.href = canvas.toDataURL('png');
+        link.click();
+
+        tampilkanPesan("✅ Gambar tersimpan!\nKirim manual ke WhatsApp.", "info");
+    });
+}
 
 async function kirimPesan() {
 
