@@ -49,6 +49,12 @@
             -webkit-tap-highlight-color: transparent;
         }
 
+/* Sembunyikan mode malam secara default */
+.text-malam { display: none; }
+
+/* Jika body terkena class light-mode, balik logikanya */
+body.light-mode .text-siang { display: none; }
+body.light-mode .text-malam { display: inline; }
 /* HEADER STICKY SAJA */
 .sticky-header {
     position: sticky;
@@ -454,6 +460,284 @@ body {
             text-align: center; 
             box-shadow: 0 10px 30px rgba(0, 255, 157, 0.2);
         }
+        
+       /* --- TOMBOL TEMA --- */
+.btn-theme {
+    background: transparent;
+    border: 1px solid var(--accent-green);
+    color: var(--accent-green);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 10px;
+    cursor: pointer;
+    margin-top: 10px;
+    letter-spacing: 0.5px;
+    transition: all 0.3s ease;
+}
+.btn-theme:active {
+    background: var(--accent-green);
+    color: #ffffff;
+}
+
+/* =========================================
+   OVERRIDE LIGHT MODE — LENGKAP & KONTRAS
+   ========================================= */
+body.light-mode {
+    --bg-color: #f1f5f9;
+    --card-bg: #ffffff;
+    --text-main: #0f172a;
+    --text-muted: #475569;
+}
+
+/* === HEADER & STICKY === */
+body.light-mode .sticky-header,
+body.light-mode .sticky-top {
+    background-color: var(--bg-color);
+    border-bottom: 1px solid #cbd5e1;
+}
+
+body.light-mode .header p {
+    color: #2563eb;
+}
+
+/* === CARD UTAMA === */
+body.light-mode .card {
+    background: #ffffff;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+
+/* === TAB CONTAINER & TOMBOL === */
+body.light-mode .tab-container {
+    background: #e2e8f0 !important;
+}
+body.light-mode .tab-btn {
+    background: #f1f5f9 !important;
+    color: #334155 !important;
+}
+body.light-mode .tab-btn.active {
+    background: #3b82f6 !important;
+    color: #ffffff !important;
+}
+
+/* === FORM INPUT & SELECT === */
+body.light-mode .form-group input,
+body.light-mode .form-group select,
+body.light-mode input.form-input,
+body.light-mode select.form-select,
+body.light-mode #kecInput {
+    background-color: #f8fafc !important;
+    color: #0f172a !important;
+    border: 1px solid #94a3b8 !important;
+}
+body.light-mode .form-group label,
+body.light-mode label.form-label {
+    color: #334155 !important;
+}
+body.light-mode .form-lahan {
+    background: rgba(0, 0, 0, 0.04) !important;
+    border: 1px solid #e2e8f0;
+}
+
+/* === INFO-BOX, LEAF-CARD, DAILY, HOURLY === */
+body.light-mode .info-box {
+    background: #f1f5f9 !important;
+    border-color: #94a3b8 !important;
+    color: #0f172a !important;
+}
+body.light-mode .info-box strong {
+    color: #0f172a !important;
+}
+body.light-mode .info-box span,
+body.light-mode .info-box small {
+    color: #334155 !important;
+}
+body.light-mode .leaf-card {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+}
+body.light-mode .malai-counter-box {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+}
+
+/* === WEATHER / CUACA === */
+body.light-mode .hourly-card {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+}
+body.light-mode .hourly-card .time {
+    color: #475569 !important;
+}
+body.light-mode .hourly-card .temp {
+    color: #0f172a !important;
+}
+body.light-mode .daily-list {
+    background: #f1f5f9 !important;
+    border: 1px solid #cbd5e1;
+}
+body.light-mode .daily-item {
+    border-bottom: 1px solid #cbd5e1;
+}
+body.light-mode .daily-item .day,
+body.light-mode .daily-item .temp-range {
+    color: #0f172a !important;
+}
+
+/* === SCAN WINDOW === */
+body.light-mode .scan-window {
+    background: #e2e8f0 !important;
+    border: 1px solid #cbd5e1;
+}
+body.light-mode #msg {
+    color: #64748b !important;
+}
+
+/* === TABEL === */
+body.light-mode td {
+    color: #334155 !important;
+    border-bottom: 1px solid #e2e8f0;
+}
+body.light-mode td:first-child {
+    color: #475569 !important;
+}
+body.light-mode .row-val {
+    color: #0f172a !important;
+}
+
+/* === SUB-HEADER & TEKS UMUM === */
+body.light-mode .header h1,
+body.light-mode #modeTitle,
+body.light-mode .tab-subtitle,
+body.light-mode .sub-header-biaya,
+body.light-mode .forecast-title {
+    color: #0f172a !important;
+}
+
+/* === ENSO / IKLIM BOX (inline style override) === */
+body.light-mode #ensoIodBox {
+    background: #e2e8f0 !important;
+    border: 1px solid #cbd5e1 !important;
+}
+body.light-mode #ensoIodBox strong,
+body.light-mode #localSstBox strong {
+    color: #0f172a !important;
+}
+body.light-mode #ensoStatus,
+body.light-mode #localWarningStatus {
+    background: rgba(0,0,0,0.06) !important;
+    color: #0f172a !important;
+}
+
+/* === HASILKAN TEKS DI SEMUA OUTPUT DINAMIS === */
+body.light-mode #outputHasilVarietas,
+body.light-mode #outputBiaya,
+body.light-mode #outputBWD,
+body.light-mode #resLabel,
+body.light-mode #resConf,
+body.light-mode #resGejala,
+body.light-mode #resPenyebab,
+body.light-mode #resSolusi,
+body.light-mode #resMerek,
+body.light-mode #resAplikasi,
+body.light-mode #resGejalaHama,
+body.light-mode #resPenyebabHama,
+body.light-mode #resSolusiHama,
+body.light-mode #resMerekHama,
+body.light-mode #resAplikasiHama,
+body.light-mode #resUbinanTeks,
+body.light-mode #resPenjelasan,
+body.light-mode #resSaranTanah,
+body.light-mode #teksAnalisisFase,
+body.light-mode #iklimTerpaduBox {
+    color: #0f172a !important;
+}
+
+/* === KALENDER / FASE CHART BOX === */
+body.light-mode #hasilProyeksiIklim h4 {
+    color: #0f172a !important;
+}
+body.light-mode #hasilProyeksiIklim > div[style*="#111c2e"] {
+    background: #e2e8f0 !important;
+}
+
+/* === MODAL ALERT === */
+body.light-mode .modal-card {
+    background: #ffffff;
+    border: 1px solid #3b82f6;
+}
+body.light-mode #customAlertMessage {
+    color: #0f172a !important;
+}
+
+/* === FOOTER === */
+body.light-mode footer.fixed-footer {
+    background: var(--bg-color);
+    color: var(--text-muted);
+    border-top: 1px solid #cbd5e1;
+}
+body.light-mode footer.fixed-footer strong {
+    color: var(--text-main);
+}
+
+/* === CHATBOX === */
+body.light-mode #chatboxAI {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #0f172a !important;
+}
+body.light-mode #areaPesan {
+    background: #f8fafc !important;
+}
+body.light-mode #areaPesan > div {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+}
+body.light-mode #inputPesan {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border: 1px solid #94a3b8 !important;
+}
+body.light-mode #chatTitleText {
+    color: #059669 !important;
+}
+
+/* === TOMBOL COPY / AKSI SEKUNDER === */
+body.light-mode #btnCopyVarietas,
+body.light-mode #btnKirimWAVarietas {
+    color: #0f172a !important;
+}
+
+/* === LOADER & HIGHLIGHT === */
+body.light-mode #loader {
+    color: #2563eb !important;
+}
+body.light-mode .highlight {
+    color: #059669 !important;
+}
+body.light-mode .vote-summary {
+    color: #b45309 !important;
+}
+body.light-mode .animasi-loading-kalender {
+    color: #a21caf !important;
+}
+
+/* Override terpaduBox yang dirender JS */
+body.light-mode #iklimTerpaduBox {
+    background: #f1f5f9 !important;
+    border-color: #cbd5e1 !important;
+}
+body.light-mode #iklimTerpaduBox h4 {
+    color: #0f172a !important;
+}
+body.light-mode #iklimTerpaduBox div {
+    color: #334155 !important;
+    background: transparent !important;
+}
+body.light-mode #iklimTerpaduBox > div > div:last-child {
+    background: #e2e8f0 !important;
+    color: #1e293b !important;
+}
     </style>
 </head>
 <body>
@@ -461,9 +745,13 @@ body {
     <!-- GANTI BAGIAN STICKY-TOP INI -->
 <div class="sticky-header">
     <div class="header">
-        <h1>SMART FARMING - IOT</h1>
-        <p>Internet of Things. Developed by PPL MILENIAL WAJO</p>
-    </div>
+    <h1>SMART FARMING - IOT</h1>
+    <p>Internet of Things. Developed by PPL MILENIAL WAJO</p>
+   <button onclick="toggleTheme()" class="btn-theme">
+    <span class="text-siang">☀️ GANTI KE MODE SIANG</span>
+    <span class="text-malam">🌙 GANTI KE MODE MALAM</span>
+</button>
+</div>
 </div>
 
 <div class="tab-container">
@@ -932,8 +1220,24 @@ body {
     <footer class="fixed-footer">
         <div>© 2026 Dibuat oleh: <strong>King Mamank</strong> • PPL BPP Bola - Kab. Wajo - Sulsel</div>
     </footer>
+<script>
+       function toggleTheme() {
+    // Cukup toggle class, jangan menyentuh teks (innerHTML)
+    document.body.classList.toggle('light-mode');
+    
+    // Simpan status
+    const isLight = document.body.classList.contains('light-mode');
+    localStorage.setItem('temaAplikasi', isLight ? 'siang' : 'malam');
+}
 
-    <script>
+// Saat load, cukup pasang class-nya saja
+window.addEventListener('load', function() {
+    const status = localStorage.getItem('temaAplikasi');
+    if (status === 'siang') {
+        document.body.classList.add('light-mode');
+    }
+});
+// --- BATAS KODE TEMA SIANG MALAM ---
         let baselineIklimLokal = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // Nilai default netral
         // 1. Fungsi bawaan untuk membuka & menutup modal
         function tutupCustomAlert() {
@@ -4135,10 +4439,10 @@ document.getElementById('resPenyebabHama').innerHTML = (hasilHama.penyebab || "-
                 • <b>Tahap II (${t2}):</b> Urea: ${u2.toFixed(0)} kg | Phonska: ${p2.toFixed(0)} kg<br>
                 • <b>Tahap III (${t3}):</b> Phonska: ${p3.toFixed(0)} kg<br><br>
                 
-                <div style="background: #166534; padding: 12px; border-radius: 10px; border-left: 4px solid var(--accent-pupuk);">
+                <div style=\"background: ${document.body.classList.contains('light-mode') ? '#dcfce7' : '#166534'}; padding: 12px; border-radius: 10px; border-left: 4px solid var(--accent-pupuk); color: ${document.body.classList.contains('light-mode') ? '#14532d' : '#ffffff'};\">
                     <b>📊 REKAP TOTAL KEBUTUHAN:</b><br>
-                    • <b>Urea (Subsidi):</b> ${totalU.toFixed(0)} kg (<span style="color:var(--accent-soil)">${sak(totalU)} sak</span>)<br>
-                    • <b>Phonska (NPK):</b> ${totalP.toFixed(0)} kg (<span style="color:var(--accent-soil)">${sak(totalP)} sak</span>)
+                    • <b>Urea (Subsidi):</b> ${totalU.toFixed(0)} kg (<span style=\"color:${document.body.classList.contains('light-mode') ? '#b45309' : 'var(--accent-soil)'}\">${sak(totalU)} sak</span>)<br>
+                    • <b>Phonska (NPK):</b> ${totalP.toFixed(0)} kg (<span style=\"color:${document.body.classList.contains('light-mode') ? '#b45309' : 'var(--accent-soil)'}\">${sak(totalP)} sak</span>)
                 </div>`;
 
             hasilTeksWA = `*SMART FARMING - PPL MILENIAL WAJO*\n*REKOMENDASI DOSIS PUPUK E-RDKK*\n\n` +
@@ -5041,6 +5345,7 @@ function startBWDCamera() {
         alert("Gagal mengakses kamera. Pastikan izin kamera diberikan.");
     });
 }
+
 </script>
         <div id="customAlertModal">
     <div class="modal-card">
