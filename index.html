@@ -3052,31 +3052,61 @@ function showLeafAnalysisResult(r, g, b) {
             return { level: "RENDAH", color: "var(--accent-green)", msg: "Kondisi sawah relatif aman dari serangan Blast saat ini." };
         }
 
+// ============================================================
+//  CACHE HARIAN — Grafik tidak berubah selama 1 hari penuh
+// ============================================================
+function getCacheKey(prefix, lat, lon) {
+    const today = new Date().toISOString().slice(0, 10); // "2026-06-04"
+    return `sst_cache_${prefix}_${lat}_${lon}_${today}`;
+}
+
+function saveSSTCache(prefix, lat, lon, data) {
+    try {
+        localStorage.setItem(getCacheKey(prefix, lat, lon), JSON.stringify(data));
+    } catch(e) {}
+}
+
+function loadSSTCache(prefix, lat, lon) {
+    try {
+        const raw = localStorage.getItem(getCacheKey(prefix, lat, lon));
+        return raw ? JSON.parse(raw) : null;
+    } catch(e) { return null; }
+}
         async function getNOAASST(lat, lon, date = new Date()) {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const targetDate = `${year}-${month}-${day}`;
-            const url = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&hourly=sea_surface_temperature&start_date=${targetDate}&end_date=${targetDate}&timezone=auto`;
-            
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const data = await response.json();
-                
-                if (data.hourly && data.hourly.sea_surface_temperature && data.hourly.sea_surface_temperature.length > 0) {
-                    const sstValues = data.hourly.sea_surface_temperature.filter(v => v !== null);
-                    if (sstValues.length > 0) {
-                        const avgSST = sstValues.reduce((a, b) => a + b, 0) / sstValues.length;
-                        return parseFloat(avgSST.toFixed(2));
-                    }
-                }
-                return null;
-            } catch (error) {
-                console.error(`Gagal ambil SST di (${lat}, ${lon}):`, error);
-                return getFallbackSST(lat, lon, date);
+    const year  = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day   = String(date.getDate()).padStart(2, '0');
+    const targetDate = `${year}-${month}-${day}`;
+
+    // ✅ Cek cache dulu
+    const cacheKey = `sst_${lat}_${lon}_${targetDate}`;
+    try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached !== null) return parseFloat(cached);
+    } catch(e) {}
+
+    const url = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&hourly=sea_surface_temperature&start_date=${targetDate}&end_date=${targetDate}&timezone=auto`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        if (data.hourly?.sea_surface_temperature?.length > 0) {
+            const sstValues = data.hourly.sea_surface_temperature.filter(v => v !== null);
+            if (sstValues.length > 0) {
+                const avgSST = parseFloat((sstValues.reduce((a, b) => a + b, 0) / sstValues.length).toFixed(2));
+                // ✅ Simpan ke cache
+                try { localStorage.setItem(cacheKey, avgSST); } catch(e) {}
+                return avgSST;
             }
         }
+        return null;
+    } catch (error) {
+        console.error(`Gagal ambil SST di (${lat}, ${lon}):`, error);
+        return getFallbackSST(lat, lon, date);
+    }
+}
 
         function getFallbackSST(lat, lon, date) {
     // Baseline SST klimatologi bulanan berdasarkan lokasi perairan
