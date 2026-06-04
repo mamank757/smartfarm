@@ -3183,7 +3183,7 @@ function loadSSTCache(prefix, lat, lon) {
                 const targetDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
                 const sst = await getNOAASST(lat, lon, targetDate);
                 labels.push(`${bulanNames[targetDate.getMonth()]} ${targetDate.getFullYear().toString().substring(2)}`);
-                sstData.push(sst || (i === 1 ? 28.5 : sstData[sstData.length - 1] || 28.5));
+                sstData.push(sst ?? (i === 1 ? 28.5 : sstData[sstData.length - 1] ?? 28.5));
             }
             return { labels, sstData };
         }
@@ -3464,6 +3464,7 @@ async function getLocalSSTTimeseries() {
 
         for (let i = 3; i >= 0; i--) {
             const d = new Date();
+            d.setDate(1);
             d.setMonth(d.getMonth() - i);
             promisesBone.push(getNOAASST(latBone, lonBone, d));
             promisesMks.push(getNOAASST(latMks,  lonMks,  d));
@@ -3477,12 +3478,12 @@ async function getLocalSSTTimeseries() {
         const riilBone = hasilBone.map((val, i) => {
             const d = new Date();
             d.setMonth(d.getMonth() - (3 - i));
-            return val || getFallbackSST(latBone, lonBone, d);
+            return val ?? getFallbackSST(latBone, lonBone, d);
         });
         const riilMks = hasilMks.map((val, i) => {
             const d = new Date();
             d.setMonth(d.getMonth() - (3 - i));
-            return val || getFallbackSST(latMks, lonMks, d);
+            return val ?? getFallbackSST(latMks, lonMks, d);
         });
 
         // Hitung tren dengan faktor redaman
