@@ -738,6 +738,27 @@ body.light-mode #iklimTerpaduBox > div > div:last-child {
     background: #e2e8f0 !important;
     color: #1e293b !important;
 }
+
+/* ── Rekap Total Kebutuhan Pupuk ── */
+.rekap-pupuk-box {
+    background: #166534;
+    padding: 12px;
+    border-radius: 10px;
+    border-left: 4px solid var(--accent-pupuk);
+    color: #ffffff;
+}
+.rekap-sak-text {
+    color: var(--accent-soil);
+    font-weight: 700;
+}
+body.light-mode .rekap-pupuk-box {
+    background: #dcfce7;
+    color: #14532d;
+}
+body.light-mode .rekap-sak-text {
+    color: #14532d;
+    font-weight: 700;
+}
     </style>
 </head>
 <body>
@@ -834,6 +855,36 @@ body.light-mode #iklimTerpaduBox > div > div:last-child {
             <canvas id="kalenderChart"></canvas>
         </div>
         <div id="teksAnalisisFase" style="margin-top: 20px; display: flex; flex-direction: column; gap: 12px;"></div>
+    </div>
+
+    <div id="ensoIodBox" style="display: block; margin-top: 20px; border-radius: 16px; backdrop-filter: blur(12px); background: rgba(20, 20, 25, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px;">
+        <strong style="display: block; margin-bottom: 12px; text-align: center; font-size: 0.95rem; color: #fff;">📈 Proyeksi Iklim Makro</strong>
+        <div id="ensoStatus" style="font-size: 0.9rem; margin-bottom: 15px; text-align: center; color: #fff; font-weight: 600; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;">
+            Mendeteksi fase iklim...
+        </div>
+        <div style="position: relative; width: 100%; height: 200px; margin-bottom: 20px;">
+            <canvas id="macroClimateChart"></canvas>
+        </div>
+        <div style="font-size: 0.75rem; color: #94a3b8; text-align: center; display: flex; justify-content: center; gap: 15px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 20px;">
+            <span><span style="color:#ff4a5a;">&#9632;</span> ENSO (Pasifik)</span>
+            <span><span style="color:#ffcc00;">&#9632;</span> IOD (Hindia)</span>
+        </div>
+
+        <div id="localSstBox" style="margin-top: 20px; display: none;">
+            <strong style="display: block; margin-bottom: 12px; text-align: center; font-size: 0.95rem; color: #fff;">&#127754; Suhu Permukaan Laut Lokal</strong>
+            <div id="localWarningStatus" style="font-size: 0.85rem; margin-bottom: 15px; text-align: center; font-weight: 500; padding: 8px; border-radius: 8px; background: rgba(0,0,0,0.3);">
+                Menganalisis suhu laut lokal...
+            </div>
+            <div style="position: relative; width: 100%; height: 200px;">
+                <canvas id="localSstChart"></canvas>
+            </div>
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 15px; text-align: center; display: flex; justify-content: center; gap: 15px;">
+                <span><span style="color:#00ff9d;">&#9632;</span> Laut Teluk Bone (&#176;C)</span>
+                <span><span style="color:#38b6ff;">&#9632;</span> Laut Selat Makassar (&#176;C)</span>
+            </div>
+        </div>
+
+        <div id="iklimTerpaduBox"></div>
     </div>
 </div>
         <div id="boxVarietasPadi" style="display: none;">
@@ -1122,36 +1173,6 @@ body.light-mode #iklimTerpaduBox > div > div:last-child {
                     <div class="forecast-title">📅 Prakiraan 7 Hari Kedepan</div>
                     <div class="daily-list" id="dailyForecastContainer"></div>
                       
-                    <div id="ensoIodBox" style="display: block; margin-top: 20px; border-radius: 16px; backdrop-filter: blur(12px); background: rgba(20, 20, 25, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px;">
-                        <strong style="display: block; margin-bottom: 12px; text-align: center; font-size: 0.95rem; color: #fff;">📈 Proyeksi Iklim Makro</strong>
-                        <div id="ensoStatus" style="font-size: 0.9rem; margin-bottom: 15px; text-align: center; color: #fff; font-weight: 600; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;">
-                            Mndeteksi fase iklim...
-                        </div>
-                        <div style="position: relative; width: 100%; height: 200px; margin-bottom: 20px;">
-                            <canvas id="macroClimateChart"></canvas>
-                        </div>
-                        <div style="font-size: 0.75rem; color: #94a3b8; text-align: center; display: flex; justify-content: center; gap: 15px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 20px;">
-                            <span><span style="color:#ff4a5a;">■</span> ENSO (Pasifik)</span>
-                            <span><span style="color:#ffcc00;">■</span> IOD (Hindia)</span>
-                        </div>
-
-                        <div id="localSstBox" style="margin-top: 20px; display: none;">
-                            <strong style="display: block; margin-bottom: 12px; text-align: center; font-size: 0.95rem; color: #fff;">🌊 Suhu Permukaan Laut Lokal</strong>
-                            <div id="localWarningStatus" style="font-size: 0.85rem; margin-bottom: 15px; text-align: center; font-weight: 500; padding: 8px; border-radius: 8px; background: rgba(0,0,0,0.3);">
-                                Menganalisis suhu laut lokal...
-                            </div>
-                            <div style="position: relative; width: 100%; height: 200px;">
-                                <canvas id="localSstChart"></canvas>
-                            </div>
-                            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 15px; text-align: center; display: flex; justify-content: center; gap: 15px;">
-                                <span><span style="color:#00ff9d;">■</span> Laut Teluk Bone (°C)</span>
-                                <span><span style="color:#38b6ff;">■</span> Laut Selat Makassar (°C)</span>
-                            </div>
-                        </div> 
-                        
-                        <div id="iklimTerpaduBox"></div>
-                    </div> 
-
                     <div class="info-box" style="border-left-color: var(--accent-green); padding: 16px; margin-top: 16px;">
                         <strong>📊 Real-Time Parameter Lahan (Satelit)</strong>
                         <table style="width: 100%; margin-top: 8px; border: none;">
@@ -2618,12 +2639,126 @@ if (!document.getElementById('appMessageStyle')) {
                     document.getElementById('alamatDesa').innerText = "Satelit Cuaca Aktif"; 
                 }
 
+                // ─── FUNGSI FETCH DENGAN RETRY ─────────────────────────────
+                async function fetchDenganRetry(url, maxCoba = 3, jedaMs = 1500) {
+                    for (let i = 0; i < maxCoba; i++) {
+                        try {
+                            const controller = new AbortController();
+                            const timeout = setTimeout(() => controller.abort(), 12000);
+                            const res = await fetch(url, { signal: controller.signal });
+                            clearTimeout(timeout);
+                            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                            return await res.json();
+                        } catch (e) {
+                            console.warn(`Percobaan ${i+1}/${maxCoba} gagal:`, e.message);
+                            if (i < maxCoba - 1) await new Promise(r => setTimeout(r, jedaMs));
+                        }
+                    }
+                    throw new Error(`Gagal setelah ${maxCoba} percobaan`);
+                }
+
+                // ─── PROVIDER 1: Open-Meteo (Primary) ──────────────────────
                 const urlArchive = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${getFormatTanggal(30)}&end_date=${getFormatTanggal(1)}&daily=precipitation_sum&timezone=auto`;
                 const urlForecast = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=rain,temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_direction_10m,surface_pressure,weather_code&hourly=precipitation_probability,precipitation,temperature_850hPa,cape,temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto`;
-                
-                const [resA, resF] = await Promise.all([fetch(urlArchive), fetch(urlForecast)]);
-                const dataArchive = await resA.json(); 
-                const dataForecast = await resF.json();
+
+                // ─── PROVIDER 2: wttr.in (Fallback, tanpa API key) ──────────
+                const urlWttr = `https://wttr.in/${lat},${lon}?format=j1`;
+
+                // ─── FUNGSI KONVERSI DATA WTTR.IN → FORMAT OPEN-METEO ──────
+                function konversiWttrKeOpenMeteo(wttrData) {
+                    const cc = wttrData.current_condition[0];
+                    const weather3days = wttrData.weather || [];
+
+                    // Mapping kode cuaca wttr ke WMO code Open-Meteo
+                    const mapWmoCode = (wttrCode) => {
+                        const c = parseInt(wttrCode);
+                        if (c === 113) return 0;       // Cerah
+                        if ([116, 119, 122].includes(c)) return 3; // Berawan
+                        if ([143, 248, 260].includes(c)) return 45; // Kabut
+                        if ([176, 293, 296, 299, 302, 305].includes(c)) return 61; // Hujan ringan-sedang
+                        if ([308, 311, 314, 353, 356].includes(c)) return 65; // Hujan lebat
+                        if ([389, 392, 395].includes(c)) return 95; // Badai petir
+                        return 1;
+                    };
+
+                    // Bangun array hourly dari data wttr (3 hari × 8 slot/hari)
+                    const hourlyTimes = [], hourlyTemp = [], hourlyCode = [];
+                    const hourlyPrecip = [], hourlyProb = [];
+                    weather3days.forEach(day => {
+                        (day.hourly || []).forEach(h => {
+                            const tStr = `${day.date}T${String(parseInt(h.time)/100).padStart(2,'0')}:00`;
+                            hourlyTimes.push(tStr);
+                            hourlyTemp.push(parseFloat(h.tempC));
+                            hourlyCode.push(mapWmoCode(h.weatherCode));
+                            hourlyPrecip.push(parseFloat(h.precipMM));
+                            hourlyProb.push(parseInt(h.chanceofrain));
+                        });
+                    });
+
+                    const dailyDates = [], dailyCode = [], dailyMax = [], dailyMin = [];
+                    weather3days.forEach(day => {
+                        dailyDates.push(day.date);
+                        const avgCode = mapWmoCode((day.hourly||[{weatherCode:113}])[4]?.weatherCode || 113);
+                        dailyCode.push(avgCode);
+                        dailyMax.push(parseFloat(day.maxtempC));
+                        dailyMin.push(parseFloat(day.mintempC));
+                    });
+
+                    return {
+                        current: {
+                            temperature_2m: parseFloat(cc.temp_C),
+                            relative_humidity_2m: parseInt(cc.humidity),
+                            dew_point_2m: parseFloat(cc.DewPointC),
+                            wind_speed_10m: parseFloat(cc.windspeedKmph),
+                            wind_direction_10m: parseInt(cc.winddirDegree),
+                            surface_pressure: parseFloat(cc.pressure),
+                            weather_code: mapWmoCode(cc.weatherCode),
+                            rain: parseFloat(cc.precipMM)
+                        },
+                        hourly: {
+                            time: hourlyTimes,
+                            temperature_2m: hourlyTemp,
+                            weather_code: hourlyCode,
+                            precipitation: hourlyPrecip,
+                            precipitation_probability: hourlyProb,
+                            temperature_850hPa: hourlyTemp.map(t => t - 8),
+                            cape: hourlyTemp.map(() => 500)
+                        },
+                        daily: {
+                            time: dailyDates,
+                            weather_code: dailyCode,
+                            temperature_2m_max: dailyMax,
+                            temperature_2m_min: dailyMin
+                        }
+                    };
+                }
+
+                // ─── AMBIL DATA: COBA OPEN-METEO, FALLBACK KE WTTR.IN ──────
+                let dataForecast, dataArchive;
+                document.getElementById('resConf').innerText = "Menghubungi server cuaca...";
+
+                try {
+                    // Coba Open-Meteo terlebih dahulu (dengan retry)
+                    const [resF, resA] = await Promise.all([
+                        fetchDenganRetry(urlForecast),
+                        fetchDenganRetry(urlArchive).catch(() => ({ daily: { precipitation_sum: [] } }))
+                    ]);
+                    dataForecast = resF;
+                    dataArchive = resA;
+                    console.log("✅ Data cuaca dari Open-Meteo");
+                } catch (errOpenMeteo) {
+                    // Fallback ke wttr.in jika Open-Meteo gagal
+                    console.warn("⚠️ Open-Meteo gagal, beralih ke wttr.in...", errOpenMeteo.message);
+                    document.getElementById('resConf').innerText = "Beralih ke server cadangan...";
+                    try {
+                        const wttrRaw = await fetchDenganRetry(urlWttr, 3, 2000);
+                        dataForecast = konversiWttrKeOpenMeteo(wttrRaw);
+                        dataArchive = { daily: { precipitation_sum: [] } };
+                        console.log("✅ Data cuaca dari wttr.in (fallback)");
+                    } catch (errWttr) {
+                        throw new Error("Semua sumber cuaca tidak dapat dijangkau. Periksa koneksi internet Anda.");
+                    }
+                }
                 
                 const cur = dataForecast.current; 
                 const hourly = dataForecast.hourly;
@@ -2806,18 +2941,21 @@ if (!document.getElementById('appMessageStyle')) {
                 loadGlobalClimateIndices();
 
             } catch (err) {
-                console.error(err);
+                console.error("❌ loadWeather error:", err);
                 document.getElementById('resLabel').innerText = "❌ Gagal Mengambil Data Cuaca";
-                document.getElementById('resConf').innerText = "Periksa GPS dan Internet";
+                document.getElementById('resConf').innerText = err.message || "Periksa GPS dan koneksi internet";
                 document.getElementById('gpsPrompt').style.display = 'block';
                 document.getElementById('weatherData').style.display = 'none';
                 
                 const btn = document.querySelector('.btn-live');
                 if (btn) {
-                    btn.innerText = "SINKRONKAN GPS & SATELIT";
+                    btn.innerText = "🔄 COBA LAGI";
                     btn.style.opacity = "1"; 
                     btn.disabled = false;
+                    btn.style.background = "";
                 }
+                // Tampilkan pesan error detail agar user tahu penyebabnya
+                alert(`Gagal memuat data cuaca.\n\nPenyebab: ${err.message || "Tidak diketahui"}\n\nSolusi:\n• Pastikan GPS aktif\n• Izin Lokasi diberikan\n• Koneksi internet stabil\n• Coba lagi beberapa saat`);
             }
         }
         async function startBWDCamera() {
@@ -2925,16 +3063,29 @@ if (!document.getElementById('appMessageStyle')) {
         async function mulaiAnalisis() {
             document.getElementById('scanWindow').classList.add('is-scanning');
             document.getElementById('loader').style.display = 'block';
+            // Nonaktifkan tombol saat proses berjalan
+            const btnAnalisis = document.getElementById('btnAnalisis');
+            btnAnalisis.disabled = true;
+            btnAnalisis.style.opacity = "0.6";
             try {
                 const urls = { daun: URL_DAUN, hama: URL_HAMA, gulma: URL_GULMA, tanah: URL_TANAH, malai: URL_MALAI };
                 const res = await fetch(urls[currentMode], { method: 'POST', body: JSON.stringify({ image: base64Image }) });
                 const data = await res.json(); 
                 tampilkanHasil(data);
+                // Sembunyikan tombol setelah analisis selesai (kecuali mode malai yang butuh beberapa foto)
+                if (currentMode !== 'malai') {
+                    btnAnalisis.style.display = 'none';
+                }
             } catch (e) { 
                 alert("Gagal koneksi server!"); 
+                // Aktifkan kembali tombol jika gagal
+                btnAnalisis.disabled = false;
+                btnAnalisis.style.opacity = "1";
             }
             document.getElementById('scanWindow').classList.remove('is-scanning');
             document.getElementById('loader').style.display = 'none';
+            btnAnalisis.disabled = false;
+            btnAnalisis.style.opacity = "1";
         }
         
         const BWD_STANDAR = [
@@ -3730,6 +3881,9 @@ const iodSmooth = getMovingAverage(iod.anomalies, 2);
                 
                 updateENSOIODStatus(enso, iod);
                 updateLocalWarning(sstLokal);
+
+                const boxLokal = document.getElementById('localSstBox');
+                if (boxLokal) boxLokal.style.display = 'block';
                 
                 showSSTRekomendasi(sstLokal);
                 simpulkanPrediksiIklimTerpadu(enso, iod, sstLokal);
@@ -4051,7 +4205,7 @@ const iodSmooth = getMovingAverage(iod.anomalies, 2);
     let rekomBox = document.getElementById("sstRekomendasiBox");
 
     if (!rekomBox) {
-        const container = document.getElementById("weatherData");
+        const container = document.getElementById("ensoIodBox");
 
         if (container) {
             container.insertAdjacentHTML(
@@ -4492,10 +4646,10 @@ document.getElementById('resPenyebabHama').innerHTML = (hasilHama.penyebab || "-
                 • <b>Tahap II (${t2}):</b> Urea: ${u2.toFixed(0)} kg | Phonska: ${p2.toFixed(0)} kg<br>
                 • <b>Tahap III (${t3}):</b> Phonska: ${p3.toFixed(0)} kg<br><br>
                 
-                <div style=\"background: ${document.body.classList.contains('light-mode') ? '#dcfce7' : '#166534'}; padding: 12px; border-radius: 10px; border-left: 4px solid var(--accent-pupuk); color: ${document.body.classList.contains('light-mode') ? '#14532d' : '#ffffff'};\">
+                <div class="rekap-pupuk-box">
                     <b>📊 REKAP TOTAL KEBUTUHAN:</b><br>
-                    • <b>Urea (Subsidi):</b> ${totalU.toFixed(0)} kg (<span style=\"color:${document.body.classList.contains('light-mode') ? '#b45309' : 'var(--accent-soil)'}\">${sak(totalU)} sak</span>)<br>
-                    • <b>Phonska (NPK):</b> ${totalP.toFixed(0)} kg (<span style=\"color:${document.body.classList.contains('light-mode') ? '#b45309' : 'var(--accent-soil)'}\">${sak(totalP)} sak</span>)
+                    • <b>Urea (Subsidi):</b> ${totalU.toFixed(0)} kg (<span class="rekap-sak-text">${sak(totalU)} sak</span>)<br>
+                    • <b>Phonska (NPK):</b> ${totalP.toFixed(0)} kg (<span class="rekap-sak-text">${sak(totalP)} sak</span>)
                 </div>`;
 
             hasilTeksWA = `*SMART FARMING - PPL MILENIAL WAJO*\n*REKOMENDASI DOSIS PUPUK E-RDKK*\n\n` +
@@ -4731,6 +4885,12 @@ async function prosesAnalisisKalender() {
         // 1. Panggil GPS lebih dulu secara strict sebelum memuat data berat lainnya
         const lokasi = await dapatkanLokasiOtomatis();
 
+        // Simpan koordinat ke lokasiSawah agar loadGlobalClimateIndices bisa membacanya
+        const lokasiSawahEl = document.getElementById('lokasiSawah');
+        if (lokasiSawahEl && lokasiSawahEl.innerText === '-') {
+            lokasiSawahEl.innerText = `${lokasi.lat.toFixed(5)}, ${lokasi.lon.toFixed(5)}`;
+        }
+
         // 2. Tarik Data Global + Pola Makro + ZOM Lokal secara bersamaan
         const [ensoData, iodData, resPola, resZom] = await Promise.all([
             getENSOAnomaly(),
@@ -4880,6 +5040,9 @@ async function prosesAnalisisKalender() {
         judulChart.innerHTML = judulChart.dataset.asli; // Kembalikan judul asli
         bungkusChart.style.display = "block";
         renderKalenderChart(labels, dataSkor);
+        
+        // Muat grafik iklim makro, SST lokal, dan anomali suhu laut
+        loadGlobalClimateIndices();
         
         kontainerTeks.innerHTML = `
             <div style="text-align: center; font-size: 0.8rem; margin-bottom: 15px; color: var(--accent-kalender); border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 8px;">
