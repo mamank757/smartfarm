@@ -1217,9 +1217,13 @@ body.light-mode #iklimTerpaduBox > div > div:last-child {
                 
     <div style="margin-bottom: 80px;"></div>
 
-    <footer class="fixed-footer">
-        <div>© 2026 Dibuat oleh: <strong>King Mamank</strong> • PPL BPP Bola - Kab. Wajo - Sulsel</div>
-    </footer>
+   <footer class="fixed-footer">
+    <div>© <span id="tahunFooter"></span> Dibuat oleh: <strong>King Mamank</strong> • PPL BPP Bola - Kab. Wajo - Sulsel</div>
+</footer>
+
+<script>
+    document.getElementById("tahunFooter").textContent = new Date().getFullYear();
+</script>
 <script>
        function toggleTheme() {
     // Cukup toggle class, jangan menyentuh teks (innerHTML)
@@ -3187,9 +3191,6 @@ function loadSSTCache(prefix, lat, lon) {
        // Prediksi ENSO (Pasifik) 3 Bulan Kedepan dengan AI Trend Extrapolation (Optimized)
 async function getENSOAnomaly() {
     try {
-        // KOREKSI: Titik tengah kotak Nino3.4 yang benar
-        // Standar NOAA CPC: 5°N-5°S, 120°W-170°W
-        // Titik tengah representatif: 0°, -145°W
         const latNino = 0;
         const lonNino = -145;
 
@@ -3198,85 +3199,84 @@ async function getENSOAnomaly() {
             "Jul","Agu","Sep","Okt","Nov","Des"
         ];
 
-        // Ambil 4 bulan ke belakang untuk hitung moving average 3 bulan
-        // (standar ONI = 3-month running mean)
+        // ─────────────────────────────────────────────────────────
+        // BASELINE NINO3.4 DINAMIS — Update otomatis per periode
+        // Periode 1991-2020 (NOAA CPC resmi): 27.0°C
+        // Periode 2001-2030 (estimasi tren +0.2°C/dekade): 27.2°C
+        // Periode 2011-2040 (proyeksi): ~27.4°C
+        // Referensi: Huang et al. (2021), NOAA ERSST v5
+        // ─────────────────────────────────────────────────────────
+        const tahunSekarang = new Date().getFullYear();
+        let BASELINE_NINO34;
+        if (tahunSekarang <= 2025) {
+            BASELINE_NINO34 = 27.0;   // Periode 1991-2020
+        } else if (tahunSekarang <= 2030) {
+            BASELINE_NINO34 = 27.2;   // Periode 2001-2030 (aktif saat ini)
+        } else if (tahunSekarang <= 2035) {
+            BASELINE_NINO34 = 27.3;   // Proyeksi 2011-2040
+        } else {
+            BASELINE_NINO34 = 27.4;   // Proyeksi jangka panjang
+        }
+
+        // Ambil 6 bulan ke belakang (diperluas dari 4)
+        // agar tren lebih stabil dan tidak mudah goyang oleh 1 bulan anomali
         const promises = [];
-        for (let i = 3; i >= 0; i--) {
+        for (let i = 5; i >= 0; i--) {
             const d = new Date();
+            d.setDate(1); // Selalu ambil tanggal 1 agar konsisten tiap bulan
             d.setMonth(d.getMonth() - i);
             promises.push(getNOAASST(latNino, lonNino, d));
         }
         const hasil = await Promise.all(promises);
 
-        // Konversi ke anomali
-        // Baseline rata-rata SST Nino3.4 historis ≈ 27.0°C
+        // Konversi ke anomali menggunakan baseline dinamis
         const anomaliRiil = hasil.map(
-            sst => parseFloat(((sst || 27.0) - 27.0).toFixed(2))
+            sst => parseFloat(((sst ?? BASELINE_NINO34) - BASELINE_NINO34).toFixed(2))
         );
 
-        // Hitung 3-month running mean (standar ONI NOAA)
-        // Index 0-2 = bulan -3 s/d -1; Index 3 = bulan ini
-        const oni3Bulan = (anomaliRiil[1] + anomaliRiil[2] + anomaliRiil[3]) / 3;
+        // ONI = 3-month running mean dari 3 bulan terakhir (index 3,4,5)
+        const oni3Bulan = (anomaliRiil[3] + anomaliRiil[4] + anomaliRiil[5]) / 3;
 
-        // Hitung tren linear sederhana (hanya untuk proyeksi arah, BUKAN prediksi resmi)
-        const tren = (
-            (anomaliRiil[1] - anomaliRiil[0]) +
-            (anomaliRiil[2] - anomaliRiil[1]) +
-            (anomaliRiil[3] - anomaliRiil[2])
-        ) / 3;
+        // Tren linear dari 6 bulan — lebih stabil dari 4 bulan
+        let trenTotal = 0;
+        for (let i = 1; i < anomaliRiil.length; i++) {
+            trenTotal += anomaliRiil[i] - anomaliRiil[i - 1];
+        }
+        const tren = trenTotal / (anomaliRiil.length - 1);
 
-        // Proyeksi 3 bulan ke depan (disclaimer: bukan model coupled ocean-atmosphere)
+        // Proyeksi 3 bulan ke depan
         const labelsMasaDepan = [];
         const proyeksiEnso = [];
 
         for (let i = 0; i <= 3; i++) {
             const d = new Date();
+            d.setDate(1);
             d.setMonth(d.getMonth() + i);
             labelsMasaDepan.push(
                 `${bulanNames[d.getMonth()]} ${d.getFullYear().toString().substring(2)}`
             );
-            // Batasi proyeksi agar tidak ekstrem — realitas ENSO jarang > ±3°C
+            // Faktor redaman makin kuat untuk proyeksi lebih jauh (0.7 → 0.5 → 0.3)
+            const redaman = Math.max(0.3, 0.7 - (i * 0.1));
             let tebakan = Math.max(-3.0, Math.min(3.0,
-                oni3Bulan + (tren * i * 0.7) // faktor redaman 0.7 agar tidak overshooting
+                oni3Bulan + (tren * i * redaman)
             ));
             proyeksiEnso.push(parseFloat(tebakan.toFixed(2)));
         }
 
-        // Klasifikasi menggunakan threshold standar NOAA CPC (±0.5°C)
-        // Catatan: klasifikasi resmi butuh 5 musim berturut-turut,
-        // di sini hanya snapshot satu waktu sebagai indikator arah
+        // Klasifikasi threshold standar NOAA CPC (±0.5°C)
         const anomaliSekarang = proyeksiEnso[0];
         let status = "Netral";
         let intensitas = "";
 
-        if (anomaliSekarang >= 2.0) {
-            status = "El Niño";
-            intensitas = "Super/Sangat Kuat";
-        } else if (anomaliSekarang >= 1.5) {
-            status = "El Niño";
-            intensitas = "Kuat";
-        } else if (anomaliSekarang >= 1.0) {
-            status = "El Niño";
-            intensitas = "Moderat";
-        } else if (anomaliSekarang >= 0.5) {
-            status = "El Niño";
-            intensitas = "Lemah";
-        } else if (anomaliSekarang <= -2.0) {
-            status = "La Niña";
-            intensitas = "Sangat Kuat";
-        } else if (anomaliSekarang <= -1.5) {
-            status = "La Niña";
-            intensitas = "Kuat";
-        } else if (anomaliSekarang <= -1.0) {
-            status = "La Niña";
-            intensitas = "Moderat";
-        } else if (anomaliSekarang <= -0.5) {
-            status = "La Niña";
-            intensitas = "Lemah";
-        } else {
-            status = "Netral";
-            intensitas = "";
-        }
+        if      (anomaliSekarang >= 2.0)  { status = "El Niño"; intensitas = "Super/Sangat Kuat"; }
+        else if (anomaliSekarang >= 1.5)  { status = "El Niño"; intensitas = "Kuat"; }
+        else if (anomaliSekarang >= 1.0)  { status = "El Niño"; intensitas = "Moderat"; }
+        else if (anomaliSekarang >= 0.5)  { status = "El Niño"; intensitas = "Lemah"; }
+        else if (anomaliSekarang <= -2.0) { status = "La Niña"; intensitas = "Sangat Kuat"; }
+        else if (anomaliSekarang <= -1.5) { status = "La Niña"; intensitas = "Kuat"; }
+        else if (anomaliSekarang <= -1.0) { status = "La Niña"; intensitas = "Moderat"; }
+        else if (anomaliSekarang <= -0.5) { status = "La Niña"; intensitas = "Lemah"; }
+        else                              { status = "Netral";   intensitas = ""; }
 
         return {
             labels: labelsMasaDepan,
@@ -3284,8 +3284,9 @@ async function getENSOAnomaly() {
             status: intensitas ? `${status} (${intensitas})` : status,
             statusSingkat: status,
             intensitas: intensitas,
-            latestAnomaly: anomaliSekarang,
-            oni3Bulan: parseFloat(oni3Bulan.toFixed(2))
+            latestAnomaly: parseFloat(anomaliSekarang.toFixed(2)),
+            oni3Bulan: parseFloat(oni3Bulan.toFixed(2)),
+            baseline: BASELINE_NINO34  // ← ekspor agar bisa ditampilkan di UI jika perlu
         };
 
     } catch (err) {
@@ -3297,7 +3298,8 @@ async function getENSOAnomaly() {
             statusSingkat: "Netral",
             intensitas: "",
             latestAnomaly: 0,
-            oni3Bulan: 0
+            oni3Bulan: 0,
+            baseline: 27.2
         };
     }
 }
