@@ -2925,29 +2925,16 @@ if (!document.getElementById('appMessageStyle')) {
         async function mulaiAnalisis() {
             document.getElementById('scanWindow').classList.add('is-scanning');
             document.getElementById('loader').style.display = 'block';
-            // Nonaktifkan tombol saat proses berjalan
-            const btnAnalisis = document.getElementById('btnAnalisis');
-            btnAnalisis.disabled = true;
-            btnAnalisis.style.opacity = "0.6";
             try {
                 const urls = { daun: URL_DAUN, hama: URL_HAMA, gulma: URL_GULMA, tanah: URL_TANAH, malai: URL_MALAI };
                 const res = await fetch(urls[currentMode], { method: 'POST', body: JSON.stringify({ image: base64Image }) });
                 const data = await res.json(); 
                 tampilkanHasil(data);
-                // Sembunyikan tombol setelah analisis selesai (kecuali mode malai yang butuh beberapa foto)
-                if (currentMode !== 'malai') {
-                    btnAnalisis.style.display = 'none';
-                }
             } catch (e) { 
                 alert("Gagal koneksi server!"); 
-                // Aktifkan kembali tombol jika gagal
-                btnAnalisis.disabled = false;
-                btnAnalisis.style.opacity = "1";
             }
             document.getElementById('scanWindow').classList.remove('is-scanning');
             document.getElementById('loader').style.display = 'none';
-            btnAnalisis.disabled = false;
-            btnAnalisis.style.opacity = "1";
         }
         
         const BWD_STANDAR = [
