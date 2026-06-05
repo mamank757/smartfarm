@@ -2500,6 +2500,11 @@ if (!document.getElementById('appMessageStyle')) {
     `;
     document.head.appendChild(style);
 }
+
+// Letakkan di luar fungsi, sejajar dengan fungsi-fungsi lainnya
+function isWilayahSulsel(lat, lon) {
+    return lat >= -8.0 && lat <= -1.5 && lon >= 119.0 && lon <= 122.5;
+}
         function handleFile(event) {
     const file = event.target.files[0];
     const reader = new FileReader();
@@ -3853,51 +3858,61 @@ const upwellingAktif = (
 }
 
         async function loadGlobalClimateIndices() {
-            const statusDiv = document.getElementById('ensoStatus');
-            if (statusDiv) statusDiv.innerText = "🛰️ Menghubungkan ke NOAA...";
-            
-            try {
-                const koordinatTeks = document.getElementById('lokasiSawah').innerText;
-                let lat = -4.85; 
-                let lon = 120.60;
-                
-                if (koordinatTeks && koordinatTeks !== "-") {
-                    const parts = koordinatTeks.split(',');
-                    lat = parseFloat(parts[0].trim());
-                    lon = parseFloat(parts[1].trim());
-                }
+    const statusDiv = document.getElementById('ensoStatus');
+    if (statusDiv) statusDiv.innerText = "🛰️ Menghubungkan ke NOAA...";
+    
+    try {
+        let lat = -4.85;
+        let lon = 120.60;
 
-                const [enso, iod, sstLokal] = await Promise.all([
-                    getENSOAnomaly(),
-                    getIODAnomaly(),
-                    getLocalSSTTimeseries()
-                ]);
-                
-                const ensoSmooth = getMovingAverage(enso.anomalies, 2);
-const iodSmooth = getMovingAverage(iod.anomalies, 2);
-
-                renderMacroChart(enso.labels, enso.anomalies, iod.anomalies);
-                renderLocalChart(sstLokal.labels, sstLokal.boneData, sstLokal.makassarData);
-                
-                updateENSOIODStatus(enso, iod);
-                updateLocalWarning(sstLokal);
-
-                const boxLokal = document.getElementById('localSstBox');
-                if (boxLokal) boxLokal.style.display = 'block';
-                
-                showSSTRekomendasi(sstLokal);
-                simpulkanPrediksiIklimTerpadu(enso, iod, sstLokal);
-                
-            } catch (error) {
-                console.error("Gagal load data NOAA:", error);
-                if (statusDiv) {
-                    statusDiv.style.color = "var(--red-alert)";
-                    statusDiv.innerText = "⚠️ Gagal Sinkronisasi Satelit NOAA (Gunakan Data Estimasi)";
-                }
-            }
+        const koordinatEl = document.getElementById('lokasiSawah').innerText;
+        if (koordinatEl && koordinatEl !== "-") {
+            const parts = koordinatEl.split(',');
+            lat = parseFloat(parts[0].trim());
+            lon = parseFloat(parts[1].trim());
         }
 
+        const [enso, iod, sstLokal] = await Promise.all([
+            getENSOAnomaly(),
+            getIODAnomaly(),
+            getLocalSSTTimeseries()
+        ]);
+
+        renderMacroChart(enso.labels, enso.anomalies, iod.anomalies);
+        renderLocalChart(sstLokal.labels, sstLokal.boneData, sstLokal.makassarData);
+
+        updateENSOIODStatus(enso, iod);
+        updateLocalWarning(sstLokal);
+
+        const boxLokal = document.getElementById('localSstBox');
+        if (isWilayahSulsel(lat, lon)) {
+            if (boxLokal) boxLokal.style.display = 'block';
+            showSSTRekomendasi(sstLokal);
+            simpulkanPrediksiIklimTerpadu(enso, iod, sstLokal);
+        } else {
+            if (boxLokal) boxLokal.style.display = 'none';
+            simpulkanPrediksiIklimTerpadu(enso, iod, null);
+        }
+
+    } catch (error) {
+        console.error("Gagal load data NOAA:", error);
+        if (statusDiv) {
+            statusDiv.style.color = "var(--red-alert)";
+            statusDiv.innerText = "⚠️ Gagal Sinkronisasi Satelit NOAA (Gunakan Data Estimasi)";
+        }
+    }
+}
         function simpulkanPrediksiIklimTerpadu(enso, iod, sstLokal) {
+    // Guard: jika tidak ada data SST lokal, gunakan nilai default
+    if (!sstLokal) {
+        sstLokal = {
+            boneData: [28.5, 28.5, 28.5, 28.5],
+            makassarData: [28.5, 28.5, 28.5, 28.5],
+            upwellingAktif: false,
+            sstBoneTerkini: 28.5,
+            sstMksTerkini: 28.5
+        };
+    }
     const nilaiEnso = enso.anomalies[enso.anomalies.length - 1];
     const nilaiIod  = iod.anomalies[iod.anomalies.length - 1];
     const sstBone     = sstLokal.boneData[sstLokal.boneData.length - 1];
