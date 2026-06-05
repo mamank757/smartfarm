@@ -3886,13 +3886,13 @@ const upwellingAktif = (
 
         const boxLokal = document.getElementById('localSstBox');
         if (isWilayahSulsel(lat, lon)) {
-            if (boxLokal) boxLokal.style.display = 'block';
-            showSSTRekomendasi(sstLokal);
-            simpulkanPrediksiIklimTerpadu(enso, iod, sstLokal);
-        } else {
-            if (boxLokal) boxLokal.style.display = 'none';
-            simpulkanPrediksiIklimTerpadu(enso, iod, null);
-        }
+    if (boxLokal) boxLokal.style.display = 'block';
+    showSSTRekomendasi(sstLokal);
+    simpulkanPrediksiIklimTerpadu(enso, iod, sstLokal, true);
+} else {
+    if (boxLokal) boxLokal.style.display = 'none';
+    simpulkanPrediksiIklimTerpadu(enso, iod, null, false);
+}
 
     } catch (error) {
         console.error("Gagal load data NOAA:", error);
@@ -3902,7 +3902,13 @@ const upwellingAktif = (
         }
     }
 }
-        function simpulkanPrediksiIklimTerpadu(enso, iod, sstLokal) {
+        function simpulkanPrediksiIklimTerpadu(enso, iod, sstLokal, isSulsel = false) {
+    // Sembunyikan box jika di luar wilayah Sulsel
+    const terpaduBox = document.getElementById('iklimTerpaduBox');
+    if (!isSulsel) {
+        if (terpaduBox) terpaduBox.innerHTML = '';
+        return;
+    }
     // Guard: jika tidak ada data SST lokal, gunakan nilai default
     if (!sstLokal) {
         sstLokal = {
@@ -4036,7 +4042,6 @@ const upwellingAktif = (
                 </ul>`;
             }
             
-            let terpaduBox = document.getElementById('iklimTerpaduBox');
             if (terpaduBox) {
                 terpaduBox.className = "info-box";
                 terpaduBox.style.cssText = `margin-top: 25px; margin-bottom: 10px; padding: 18px; background: rgba(13, 20, 38, 0.85); border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); border-left: 5px solid ${warnaAksen};`;
