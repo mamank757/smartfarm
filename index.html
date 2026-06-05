@@ -3083,14 +3083,16 @@ function isWilayahSulsel(lat, lon) {
                 }
             } catch (e) { 
                 alert("Gagal koneksi server!"); 
-                // Aktifkan kembali tombol jika gagal
-                btnAnalisis.disabled = false;
-                btnAnalisis.style.opacity = "1";
             }
             document.getElementById('scanWindow').classList.remove('is-scanning');
             document.getElementById('loader').style.display = 'none';
             btnAnalisis.disabled = false;
             btnAnalisis.style.opacity = "1";
+            // Sembunyikan tombol setelah analisis selesai (berhasil maupun gagal)
+            // Tombol akan muncul kembali saat user memilih foto baru di handleFile()
+            if (currentMode !== 'malai') {
+                btnAnalisis.style.display = 'none';
+            }
         }
         
         const BWD_STANDAR = [
