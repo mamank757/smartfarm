@@ -1098,9 +1098,16 @@ body.light-mode .harga-table td { color: #334155 !important; border-bottom: 1px 
                 style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">
                 Virtako 300SC
             </button>
+            <button onclick="cariCepat('Vayego 200SC insektisida padi')" 
+                style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">
+                Vayego 200SC
+            </button>
             <button onclick="cariCepat('Benlate 50WP fungisida')" 
                 style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">
                 Benlate 50WP
+            </button>
+            <button onclick="cariCepat('Amistar Top 325 SC fungisida antraknosa (patek)')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">
+                Amistar Top 325 SC
             </button>
         </div>
     </div>
@@ -1146,7 +1153,7 @@ body.light-mode .harga-table td { color: #334155 !important; border-bottom: 1px 
         <div class="form-group">
             <label>📍 WILAYAH / KABUPATEN</label>
             <input type="text" id="inputWilayahGabah" class="form-input"
-                placeholder="Contoh: Wajo, Bone, Soppeng, Sulawesi Selatan"
+                placeholder="Contoh: Wajo, Sulawesi Selatan, dll."
                 style="margin-bottom: 0;">
         </div>
         <div class="form-group" style="margin-top:12px;">
@@ -1175,12 +1182,16 @@ body.light-mode .harga-table td { color: #334155 !important; border-bottom: 1px 
         <div style="display: flex; flex-wrap: wrap; gap: 6px;">
            <!-- Lanjutan dari shortcut wilayah yang terpotong -->
             <button onclick="cariGabahCepat('Wajo')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Kab. Wajo</button>
-            <button onclick="cariGabahCepat('Bone')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Kab. Bone</button>
-            <button onclick="cariGabahCepat('Soppeng')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Kab. Soppeng</button>
-            <button onclick="cariGabahCepat('Sidrap')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Kab. Sidrap</button>
-            <button onclick="cariGabahCepat('Pinrang')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Kab. Pinrang</button>
-            <button onclick="cariGabahCepat('Luwu')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Kab. Luwu</button>
             <button onclick="cariGabahCepat('Sulawesi Selatan')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Sulsel (Rata-rata)</button>
+            <button onclick="cariGabahCepat('Sulawesi')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Sulawesi</button>
+            <button onclick="cariGabahCepat('Sumatra')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Sumatra</button>
+            <button onclick="cariGabahCepat('Jawa')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Jawa</button>
+            <button onclick="cariGabahCepat('Jawa Timur')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Jawa Timur</button>
+            <button onclick="cariGabahCepat('Kalimantan')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Kalimantan</button>
+            <button onclick="cariGabahCepat('Bali')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Bali</button>
+            <button onclick="cariGabahCepat('Papua')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Papua</button>
+            <button onclick="cariGabahCepat('Nasional')" style="background:#1b273a; color:#94a3b8; border:1px solid rgba(255,255,255,0.08); padding:6px 12px; border-radius:8px; font-size:0.75rem; cursor:pointer; font-weight:600;">Nasional (Rata-rata)</button>
+            
         </div>
     </div>
 
@@ -5631,7 +5642,7 @@ const GAS_URL_1 = "https://script.google.com/macros/s/AKfycbzJfQzgWnMJKqiaT8YP-G
 const GAS_URL_2 = "https://script.google.com/macros/s/AKfycbyvSjJziHRXDf_sj0HX1zKOr3P57uzvBBwT1EZzedVhzykUB4JN5H-WCuJNH43dhXcX/exec"; 
 const GAS_URL_3 = "https://script.google.com/macros/s/AKfycbwYXgFAiXbbkjrOlXsrvKu2jTrefxO3NeVxW9gYF3iQbK7mcwGomViuhAOBR4f0c5lI/exec"; 
 const GAS_URL_4 = "https://script.google.com/macros/s/AKfycbyYawG41kIjswwpL0Bv0zDKGfpimOBoLdq7n8jwJQ54WkDEMUASQGCgpvuuBFJrrbOQ/exec";
-const GAS_URL_5 = "https://script.google.com/macros/s/AKfycbwPI3uhV130RHB26qbiXiCZdCK843DBOA9zn3-MvXSbFy8wKATXJOiQzSnKT4JC-vInFQ/exec";
+const GAS_URL_5 = "https://script.google.com/macros/s/AKfycbyRdzq3HVB5Chb82yCynQ3g1Et9n9lcRDf7_Kat-ZWB_tkRzYOSDhtUeuVrSJ3B6COucQ/exec";
 
 const chatboxAI = document.getElementById('chatboxAI');
 const btnBukaChat = document.getElementById('btnBukaChat');
