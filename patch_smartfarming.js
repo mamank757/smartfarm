@@ -211,7 +211,7 @@
             if (hasilSampelBulir.length === 1)      btnAnalisis.innerText = "AMBIL FOTO KEDUA";
             else if (hasilSampelBulir.length === 2) btnAnalisis.innerText = "AMBIL FOTO KETIGA";
 
-            btnAnalisis.onclick          = bukaKamera;
+           btnAnalisis.onclick = () => window.mintaIzinKamera(bukaKamera);
             btnAnalisis.style.background = "#2563EB";
         }
 
@@ -986,6 +986,55 @@ body.light-mode .toast-notif { background: #ffffff; }
         }, gagal, opsi);
     };
 })();
+
+// ============================================================
+// GERBANG IZIN KAMERA TUNGGAL
+// ============================================================
+window.mintaIzinKamera = function(callbackBerhasil) {
+    // 1. Jika sudah pernah diizinkan, langsung buka kamera
+    if (localStorage.getItem('izin_kamera_diberikan') === 'true') {
+        callbackBerhasil();
+        return;
+    }
+
+    // 2. Jika belum, tampilkan Modal HTML Anda dulu
+    const modal = document.getElementById('customAlertModal');
+    if (!modal) return;
+
+    document.getElementById('customAlertIcon').innerHTML = '📸';
+    document.getElementById('customAlertMessage').innerHTML = 
+        "Aplikasi memerlukan akses kamera untuk mengambil foto sampel padi, daun, atau hama. Silakan pilih <b>'IZINKAN'</b> pada konfirmasi sistem berikutnya.";
+    
+    // 3. Tombol OKE ditekan -> Baru pancing sistem meminta izin kamera
+    const btn = modal.querySelector('button');
+    btn.onclick = function() {
+        modal.style.display = 'none'; // Tutup modal Anda
+        
+        // Memancing dialog izin dari Android/Sistem
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function(stream) {
+                // Petani klik "Izinkan"
+                localStorage.setItem('izin_kamera_diberikan', 'true');
+                
+                // Matikan aliran kamera sementara (agar tidak bentrok dengan fungsi asli)
+                stream.getTracks().forEach(track => track.stop()); 
+                
+                // Lanjutkan ke fungsi buka kamera yang sebenarnya
+                callbackBerhasil();
+            })
+            .catch(function(err) {
+                // Petani klik "Tolak"
+                tampilkanToast('❌', 'Kamera Ditolak', 'Fitur analisis AI tidak bisa digunakan tanpa akses kamera.', '#ef4444');
+            });
+        } else {
+            // Fallback (untuk input file biasa / browser lama)
+            localStorage.setItem('izin_kamera_diberikan', 'true');
+            callbackBerhasil();
+        }
+    };
+    modal.style.display = 'flex';
+};
 // ============================================================
 // BAGIAN C: MANAJEMEN PANEL (OPEN/CLOSE)
 // ============================================================
@@ -1658,133 +1707,177 @@ window.tampilkanHasil = function(data) {
 };
 
 // ============================================================
-// BAGIAN J: FIX GPS DRIFT — OVERRIDE modeJalan()
+// GERBANG IZIN GPS TUNGGAL
 // ============================================================
-window.modeJalan = function() {
-    resetPengukuran();
-    resetKalman();
-    document.getElementById('btnSelesaiJalan').style.display = 'block';
-
-    if (!navigator.geolocation) {
-        tampilkanPesan("❌ Browser tidak mendukung GPS.", "error");
+window.mintaIzinGPS = function(callbackBerhasil) {
+    // 1. Jika sudah pernah diizinkan, langsung jalan
+    if (localStorage.getItem('izin_gps_diberikan') === 'true') {
+        callbackBerhasil();
         return;
     }
 
-    // Monitor UI
-    let gpsMonitor = document.getElementById('gpsMonitor');
-    if (!gpsMonitor) {
-        gpsMonitor = document.createElement('div');
-        gpsMonitor.id = 'gpsMonitor';
-        gpsMonitor.style.cssText =
-            'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);' +
-            'background:rgba(0,0,0,0.85); color:#22d3ee; padding:12px 20px;' +
-            'border-radius:20px; z-index:1000; font-size:14px; font-weight:bold;' +
-            'border:1px solid #22d3ee; white-space:nowrap; text-align:center;';
-        document.body.appendChild(gpsMonitor);
-    }
+    // 2. Jika belum, tampilkan Modal HTML Anda dulu
+    const modal = document.getElementById('customAlertModal');
+    if (!modal) return;
 
-    // ── PARAMETER ANTI-DRIFT (lebih ketat dari sebelumnya) ──
-    const AKURASI_MAX   = 10;   // Tolak jika akurasi > 10m (asli: 15m)
-    const JARAK_MIN     = 5;    // Titik baru min 5m dari titik terakhir (asli: 2m)
-    const WARMUP_DETIK  = 6;    // Tunggu 6 detik sebelum mulai rekam titik
-    const SPEED_MIN     = 0.4;  // Minimal kecepatan 0.4 m/s agar dihitung berjalan
+    document.getElementById('customAlertIcon').innerHTML = '📍';
+    document.getElementById('customAlertMessage').innerHTML = 
+        "Aplikasi memerlukan akses lokasi (GPS) untuk mengukur luas petak sawah. Silakan pilih <b>'IZINKAN'</b> pada konfirmasi sistem berikutnya.";
+    
+    // 3. Tombol OKE ditekan -> Baru pancing sistem meminta izin lokasi
+    const btn = modal.querySelector('button');
+    btn.onclick = function() {
+        modal.style.display = 'none'; // Tutup modal Anda
+        
+        navigator.geolocation.getCurrentPosition(
+            function(pos) {
+                // Petani klik "Izinkan"
+                localStorage.setItem('izin_gps_diberikan', 'true');
+                window._koordinatTerakhir = pos; // Simpan ke cache global
+                callbackBerhasil();
+            },
+            function(err) {
+                // Petani klik "Tolak"
+                tampilkanToast('❌', 'Lokasi Ditolak', 'Pengukuran lahan tidak bisa dilakukan tanpa GPS.', '#ef4444');
+            },
+            { enableHighAccuracy: true }
+        );
+    };
+    modal.style.display = 'flex';
+};
 
-    let warmupSelesai = false;
-    let waktuMulai = Date.now();
+// ============================================================
+// BAGIAN J: FIX GPS DRIFT — OVERRIDE modeJalan()
+// ============================================================
+window.modeJalan = function() {
+    // BUNGKUS FUNGSI ASLI KE DALAM GERBANG IZIN GPS
+    window.mintaIzinGPS(function() {
+        
+        resetPengukuran();
+        resetKalman();
+        document.getElementById('btnSelesaiJalan').style.display = 'block';
 
-    gpsMonitor.innerHTML = `⏳ Menunggu sinyal stabil... (${WARMUP_DETIK}s)`;
-
-    // Countdown warmup visual
-    const intervalWarmup = setInterval(() => {
-        const sisa = WARMUP_DETIK - Math.floor((Date.now() - waktuMulai) / 1000);
-        if (sisa <= 0) {
-            clearInterval(intervalWarmup);
-            warmupSelesai = true;
-            gpsMonitor.innerHTML = '🚶 MULAI BERJALAN — GPS Aktif';
-            tampilkanPesan("✅ GPS siap! Mulai berjalan mengelilingi batas lahan.", "info");
-        } else {
-            gpsMonitor.innerHTML = `⏳ Stabilisasi GPS... ${sisa}s (Jangan bergerak dulu)`;
+        if (!navigator.geolocation) {
+            tampilkanPesan("❌ Browser tidak mendukung GPS.", "error");
+            return;
         }
-    }, 1000);
 
-    watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-            // Selama warmup, jangan rekam titik
-            if (!warmupSelesai) return;
+        // Monitor UI
+        let gpsMonitor = document.getElementById('gpsMonitor');
+        if (!gpsMonitor) {
+            gpsMonitor = document.createElement('div');
+            gpsMonitor.id = 'gpsMonitor';
+            gpsMonitor.style.cssText =
+                'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);' +
+                'background:rgba(0,0,0,0.85); color:#22d3ee; padding:12px 20px;' +
+                'border-radius:20px; z-index:1000; font-size:14px; font-weight:bold;' +
+                'border:1px solid #22d3ee; white-space:nowrap; text-align:center;';
+            document.body.appendChild(gpsMonitor);
+        }
 
-            const akurasi = pos.coords.accuracy;
-            const speed   = pos.coords.speed || 0; // m/s, null jika tidak tersedia
+        // ── PARAMETER ANTI-DRIFT (lebih ketat dari sebelumnya) ──
+        const AKURASI_MAX   = 10;   // Tolak jika akurasi > 10m (asli: 15m)
+        const JARAK_MIN     = 5;    // Titik baru min 5m dari titik terakhir (asli: 2m)
+        const WARMUP_DETIK  = 6;    // Tunggu 6 detik sebelum mulai rekam titik
+        const SPEED_MIN     = 0.4;  // Minimal kecepatan 0.4 m/s agar dihitung berjalan
 
-            // ── Filter 1: Akurasi buruk ──
-            if (akurasi > AKURASI_MAX) {
+        let warmupSelesai = false;
+        let waktuMulai = Date.now();
+
+        gpsMonitor.innerHTML = `⏳ Menunggu sinyal stabil... (${WARMUP_DETIK}s)`;
+
+        // Countdown warmup visual
+        const intervalWarmup = setInterval(() => {
+            const sisa = WARMUP_DETIK - Math.floor((Date.now() - waktuMulai) / 1000);
+            if (sisa <= 0) {
+                clearInterval(intervalWarmup);
+                warmupSelesai = true;
+                gpsMonitor.innerHTML = '🚶 MULAI BERJALAN — GPS Aktif';
+                tampilkanPesan("✅ GPS siap! Mulai berjalan mengelilingi batas lahan.", "info");
+            } else {
+                gpsMonitor.innerHTML = `⏳ Stabilisasi GPS... ${sisa}s (Jangan bergerak dulu)`;
+            }
+        }, 1000);
+
+        watchId = navigator.geolocation.watchPosition(
+            (pos) => {
+                // Selama warmup, jangan rekam titik
+                if (!warmupSelesai) return;
+
+                const akurasi = pos.coords.accuracy;
+                const speed   = pos.coords.speed || 0; // m/s, null jika tidak tersedia
+
+                // ── Filter 1: Akurasi buruk ──
+                if (akurasi > AKURASI_MAX) {
+                    if (gpsMonitor) {
+                        gpsMonitor.style.color = '#f87171';
+                        gpsMonitor.textContent = `📡 Sinyal lemah ±${Math.round(akurasi)}m — tunggu...`;
+                    }
+                    return;
+                }
+
+                // ── Filter 2: Kecepatan terlalu rendah (GPS drift / berdiri diam) ──
+                if (speed !== null && speed < SPEED_MIN) {
+                    if (gpsMonitor) {
+                        gpsMonitor.style.color = '#fbbf24';
+                        gpsMonitor.textContent = `⚠️ Terlalu lambat (${speed.toFixed(1)} m/s) — terus berjalan`;
+                    }
+                    return;
+                }
+
+                // ── Filter 3: Kalman smoothing ──
+                const latSmooth = kalman.lat.filter(pos.coords.latitude);
+                const lngSmooth = kalman.lng.filter(pos.coords.longitude);
+                const latlng = L.latLng(latSmooth, lngSmooth);
+
+                // ── Filter 4: Jarak minimum antar titik ──
+                if (gpsPoints.length > 0) {
+                    const last = gpsPoints[gpsPoints.length - 1];
+                    if (haversineM(last, latlng) < JARAK_MIN) return;
+                }
+
+                gpsPoints.push(latlng);
+
+                if (gpsMonitor) {
+                    gpsMonitor.style.color = '#4ade80';
+                    const speedTeks = speed !== null ? ` | ${speed.toFixed(1)} m/s` : '';
+                    gpsMonitor.textContent = `📍 Titik: ${gpsPoints.length} | ±${Math.round(akurasi)}m${speedTeks}`;
+                }
+
+                // Update marker & garis
+                if (!userMarker) {
+                    userMarker = L.circleMarker(latlng, {
+                        radius: 7, color: 'white', weight: 2,
+                        fillColor: '#eab308', fillOpacity: 1
+                    }).addTo(map);
+                } else {
+                    userMarker.setLatLng(latlng);
+                }
+
+                if (gpsPoints.length > 1) {
+                    if (!currentLine) {
+                        currentLine = L.polyline(gpsPoints, { color: '#eab308', weight: 6, opacity: 0.9 }).addTo(map);
+                    } else {
+                        currentLine.setLatLngs(gpsPoints);
+                    }
+                }
+
+                map.panTo(latlng, { animate: true, duration: 0.5 });
+            },
+            (err) => {
+                clearInterval(intervalWarmup);
                 if (gpsMonitor) {
                     gpsMonitor.style.color = '#f87171';
-                    gpsMonitor.textContent = `📡 Sinyal lemah ±${Math.round(akurasi)}m — tunggu...`;
+                    gpsMonitor.textContent = `❌ GPS Error: ${['','Izin ditolak','Posisi tidak tersedia','Timeout'][err.code] || 'Tidak diketahui'}`;
                 }
-                return;
-            }
+            },
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+        );
 
-            // ── Filter 2: Kecepatan terlalu rendah (GPS drift / berdiri diam) ──
-            // Catatan: speed bisa null di beberapa browser/HP lama, skip filter ini jika null
-            if (speed !== null && speed < SPEED_MIN) {
-                if (gpsMonitor) {
-                    gpsMonitor.style.color = '#fbbf24';
-                    gpsMonitor.textContent = `⚠️ Terlalu lambat (${speed.toFixed(1)} m/s) — terus berjalan`;
-                }
-                return;
-            }
-
-            // ── Filter 3: Kalman smoothing ──
-            const latSmooth = kalman.lat.filter(pos.coords.latitude);
-            const lngSmooth = kalman.lng.filter(pos.coords.longitude);
-            const latlng = L.latLng(latSmooth, lngSmooth);
-
-            // ── Filter 4: Jarak minimum antar titik ──
-            if (gpsPoints.length > 0) {
-                const last = gpsPoints[gpsPoints.length - 1];
-                if (haversineM(last, latlng) < JARAK_MIN) return;
-            }
-
-            gpsPoints.push(latlng);
-
-            if (gpsMonitor) {
-                gpsMonitor.style.color = '#4ade80';
-                const speedTeks = speed !== null ? ` | ${speed.toFixed(1)} m/s` : '';
-                gpsMonitor.textContent = `📍 Titik: ${gpsPoints.length} | ±${Math.round(akurasi)}m${speedTeks}`;
-            }
-
-            // Update marker & garis
-            if (!userMarker) {
-                userMarker = L.circleMarker(latlng, {
-                    radius: 7, color: 'white', weight: 2,
-                    fillColor: '#eab308', fillOpacity: 1
-                }).addTo(map);
-            } else {
-                userMarker.setLatLng(latlng);
-            }
-
-            if (gpsPoints.length > 1) {
-                if (!currentLine) {
-                    currentLine = L.polyline(gpsPoints, { color: '#eab308', weight: 6, opacity: 0.9 }).addTo(map);
-                } else {
-                    currentLine.setLatLngs(gpsPoints);
-                }
-            }
-
-            map.panTo(latlng, { animate: true, duration: 0.5 });
-        },
-        (err) => {
-            clearInterval(intervalWarmup);
-            if (gpsMonitor) {
-                gpsMonitor.style.color = '#f87171';
-                gpsMonitor.textContent = `❌ GPS Error: ${['','Izin ditolak','Posisi tidak tersedia','Timeout'][err.code] || 'Tidak diketahui'}`;
-            }
-        },
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
-    );
-
-    // Simpan referensi interval agar bisa dihentikan saat reset
-    window._warmupInterval = intervalWarmup;
+        // Simpan referensi interval agar bisa dihentikan saat reset
+        window._warmupInterval = intervalWarmup;
+        
+    }); // <-- Akhir dari bungkus mintaIzinGPS
 };
 
 // Patch resetPengukuran agar juga bersihkan warmup interval
@@ -1796,7 +1889,6 @@ window.resetPengukuran = function() {
     }
     resetPengukuranAsli();
 };
-
 // ============================================================
 // BAGIAN K: TOAST HELPER
 // ============================================================
