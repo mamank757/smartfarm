@@ -1148,9 +1148,26 @@ function pilihLahan(id) {
     tampilkanToast('🌾', 'Lahan Dipilih!', `Aktif: "${lahan.nama}"`, '#3b82f6');
 }
 
-function hapusLahan(id) {
-    if (!confirm('Apakah Anda yakin ingin menghapus data lahan ini?')) return;
+window.hapusLahan = function(id) {
+    const modal = document.getElementById('customAlertModal');
+    if (!modal) return;
+    
+    document.getElementById('customAlertIcon').innerHTML = '🗑️';
+    document.getElementById('customAlertMessage').innerHTML = `
+        <span style="display: block; font-size: 1.2rem; font-weight: 800; color: #ef4444; text-shadow: 0 0 10px rgba(239, 68, 68, 0.4); margin-bottom: 10px;">HAPUS LAHAN?</span>
+        <span style="display: block; color: #cbd5e1; font-size: 0.9rem; margin-bottom: 15px; line-height: 1.5;">
+            Data petak sawah dan jadwal pemupukannya akan dihapus permanen dari HP ini.
+        </span>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="prosesHapusLahan(${id})" style="background: #ef4444; color: #fff; border: none; padding: 10px; border-radius: 8px; font-weight: 700; cursor: pointer; flex: 1;">YA, HAPUS</button>
+            <button onclick="document.getElementById('customAlertModal').style.display='none'" style="background: transparent; border: 1px solid #64748b; color: #cbd5e1; padding: 10px; border-radius: 8px; font-weight: 700; cursor: pointer; flex: 1;">BATAL</button>
+        </div>
+    `;
+    modal.style.display = 'flex';
+};
 
+window.prosesHapusLahan = function(id) {
+    document.getElementById('customAlertModal').style.display='none';
     let list = getLahanList();
     list = list.filter(l => l.id !== id);
     saveLahanList(list);
@@ -1161,13 +1178,12 @@ function hapusLahan(id) {
         terapkanLahanAktif(null);
     }
     
-    // Jika lahan yang sedang diedit malah dihapus, batalkan edit
-    if (window.lahanEditId === id) {
-        batalEditLahan();
-    }
+    // Matikan mode edit jika lahan yang sedang diedit malah dihapus
+    if (window.lahanEditId === id) batalEditLahan();
     
     renderDaftarLahan();
-}
+    tampilkanToast('🗑️', 'Lahan Dihapus', 'Data lahan berhasil dihapus.', '#ef4444');
+};
 
 function terapkanLahanAktif(lahan) {
     if (!lahan) {
@@ -1272,11 +1288,31 @@ function tambahRiwayat(mode, label, ringkasan) {
     localStorage.setItem('sf_riwayat', JSON.stringify(list));
     updateBadgeRiwayat();
 }
-function hapusSemuaRiwayat() {
-    if (!confirm('Hapus semua riwayat analisis?')) return;
+window.hapusSemuaRiwayat = function() {
+    const modal = document.getElementById('customAlertModal');
+    if (!modal) return;
+    
+    document.getElementById('customAlertIcon').innerHTML = '🧹';
+    document.getElementById('customAlertMessage').innerHTML = `
+        <span style="display: block; font-size: 1.2rem; font-weight: 800; color: #ef4444; text-shadow: 0 0 10px rgba(239, 68, 68, 0.4); margin-bottom: 10px;">BERSIHKAN RIWAYAT?</span>
+        <span style="display: block; color: #cbd5e1; font-size: 0.9rem; margin-bottom: 15px; line-height: 1.5;">
+            Seluruh riwayat deteksi hama, kalkulasi panen, dan biaya tani akan dihapus.
+        </span>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="prosesHapusRiwayat()" style="background: #ef4444; color: #fff; border: none; padding: 10px; border-radius: 8px; font-weight: 700; cursor: pointer; flex: 1;">YA, BERSIHKAN</button>
+            <button onclick="document.getElementById('customAlertModal').style.display='none'" style="background: transparent; border: 1px solid #64748b; color: #cbd5e1; padding: 10px; border-radius: 8px; font-weight: 700; cursor: pointer; flex: 1;">BATAL</button>
+        </div>
+    `;
+    modal.style.display = 'flex';
+};
+
+window.prosesHapusRiwayat = function() {
+    document.getElementById('customAlertModal').style.display='none';
     localStorage.removeItem('sf_riwayat');
     renderDaftarRiwayat();
-}
+    updateBadgeRiwayat(); 
+    tampilkanToast('🧹', 'Riwayat Bersih', 'Seluruh data riwayat telah dihapus.', '#ef4444');
+};
 function renderDaftarRiwayat() {
     const list = getRiwayat();
     const container = document.getElementById('daftarRiwayat');
