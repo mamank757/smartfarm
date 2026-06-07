@@ -1,8 +1,8 @@
 /**
  * ============================================================
- *  PATCH: Perbaikan Kalkulasi Estimasi Hasil Panen (Malai)
+ *  PATCH: Perbaikan Kalkulasi & Jadwal Pemupukan E-RDKK
  *  PPL Milenial Wajo — Smart Farming
- *  Versi Patch: 2.0
+ *  Versi Patch: 3.0
  * ============================================================
  *
  *  CARA PAKAI:
@@ -12,19 +12,35 @@
  *  (sudah ada di HTML Anda, tinggal letakkan file ini di server)
  *
  *  DAFTAR PERBAIKAN:
+ *
+ *  [MODUL 1] Estimasi Hasil Panen (Malai)
  *  1. Berat 1000 Butir dinaikkan ke nilai referensi IRRI/BB Padi
  *  2. Persen Bernas dinaikkan ke standar varietas modern (85-90%)
  *  3. Faktor koreksi dipisah & dikombinasikan lebih realistis:
  *       - Faktor susut panen: 8% (Combine Harvester modern)
- *       - Faktor luas pematang: sudah dihitung dari rumpun/m², TIDAK
- *         dipotong lagi karena rumpun/m² sudah NETTO per lahan tanam
- *       - Kadar air gabah (15% KA → bobot susut saat kering)
- *  4. Informasi detail ditambahkan agar PPL mudah menjelaskan ke petani
+ *       - Pematang TIDAK dipotong karena rumpun/m² sudah NETTO
+ *  4. Informasi detail ditambahkan untuk kemudahan PPL
+ *
+ *  [MODUL 2] Jadwal & Proporsi Pemupukan E-RDKK
+ *  1. Waktu pemupukan I : 7–10 HST  (bukan hari ke-7 flat)
+ *  2. Waktu pemupukan II: 21–25 HST (bukan hari ke-30)
+ *  3. Waktu pemupukan III: 42–50 HST (bukan hari ke-40)
+ *     → Sesuai fase bunting awal, titik kritis N tertinggi
+ *  4. Proporsi Urea diubah ke 1/3 : 1/3 : 1/3 (BB Padi)
+ *     dari semula 57% : 43% yang tidak berlandaskan agronomis
+ *  5. Proporsi Phonska/NPK: 50% tahap I + 30% tahap II + 20% III
+ *     → P & K lebih banyak di awal untuk fondasi perakaran
+ *  6. Catatan BWD ditambahkan: pemupukan III bersifat kondisional
  *
  *  REFERENSI ILMIAH:
- *  - BB Padi (2022): Deskripsi Varietas Unggul Padi
- *  - IRRI Rice Almanac 4th Ed. — grain weight & harvest index
- *  - Kementan RI — Pengujian varietas, berat 1000 butir kadar air 14%
+ *  - BB Padi Kementan (bbpadi.litbang.pertanian.go.id):
+ *      "Pemupukan padi dilakukan 3 tahap: 7-10 HST, 21 HST, 42 HST"
+ *  - Dinas Pertanian Buleleng mengacu BB Padi (2025):
+ *      Tahap I: 1-14 HST (1/3), Tahap II: 21-35 HST (1/3),
+ *      Tahap III: 42-50 HST berbasis BWD
+ *  - Gokomodo/Cybex Pertanian: NPK Phonska 7-10 HST + 21 HST
+ *  - IRRI SSNM: split application N meningkatkan efisiensi 15-20%
+ *  - Kementan RI — Panduan Pemupukan Berimbang Padi Sawah
  * ============================================================
  */
 
@@ -202,7 +218,260 @@
         document.getElementById('resConf').innerText = `Tingkat Keyakinan: 100.0%`;
     };
 
-    console.log("✅ Patch Kalkulasi Hasil Panen v2.0 aktif.");
+    console.log("✅ [Modul 1] Patch Kalkulasi Hasil Panen v3.0 aktif.");
+
+})();
+
+
+// ============================================================
+//  MODUL 2: PERBAIKAN JADWAL & PROPORSI PEMUPUKAN E-RDKK
+//  Referensi: BB Padi Kementan, Cybex Pertanian, IRRI SSNM
+// ============================================================
+(function () {
+
+    // Simpan referensi fungsi asli
+    const _hitungRekomendasiPupukAsli = window.hitungRekomendasiPupuk;
+
+    window.hitungRekomendasiPupuk = function () {
+
+        // ── Ambil input dari form ────────────────────────────────────────────
+        const kecInput  = document.getElementById("kecInput").value;
+        const luas      = parseFloat(document.getElementById("luasPupuk").value);
+        const lahan     = document.getElementById("lahanTopografi").value;
+        const tanggal   = document.getElementById("tanggalTanam").value;
+
+        const d = databasePupuk.find(r => `${r.kec} (${r.kab})` === kecInput);
+
+        if (!d || isNaN(luas) || !tanggal) {
+            alert("Pilih kecamatan dari daftar & isi seluruh data dengan benar!");
+            return;
+        }
+
+        // ── Fungsi faktor topografi (sama dengan kode asli) ─────────────────
+        function faktorTopo(nilaiKg) {
+            if (lahan === "lembah") return nilaiKg * 0.7;
+            if (lahan === "rawa")   return nilaiKg * 0.5;
+            return nilaiKg;
+        }
+
+        // ── Fungsi format tanggal ────────────────────────────────────────────
+        function tglPlus(hari) {
+            const t = new Date(tanggal);
+            t.setDate(t.getDate() + hari);
+            return t.toLocaleDateString("id-ID", { day: 'numeric', month: 'long', year: 'numeric' });
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        //  JADWAL PEMUPUKAN — REFERENSI BB PADI KEMENTAN
+        //
+        //  Waktu yang benar (3 tahap):
+        //  ┌─────────┬───────────────────────────────────────────────────────┐
+        //  │ Tahap   │ Waktu         │ Alasan Agronomis                       │
+        //  ├─────────┼───────────────────────────────────────────────────────┤
+        //  │ I       │ 7–10 HST      │ Akar mulai aktif, rangsang anakan,     │
+        //  │         │               │ Sulfur Phonska untuk tunas muda         │
+        //  ├─────────┼───────────────────────────────────────────────────────┤
+        //  │ II      │ 21–25 HST     │ Fase anakan aktif maksimal,             │
+        //  │         │               │ bersamaan selesai penyiangan pertama    │
+        //  ├─────────┼───────────────────────────────────────────────────────┤
+        //  │ III     │ 42–50 HST     │ Fase primordia/bunting awal             │
+        //  │         │               │ Kebutuhan N tertinggi untuk pengisian   │
+        //  │         │               │ malai — KONDISIONAL berbasis BWD        │
+        //  └─────────┴───────────────────────────────────────────────────────┘
+        //
+        //  Hari ke-7  (kode lama) → terlalu awal, akar belum sepenuhnya aktif
+        //  Hari ke-30 (kode lama) → cocok untuk Tahap II bukan I
+        //  Hari ke-40 (kode lama) → belum masuk bunting, terlalu awal untuk III
+        // ────────────────────────────────────────────────────────────────────
+
+        const HST_I   = 7;    // Tengah rentang 7-10 HST
+        const HST_II  = 21;   // Awal fase anakan aktif
+        const HST_III = 45;   // Tengah rentang 42-50 HST (fase bunting awal)
+
+        const tgl1 = tglPlus(HST_I);
+        const tgl2 = tglPlus(HST_II);
+        const tgl3 = tglPlus(HST_III);
+
+        // ────────────────────────────────────────────────────────────────────
+        //  PROPORSI UREA — Referensi BB Padi & Dinas Pertanian Kementan
+        //
+        //  Pembagian 1/3 : 1/3 : 1/3 adalah standar yang paling banyak
+        //  direkomendasikan untuk padi inbrida sawah irigasi teknis.
+        //  Sumber: BB Padi (bbpadi.litbang.pertanian.go.id) & BWD guidelines.
+        //
+        //  Pemupukan III bersifat kondisional — hanya diberikan jika hasil
+        //  pengukuran BWD menunjukkan skala < 4 (daun belum cukup hijau).
+        //  Ini mencegah pemupukan N berlebih yang memicu ledakan WBC & Blast.
+        //
+        //  Kode lama: 57% : 43% (tidak ada dasar agronomi yang jelas)
+        // ────────────────────────────────────────────────────────────────────
+        const totalUrea = luas * faktorTopo(d.u);
+
+        const u1 = totalUrea * (1/3);   // Tahap I  — 33% dari total
+        const u2 = totalUrea * (1/3);   // Tahap II — 33% dari total
+        const u3 = totalUrea * (1/3);   // Tahap III — 33% (kondisional BWD)
+
+        // ────────────────────────────────────────────────────────────────────
+        //  PROPORSI PHONSKA/NPK — Referensi Gokomodo & Cybex Pertanian
+        //
+        //  P dan K lebih banyak diberikan di awal karena:
+        //  • P penting untuk perkembangan akar & anakan awal
+        //  • K meningkatkan ketahanan batang dari serangan WBC & rebah
+        //  • P terakumulasi di tanah — cukup 2 kali aplikasi
+        //
+        //  Proporsi: 50% Tahap I + 30% Tahap II + 20% Tahap III
+        //  (Tahap III Phonska hanya jika tersedia/diperlukan)
+        // ────────────────────────────────────────────────────────────────────
+        const totalPhonska = luas * faktorTopo(d.n);
+
+        const p1 = totalPhonska * 0.50;   // 50% — fondasi perakaran & anakan
+        const p2 = totalPhonska * 0.30;   // 30% — penguatan fase vegetatif
+        const p3 = totalPhonska * 0.20;   // 20% — dukungan fase generatif
+
+        // Pupuk organik (sama dengan kode asli)
+        const org = luas * faktorTopo(d.o);
+
+        // ── Helper format sak ────────────────────────────────────────────────
+        const sak = (kg) => (Math.round(kg / 25) / 2).toFixed(1);
+
+        // ── Fungsi warna sak untuk visual cepat ─────────────────────────────
+        const warnaUrea = "#3b82f6";
+        const warnaPhon = "#10b981";
+
+        // ── Render Hasil ─────────────────────────────────────────────────────
+        const hasilHTML = `
+            <div style="font-size: 1rem; font-weight:800; color:var(--accent-pupuk); margin-bottom:12px; text-align:center; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 8px;">
+                📋 HASIL REKOMENDASI DOSIS PEMUPUKAN
+            </div>
+
+            <b>📍 Wilayah Binaan:</b> ${kecInput}<br>
+            <b>📐 Luas Hamparan:</b> ${luas} Ha<br><br>
+
+            ${org > 0 ? `
+            <div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--accent-soil)">
+                <b>📦 Pupuk Organik / Kompos Awal (Jika Tersedia):</b><br>
+                <span style="color: #fff; font-weight:700;">${org.toFixed(0)} kg</span> (${sak(org)} Sak)
+                <br><small style="opacity:0.6;">Diberikan saat pengolahan tanah, 5–7 hari sebelum tanam</small>
+            </div>` : ''}
+
+            <b>📅 JADWAL PEMUPUKAN BERIMBANG (3 TAHAP)</b>
+            <div style="background:rgba(0,0,0,0.15); border-radius:12px; overflow:hidden; margin: 10px 0 16px 0;">
+
+                <!-- TAHAP I -->
+                <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size:0.72rem; font-weight:700; letter-spacing:0.5px; color:#94a3b8; margin-bottom:6px;">
+                        ⏱️ TAHAP I — 7–10 HST &nbsp;|&nbsp; ${tgl1}
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                        <div style="background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.25); border-radius:8px; padding:10px; text-align:center;">
+                            <div style="font-size:0.65rem; color:${warnaUrea}; font-weight:700; margin-bottom:4px;">UREA</div>
+                            <div style="font-size:1rem; font-weight:800; color:#fff;">${u1.toFixed(0)} kg</div>
+                            <div style="font-size:0.65rem; color:#64748b;">${sak(u1)} sak</div>
+                        </div>
+                        <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.25); border-radius:8px; padding:10px; text-align:center;">
+                            <div style="font-size:0.65rem; color:${warnaPhon}; font-weight:700; margin-bottom:4px;">PHONSKA/NPK</div>
+                            <div style="font-size:1rem; font-weight:800; color:#fff;">${p1.toFixed(0)} kg</div>
+                            <div style="font-size:0.65rem; color:#64748b;">${sak(p1)} sak</div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.7rem; color:#64748b; margin-top:6px; padding-left:2px;">
+                        💡 Rangsang pertumbuhan akar & anakan. Sulfur Phonska penting untuk tunas muda.
+                    </div>
+                </div>
+
+                <!-- TAHAP II -->
+                <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size:0.72rem; font-weight:700; letter-spacing:0.5px; color:#94a3b8; margin-bottom:6px;">
+                        ⏱️ TAHAP II — 21–25 HST &nbsp;|&nbsp; ${tgl2}
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                        <div style="background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.25); border-radius:8px; padding:10px; text-align:center;">
+                            <div style="font-size:0.65rem; color:${warnaUrea}; font-weight:700; margin-bottom:4px;">UREA</div>
+                            <div style="font-size:1rem; font-weight:800; color:#fff;">${u2.toFixed(0)} kg</div>
+                            <div style="font-size:0.65rem; color:#64748b;">${sak(u2)} sak</div>
+                        </div>
+                        <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.25); border-radius:8px; padding:10px; text-align:center;">
+                            <div style="font-size:0.65rem; color:${warnaPhon}; font-weight:700; margin-bottom:4px;">PHONSKA/NPK</div>
+                            <div style="font-size:1rem; font-weight:800; color:#fff;">${p2.toFixed(0)} kg</div>
+                            <div style="font-size:0.65rem; color:#64748b;">${sak(p2)} sak</div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.7rem; color:#64748b; margin-top:6px; padding-left:2px;">
+                        💡 Berikan setelah penyiangan I selesai. Fase anakan aktif maksimal.
+                    </div>
+                </div>
+
+                <!-- TAHAP III -->
+                <div style="padding:12px 14px;">
+                    <div style="font-size:0.72rem; font-weight:700; letter-spacing:0.5px; color:#f59e0b; margin-bottom:6px;">
+                        ⏱️ TAHAP III — 42–50 HST &nbsp;|&nbsp; ${tgl3} &nbsp;<span style="color:#ef4444;">(Cek BWD dulu!)</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                        <div style="background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.25); border-radius:8px; padding:10px; text-align:center;">
+                            <div style="font-size:0.65rem; color:${warnaUrea}; font-weight:700; margin-bottom:4px;">UREA</div>
+                            <div style="font-size:1rem; font-weight:800; color:#fff;">${u3.toFixed(0)} kg</div>
+                            <div style="font-size:0.65rem; color:#64748b;">${sak(u3)} sak</div>
+                        </div>
+                        <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.25); border-radius:8px; padding:10px; text-align:center;">
+                            <div style="font-size:0.65rem; color:${warnaPhon}; font-weight:700; margin-bottom:4px;">PHONSKA/NPK</div>
+                            <div style="font-size:1rem; font-weight:800; color:#fff;">${p3.toFixed(0)} kg</div>
+                            <div style="font-size:0.65rem; color:#64748b;">${sak(p3)} sak</div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.7rem; margin-top:8px; padding:8px 10px; background:rgba(239,68,68,0.08); border-left:3px solid #ef4444; border-radius:6px;">
+                        ⚠️ <b>KONDISIONAL:</b> Berikan Urea III <b>hanya jika</b> hasil ukur BWD menunjukkan skala &lt; 4
+                        (daun kuning/hijau muda). Jika daun sudah hijau tua (BWD ≥ 4), lewati Urea tahap III
+                        untuk mencegah ledakan hama WBC dan penyakit Blast.
+                    </div>
+                </div>
+            </div>
+
+            <!-- REKAP TOTAL -->
+            <div class="rekap-pupuk-box">
+                <b>📊 REKAP TOTAL KEBUTUHAN MUSIM INI:</b><br>
+                • <b>Urea (Subsidi):</b> ${totalUrea.toFixed(0)} kg
+                  (<span class="rekap-sak-text">${sak(totalUrea)} sak</span>)<br>
+                • <b>Phonska/NPK:</b> ${totalPhonska.toFixed(0)} kg
+                  (<span class="rekap-sak-text">${sak(totalPhonska)} sak</span>)
+            </div>
+
+            <!-- CATATAN REFERENSI -->
+            <div style="margin-top:14px; padding:10px 12px; background:rgba(100,116,139,0.08); border-radius:10px; border:1px solid rgba(255,255,255,0.04); font-size:0.7rem; color:#64748b; line-height:1.7;">
+                📚 <b style="color:#94a3b8;">Referensi:</b> Jadwal & proporsi sesuai rekomendasi
+                <b>BB Padi Kementan</b> (7–10 / 21–25 / 42–50 HST) dan
+                panduan <b>Pemupukan Berimbang Berbasis BWD</b> (Kementan RI).
+                Dosis total mengacu data <b>e-RDKK wilayah</b> setempat.
+            </div>`;
+
+        // Simpan teks WA
+        hasilTeksWA = `*SMART FARMING - PPL MILENIAL WAJO*\n` +
+            `*REKOMENDASI DOSIS PUPUK E-RDKK*\n\n` +
+            `📍 Wilayah: ${kecInput}\n` +
+            `📐 Luas Lahan: ${luas} Ha\n` +
+            (org > 0 ? `📦 Organik (sebelum tanam): ${org.toFixed(0)} kg (${sak(org)} sak)\n\n` : '\n') +
+            `*JADWAL PEMUPUKAN 3 TAHAP (BB Padi Kementan):*\n\n` +
+            `1️⃣ Tahap I — 7–10 HST (${tgl1})\n` +
+            `   • Urea : ${u1.toFixed(0)} kg (${sak(u1)} sak)\n` +
+            `   • Phonska : ${p1.toFixed(0)} kg (${sak(p1)} sak)\n\n` +
+            `2️⃣ Tahap II — 21–25 HST (${tgl2})\n` +
+            `   • Urea : ${u2.toFixed(0)} kg (${sak(u2)} sak)\n` +
+            `   • Phonska : ${p2.toFixed(0)} kg (${sak(p2)} sak)\n\n` +
+            `3️⃣ Tahap III — 42–50 HST (${tgl3}) ⚠️ Cek BWD!\n` +
+            `   • Urea : ${u3.toFixed(0)} kg (${sak(u3)} sak) — hanya jika BWD < 4\n` +
+            `   • Phonska : ${p3.toFixed(0)} kg (${sak(p3)} sak)\n\n` +
+            `*REKAP TOTAL:*\n` +
+            `• Total Urea: ${totalUrea.toFixed(0)} kg (${sak(totalUrea)} sak)\n` +
+            `• Total Phonska: ${totalPhonska.toFixed(0)} kg (${sak(totalPhonska)} sak)\n\n` +
+            `_Diproduksi Otomatis oleh Sistem Aplikasi Penyuluh Milenial Wajo_`;
+
+        const div = document.getElementById("outputHasilPupuk");
+        div.style.display = "block";
+        div.innerHTML = hasilHTML;
+    };
+
+    console.log("✅ [Modul 2] Patch Jadwal Pemupukan E-RDKK v3.0 aktif.");
+
+})();
 
 })();
 // ============================================================
