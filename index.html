@@ -1304,7 +1304,7 @@ body.light-mode .harga-table td { color: #334155 !important; border-bottom: 1px 
         </div>
           
         <input type="file" id="fileInput" accept="image/*" hidden onchange="handleFile(event)">
-        <button id="btnCamera" class="btn-main btn-camera" onclick="bukaKamera()">📸 AMBIL FOTO / GALERI</button>
+        <button id="btnCamera" class="btn-main btn-camera" onclick="window.mintaIzinKamera(function(){ bukaKamera(); })">📸 AMBIL FOTO / GALERI</button>
 
         <div id="cameraWarning" style="display:none; color: var(--accent-soil); font-size: 0.75rem; text-align: center; margin: 10px 0; font-weight: 600; padding: 8px; border: 1px solid var(--accent-soil); border-radius: 8px;">
             ⚠️ Ambil foto 30-50cm dari target/objek agar hasil akurat
@@ -2189,7 +2189,7 @@ function getMovingAverage(data, windowSize = 3) {
         const outBWD = document.getElementById('outputBWD');
         if(outBWD) outBWD.innerHTML = '';
 
-        if (typeof startBWDCamera === 'function') startBWDCamera();
+        if (typeof startBWDCamera === 'function') window.mintaIzinKamera(function(){ startBWDCamera(); });
     }
 
     if (sub !== '') { 
