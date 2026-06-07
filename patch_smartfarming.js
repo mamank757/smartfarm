@@ -807,6 +807,7 @@ body.light-mode #panelMultiLahanInner .lahan-info small,
 body.light-mode #panelMultiLahanInner .form-tambah-lahan > div {
     color: #475569 !important;
 }
+
 /* Dark mode default */
 #panelMultiLahanInner h3,
 #daftarLahan {
@@ -818,6 +819,7 @@ body.light-mode #panelMultiLahanInner h3,
 body.light-mode #daftarLahan {
     color: #64748b !important;
 }
+
 /* Label form tambah lahan */
 body.light-mode .form-tambah-lahan > div[style*="color: #3b82f6"] {
     color: #1d4ed8 !important;
@@ -856,13 +858,13 @@ body.light-mode .toast-notif { background: #ffffff; }
         <div id="panelMultiLahan">
         <div id="panelMultiLahanInner">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-                <h3 style="margin:0; font-size:1.05rem; color:#fff;">🌾 Lahan Saya</h3>
+                <h3 style="margin:0; font-size:1.05rem; color:#fff;">🌾 Daftar Sawah Saya</h3>
                 <button onclick="tutupPanel('multiLahan')" style="background:rgba(239,68,68,0.2); color:#ef4444; border:none; padding:6px 14px; border-radius:8px; font-weight:700; cursor:pointer; font-size:0.8rem;">TUTUP</button>
             </div>
             <div id="daftarLahan"></div>
 
-                        <div class="form-tambah-lahan">
-                <div style="font-size:0.8rem; font-weight:700; color:#3b82f6; margin-bottom:12px;">➕ Tambah Petak Sawah Baru</div>
+            <div class="form-tambah-lahan">
+                <div id="formLahanTitle" style="font-size:0.8rem; font-weight:700; color:#3b82f6; margin-bottom:12px;">➕ Tambah Petak Sawah Baru</div>
                 <input type="text" id="inputNamaLahan" placeholder="Nama Lahan (cth: Sawah Depan, Lahan Belakang)">
                 <input type="date" id="inputTglTanamLahan" placeholder="Tanggal Tanam">
                 <select id="inputVarietasLahan">
@@ -873,8 +875,11 @@ body.light-mode .toast-notif { background: #ffffff; }
                 </select>
                 <input type="text" id="inputVarietasNamaLahan" placeholder="Nama Varietas (cth: Ciherang, Mekongga)">
                 <input type="number" id="inputLuasLahan" placeholder="Luas Lahan (Ha, cth: 1.5)" step="0.01" min="0">
-                <button onclick="simpanLahan()" style="background:#3b82f6; color:#fff; border:none; padding:12px; border-radius:12px; font-weight:700; width:100%; cursor:pointer; font-size:0.85rem;">
-                    💾 SIMPAN LAHAN
+                <button id="btnSimpanLahan" onclick="simpanLahan()" style="background:#3b82f6; color:#fff; border:none; padding:12px; border-radius:12px; font-weight:700; width:100%; cursor:pointer; font-size:0.85rem;">
+                    💾 TAMBAH DAN SIMPAN LAHAN
+                </button>
+                <button id="btnBatalEdit" onclick="batalEditLahan()" style="display:none; background:rgba(255,255,255,0.1); color:#fff; border:none; padding:12px; border-radius:12px; font-weight:700; width:100%; cursor:pointer; font-size:0.85rem; margin-top:8px;">
+                    ❌ BATAL EDIT
                 </button>
             </div>
         </div>
@@ -1009,6 +1014,8 @@ function tutupPanel(nama) {
 // ============================================================
 // BAGIAN D: MULTI-LAHAN
 // ============================================================
+window.lahanEditId = null; // Variabel global untuk mode edit
+
 function getLahanList() {
     try { return JSON.parse(localStorage.getItem('sf_lahan_list') || '[]'); }
     catch(e) { return []; }
@@ -1021,7 +1028,7 @@ function getLahanAktif() {
     catch(e) { return null; }
 }
 
-function simpanLahan() {
+window.simpanLahan = function() {
     const nama = document.getElementById('inputNamaLahan').value.trim();
     const tglTanam = document.getElementById('inputTglTanamLahan').value;
     const varietasUmur = document.getElementById('inputVarietasLahan').value;
@@ -1033,31 +1040,101 @@ function simpanLahan() {
         return;
     }
 
+    let list = getLahanList();
+
+    if (window.lahanEditId) {
+        // MODE EDIT / UPDATE
+        const idx = list.findIndex(l => l.id === window.lahanEditId);
+        if (idx !== -1) {
+            list[idx].nama = nama;
+            list[idx].tglTanam = tglTanam;
+            list[idx].varietasUmur = varietasUmur || 'sedang';
+            list[idx].varietasNama = varietasNama || '-';
+            list[idx].luas = isNaN(luas) ? 0 : luas;
+        }
+        saveLahanList(list);
+        
+        // Jika yang diedit adalah lahan yang sedang aktif, perbarui juga state aktifnya
+        const aktif = getLahanAktif();
+        if (aktif && aktif.id === window.lahanEditId) {
+            localStorage.setItem('sf_lahan_aktif', JSON.stringify(list[idx]));
+            terapkanLahanAktif(list[idx]);
+        }
+
+        tampilkanToast('✅', 'Lahan Diperbarui!', `Data "${nama}" berhasil diupdate.`, '#10b981');
+        batalEditLahan(); // Kembalikan form ke mode tambah
+        
+    } else {
+        // MODE TAMBAH BARU
+        const lahanBaru = {
+            id: Date.now(),
+            nama,
+            tglTanam,
+            varietasUmur: varietasUmur || 'sedang',
+            varietasNama: varietasNama || '-',
+            luas: isNaN(luas) ? 0 : luas,
+            dibuatPada: new Date().toISOString()
+        };
+        list.push(lahanBaru);
+        saveLahanList(list);
+
+        // Jika baru pertama, jadikan aktif otomatis
+        if (list.length === 1) pilihLahan(lahanBaru.id);
+
+        document.getElementById('inputNamaLahan').value = '';
+        document.getElementById('inputTglTanamLahan').value = '';
+        document.getElementById('inputVarietasLahan').value = '';
+        document.getElementById('inputVarietasNamaLahan').value = '';
+        document.getElementById('inputLuasLahan').value = '';
+
+        tampilkanToast('✅', 'Lahan Disimpan!', `"${nama}" berhasil ditambahkan.`, '#10b981');
+    }
+
+    renderDaftarLahan();
+}
+
+window.editLahan = function(id) {
     const list = getLahanList();
-    const lahanBaru = {
-        id: Date.now(),
-        nama,
-        tglTanam,
-        varietasUmur: varietasUmur || 'sedang',
-        varietasNama: varietasNama || '-',
-        luas: isNaN(luas) ? 0 : luas,
-        dibuatPada: new Date().toISOString()
-    };
-    list.push(lahanBaru);
-    saveLahanList(list);
+    const lahan = list.find(l => l.id === id);
+    if (!lahan) return;
 
-    // Jika baru pertama, jadikan aktif otomatis
-    if (list.length === 1) pilihLahan(lahanBaru.id);
+    // Isi form dengan data yang sudah ada
+    document.getElementById('inputNamaLahan').value = lahan.nama;
+    document.getElementById('inputTglTanamLahan').value = lahan.tglTanam;
+    document.getElementById('inputVarietasLahan').value = lahan.varietasUmur || '';
+    document.getElementById('inputVarietasNamaLahan').value = lahan.varietasNama === '-' ? '' : lahan.varietasNama;
+    document.getElementById('inputLuasLahan').value = lahan.luas || '';
 
-    // Reset form
+    // Aktifkan mode edit
+    window.lahanEditId = id;
+
+    // Ubah UI Form
+    document.getElementById('formLahanTitle').innerHTML = '✏️ Edit Petak Sawah';
+    document.getElementById('formLahanTitle').style.color = '#f59e0b';
+    document.getElementById('btnSimpanLahan').innerHTML = '🔄 UPDATE LAHAN';
+    document.getElementById('btnSimpanLahan').style.background = '#f59e0b';
+    document.getElementById('btnBatalEdit').style.display = 'block';
+
+    // Scroll ke arah form
+    document.querySelector('.form-tambah-lahan').scrollIntoView({ behavior: 'smooth' });
+}
+
+window.batalEditLahan = function() {
+    window.lahanEditId = null; // Matikan mode edit
+    
+    // Kosongkan form
     document.getElementById('inputNamaLahan').value = '';
     document.getElementById('inputTglTanamLahan').value = '';
     document.getElementById('inputVarietasLahan').value = '';
     document.getElementById('inputVarietasNamaLahan').value = '';
     document.getElementById('inputLuasLahan').value = '';
 
-    renderDaftarLahan();
-    tampilkanToast('✅', 'Lahan Disimpan!', `"${nama}" berhasil ditambahkan.`, '#10b981');
+    // Kembalikan UI form seperti semula
+    document.getElementById('formLahanTitle').innerHTML = '➕ Tambah Petak Sawah Baru';
+    document.getElementById('formLahanTitle').style.color = '#3b82f6';
+    document.getElementById('btnSimpanLahan').innerHTML = '💾 SIMPAN LAHAN';
+    document.getElementById('btnSimpanLahan').style.background = '#3b82f6';
+    document.getElementById('btnBatalEdit').style.display = 'none';
 }
 
 function pilihLahan(id) {
@@ -1072,17 +1149,23 @@ function pilihLahan(id) {
 }
 
 function hapusLahan(id) {
-    // TAMBAHAN: Dialog Peringatan sebelum hapus
     if (!confirm('Apakah Anda yakin ingin menghapus data lahan ini?')) return;
 
     let list = getLahanList();
     list = list.filter(l => l.id !== id);
     saveLahanList(list);
+    
     const aktif = getLahanAktif();
     if (aktif && aktif.id === id) {
         localStorage.removeItem('sf_lahan_aktif');
         terapkanLahanAktif(null);
     }
+    
+    // Jika lahan yang sedang diedit malah dihapus, batalkan edit
+    if (window.lahanEditId === id) {
+        batalEditLahan();
+    }
+    
     renderDaftarLahan();
 }
 
@@ -1141,7 +1224,7 @@ function renderDaftarLahan() {
 
     if (list.length === 0) {
         const warnaKosong = document.body.classList.contains('light-mode') ? '#64748b' : '#ffffff';
-container.innerHTML = `<div style="text-align:center; color:${warnaKosong}; padding:30px 0; font-size:0.85rem;">Belum ada lahan tersimpan.<br>Tambahkan petak sawah Anda di bawah.</div>`;
+        container.innerHTML = `<div style="text-align:center; color:${warnaKosong}; padding:30px 0; font-size:0.85rem;">Belum ada lahan tersimpan.<br>Tambahkan petak sawah Anda di bawah.</div>`;
         return;
     }
 
@@ -1160,12 +1243,12 @@ container.innerHTML = `<div style="text-align:center; color:${warnaKosong}; padd
             </div>
             <div class="lahan-actions">
                 ${aktif && aktif.id === l.id ? '' : `<button class="btn-lahan-kecil btn-pilih" onclick="pilihLahan(${l.id})">Pilih</button>`}
-                                <button class="btn-lahan-kecil btn-hapus" onclick="hapusLahan(${l.id})">HAPUS</button>
+                <button class="btn-lahan-kecil btn-edit" style="background:rgba(245,158,11,0.2); color:#f59e0b;" onclick="editLahan(${l.id})">EDIT</button>
+                <button class="btn-lahan-kecil btn-hapus" onclick="hapusLahan(${l.id})">HAPUS</button>
             </div>
         </div>
     `).join('');
 }
-
 // ============================================================
 // BAGIAN E: RIWAYAT ANALISIS
 // ============================================================
@@ -1224,19 +1307,18 @@ function updateBadgeRiwayat() {
 }
 
 // ============================================================
-// BAGIAN F: PENGINGAT / NOTIFIKASI
+// BAGIAN F: PENGINGAT / NOTIFIKASI (UPDATED V3.0)
 // ============================================================
+// 1. Jadwal disinkronkan dengan Modul 2 (Rumus BB Padi)
 const JADWAL_PEMUPUKAN = [
-    { hari: 7,  judul: '🌱 Pemupukan Tahap I', pesan: 'Saatnya aplikasi pupuk Urea + Phonska pertama (± hari ke-7 setelah tanam).', warna: '#10b981' },
-    { hari: 30, judul: '🧪 Pemupukan Tahap II', pesan: 'Waktunya pemupukan kedua. Urea + Phonska untuk fase vegetatif aktif.', warna: '#3b82f6' },
-    { hari: 40, judul: '🌾 Pemupukan Tahap III', pesan: 'Pemupukan akhir (Phonska) untuk mendukung fase bunting dan pengisian malai.', warna: '#f59e0b' },
-    { hari: 50, judul: '🔍 Monitoring BWD', pesan: 'Cek warna daun dengan BWD. Pastikan nitrogen optimal sebelum fase generatif.', warna: '#8b5cf6' },
-    { hari: 60, judul: '🌸 Fase Bunting Dimulai', pesan: 'Padi memasuki fase bunting. Jaga ketersediaan air dan pantau hama!', warna: '#d946ef' },
-    { hari: 75, judul: '🌾 Pemantauan Malai', pesan: 'Periksa pengisian bulir. Waspada serangan burung dan tikus.', warna: '#f59e0b' },
-    { hari: 90, judul: '🚜 Persiapan Panen', pesan: 'Rencanakan jadwal combine harvester dan dryer. Kurangi pengairan.', warna: '#10b981' },
+    { hari: 7,  judul: '🌱 Pemupukan Tahap I', pesan: 'Waktunya aplikasi Urea + Phonska (7-10 HST). Cek Menu Dosis untuk takarannya.', warna: '#10b981' },
+    { hari: 21, judul: '🧪 Pemupukan Tahap II', pesan: 'Fase anakan aktif. Waktunya pemupukan kedua (21-25 HST).', warna: '#3b82f6' },
+    { hari: 45, judul: '🌾 Pemupukan Tahap III', pesan: 'Padi memasuki fase primordia/bunting awal. Cek BWD! Jika skala < 4, berikan Urea.', warna: '#f59e0b' },
+    { hari: 60, judul: '🌸 Fase Bunting Dimulai', pesan: 'Padi bunting. Jaga ketersediaan air tanah maksimal dan waspada hama.', warna: '#d946ef' },
+    { hari: 90, judul: '🚜 Persiapan Panen', pesan: 'Kurangi pengairan lahan, persiapkan jadwal Combine Harvester.', warna: '#10b981' },
 ];
 
-function renderJadwalNotif() {
+window.renderJadwalNotif = function() {
     const container = document.getElementById('kontenNotif');
     const lahan = getLahanAktif();
 
@@ -1244,15 +1326,16 @@ function renderJadwalNotif() {
         container.innerHTML = `
             <div style="text-align:center; padding:30px 20px; color:#475569;">
                 <div style="font-size:2rem; margin-bottom:12px;">🌾</div>
-                <div style="font-size:0.85rem; line-height:1.6;">Pilih lahan aktif terlebih dahulu agar pengingat dapat disesuaikan dengan jadwal tanam Anda.</div>
-                <button onclick="tutupPanel('notif'); bukaPanel('multiLahan');" style="margin-top:16px; background:#3b82f6; color:#fff; border:none; padding:10px 20px; border-radius:10px; font-weight:700; cursor:pointer;">Pilih Lahan</button>
+                <div style="font-size:0.85rem; line-height:1.6;">Pilih lahan aktif terlebih dahulu di menu Daftar Sawah.</div>
             </div>`;
         return;
     }
 
     const awal = new Date(lahan.tglTanam);
+    awal.setHours(0,0,0,0);
     const sekarang = new Date();
-    const hariSekarang = Math.floor((sekarang - awal) / 86400000);
+    sekarang.setHours(0,0,0,0);
+    const hariSekarang = Math.round((sekarang - awal) / 86400000);
 
     const tglStr = (hari) => {
         const d = new Date(awal);
@@ -1277,7 +1360,7 @@ function renderJadwalNotif() {
         html += `
             <div class="notif-jadwal-item">
                 <div>
-                    <div class="hari-info">${j.judul}</div>
+                    <div class="hari-info" style="color:${j.warna}">${j.judul}</div>
                     <div class="hari-sub">📅 ${tglStr(j.hari)} (Hari ke-${j.hari})</div>
                     <div class="hari-sub" style="margin-top:4px; color:#94a3b8;">${j.pesan}</div>
                 </div>
@@ -1288,31 +1371,54 @@ function renderJadwalNotif() {
     container.innerHTML = html;
 }
 
-function cekPengingatHariIni() {
+// 2. Fungsi ini yang akan memunculkan Pop-Up Besar di tengah layar saat aplikasi dibuka
+window.cekPengingatHariIni = function() {
     const lahan = getLahanAktif();
     if (!lahan || !lahan.tglTanam) return;
 
     const awal = new Date(lahan.tglTanam);
-    const hariIni = Math.floor((new Date() - awal) / 86400000);
+    awal.setHours(0,0,0,0); // Normalisasi jam agar presisi
+    const sekarang = new Date();
+    sekarang.setHours(0,0,0,0);
+    const hariIni = Math.round((sekarang - awal) / 86400000);
 
     const jadwalHariIni = JADWAL_PEMUPUKAN.find(j => j.hari === hariIni);
-    const jadwalBesok = JADWAL_PEMUPUKAN.find(j => j.hari === hariIni + 1);
 
     if (jadwalHariIni) {
-        setTimeout(() => {
-            tampilkanToast('🔔', jadwalHariIni.judul, `Lahan: ${lahan.nama} — ${jadwalHariIni.pesan}`, jadwalHariIni.warna);
+        const modal = document.getElementById('customAlertModal');
+        if (modal) {
+            const icon = document.getElementById('customAlertIcon');
+            const message = document.getElementById('customAlertMessage');
+            
+            icon.innerHTML = '🚨';
+            message.innerHTML = `
+                <span style="display: block; font-size: 1.2rem; font-weight: 800; color: ${jadwalHariIni.warna}; text-shadow: 0 0 10px ${jadwalHariIni.warna}66; margin-bottom: 10px; letter-spacing: 1px;">
+                    ${jadwalHariIni.judul.toUpperCase()}
+                </span>
+                <span style="display: block; color: #cbd5e1; font-size: 0.9rem; line-height: 1.6; margin-bottom: 15px;">
+                    Tabe', untuk lahan <strong>"${lahan.nama}"</strong> hari ini memasuki umur <b style="color:#fff;">${hariIni} HST</b>.<br><br>
+                    ${jadwalHariIni.pesan}
+                </span>
+                <button onclick="document.getElementById('customAlertModal').style.display='none'" 
+                        style="background: transparent; border: 1px solid ${jadwalHariIni.warna}; color: ${jadwalHariIni.warna}; padding: 10px 20px; border-radius: 8px; font-weight: 700; cursor: pointer; width: 100%; transition: all 0.3s;">
+                    TUTUP PENGINGAT
+                </button>
+            `;
+            modal.style.display = 'flex';
+            
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        }
+
+        // Tambah titik merah di menu bawah
+        const fabNotif = document.getElementById('fabNotifBtn');
+        if (fabNotif && !fabNotif.querySelector('.badge-notif')) {
             const badge = document.createElement('span');
             badge.className = 'badge-notif';
             badge.textContent = '!';
-            const fabNotif = document.getElementById('fabNotifBtn');
-            if (fabNotif && !fabNotif.querySelector('.badge-notif')) fabNotif.appendChild(badge);
-        }, 3000);
-    } else if (jadwalBesok) {
-        setTimeout(() => {
-            tampilkanToast('📅', 'Pengingat Besok', `"${jadwalBesok.judul}" untuk lahan ${lahan.nama}`, '#f59e0b');
-        }, 5000);
+            fabNotif.appendChild(badge);
+        }
     }
-}
+};
 
 // ============================================================
 // BAGIAN G: HARGA PUPUK DINAMIS
