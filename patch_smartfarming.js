@@ -807,7 +807,17 @@ body.light-mode #panelMultiLahanInner .lahan-info small,
 body.light-mode #panelMultiLahanInner .form-tambah-lahan > div {
     color: #475569 !important;
 }
+/* Dark mode (default) - sudah putih dari bawaan */
+#panelMultiLahanInner h3,
+#daftarLahan {
+    color: #ffffff;
+}
 
+/* Light mode override */
+body.light-mode #panelMultiLahanInner h3,
+body.light-mode #daftarLahan {
+    color: #64748b !important;
+}
 /* Label form tambah lahan */
 body.light-mode .form-tambah-lahan > div[style*="color: #3b82f6"] {
     color: #1d4ed8 !important;
