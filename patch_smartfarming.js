@@ -972,7 +972,20 @@ body.light-mode .toast-notif { background: #ffffff; }
     </div>
     `);
 })();
+// ── PATCH: Sinkronisasi koordinat GPS agar tidak minta izin berulang ──
+(function patchKoordinatGlobal() {
+    // Simpan koordinat terakhir yang berhasil didapat
+    window._koordinatTerakhir = null;
 
+    // Intercept getCurrentPosition agar hasilnya disimpan ke cache
+    const _asli = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+    navigator.geolocation.getCurrentPosition = function(sukses, gagal, opsi) {
+        _asli(function(pos) {
+            window._koordinatTerakhir = pos; // simpan cache
+            sukses(pos);
+        }, gagal, opsi);
+    };
+})();
 // ============================================================
 // BAGIAN C: MANAJEMEN PANEL (OPEN/CLOSE)
 // ============================================================
