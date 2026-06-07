@@ -793,6 +793,25 @@ body.light-mode .form-tambah-lahan input,
 body.light-mode .form-tambah-lahan select { background: #e2e8f0; color: #0f172a; border-color: #94a3b8; }
 body.light-mode #btnFloatingAksi { background: #ffffff; border-top-color: #e2e8f0; }
 body.light-mode .fab-kecil { color: #94a3b8; }
+/* Panel header titles */
+body.light-mode #panelMultiLahanInner h3,
+body.light-mode #panelRiwayatInner h3,
+body.light-mode #panelHargaInner h3,
+body.light-mode #panelNotifInner h3 {
+    color: #0f172a !important;
+}
+
+/* Teks label di dalam panel multi-lahan */
+body.light-mode #panelMultiLahanInner .ganti-lahan,
+body.light-mode #panelMultiLahanInner .lahan-info small,
+body.light-mode #panelMultiLahanInner .form-tambah-lahan > div {
+    color: #475569 !important;
+}
+
+/* Label form tambah lahan */
+body.light-mode .form-tambah-lahan > div[style*="color: #3b82f6"] {
+    color: #1d4ed8 !important;
+}
 body.light-mode #indikasiLahanAktif { background: rgba(59,130,246,0.08); }
 body.light-mode .toast-notif { background: #ffffff; }
 `;
