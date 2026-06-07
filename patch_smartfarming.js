@@ -807,13 +807,13 @@ body.light-mode #panelMultiLahanInner .lahan-info small,
 body.light-mode #panelMultiLahanInner .form-tambah-lahan > div {
     color: #475569 !important;
 }
-/* Dark mode (default) - sudah putih dari bawaan */
+/* Dark mode default */
 #panelMultiLahanInner h3,
 #daftarLahan {
     color: #ffffff;
 }
 
-/* Light mode override */
+/* Light mode */
 body.light-mode #panelMultiLahanInner h3,
 body.light-mode #daftarLahan {
     color: #64748b !important;
@@ -1140,7 +1140,8 @@ function renderDaftarLahan() {
     const container = document.getElementById('daftarLahan');
 
     if (list.length === 0) {
-        container.innerHTML = `<div style="text-align:center; color:#475569; padding:30px 0; font-size:0.85rem;">Belum ada lahan tersimpan.<br>Tambahkan petak sawah Anda di bawah.</div>`;
+        const warnaKosong = document.body.classList.contains('light-mode') ? '#64748b' : '#ffffff';
+container.innerHTML = `<div style="text-align:center; color:${warnaKosong}; padding:30px 0; font-size:0.85rem;">Belum ada lahan tersimpan.<br>Tambahkan petak sawah Anda di bawah.</div>`;
         return;
     }
 
