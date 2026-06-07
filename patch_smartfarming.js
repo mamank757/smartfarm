@@ -827,7 +827,7 @@ body.light-mode .toast-notif { background: #ffffff; }
         <div id="panelMultiLahan">
         <div id="panelMultiLahanInner">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-                <h3 style="margin:0; font-size:1.05rem; color:#fff;">🌾 Lahan Saya</h3>
+                <h3 style="margin:0; font-size:1.05rem; color:#475569;">🌾 Lahan Saya</h3>
                 <button onclick="tutupPanel('multiLahan')" style="background:rgba(239,68,68,0.2); color:#ef4444; border:none; padding:6px 14px; border-radius:8px; font-weight:700; cursor:pointer; font-size:0.8rem;">TUTUP</button>
             </div>
             <div id="daftarLahan"></div>
