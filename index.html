@@ -5082,23 +5082,23 @@ let kalenderChartInstance = null;
 
 // Fungsi untuk memaksa pengambilan GPS jika user belum menekan tombol sinkronisasi di tab cuaca
 const dapatkanLokasiOtomatis = () => new Promise((resolve, reject) => {
-    // Jika sudah sinkron di tab cuaca sebelumnya, gunakan data tersebut
+    // Cek cache koordinat global dulu (dari sinkronisasi sebelumnya)
+    if (window._koordinatTerakhir) {
+        const pos = window._koordinatTerakhir;
+        resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+        return;
+    }
+    // Jika sudah sinkron di tab cuaca, baca dari UI
     if (isGpsSynced && document.getElementById('lokasiSawah').innerText !== "-") {
         const koordinatTeks = document.getElementById('lokasiSawah').innerText;
         const parts = koordinatTeks.split(',');
         resolve({ lat: parseFloat(parts[0]), lon: parseFloat(parts[1]) });
         return;
     }
-
-    // Jika belum sinkron, paksa pencarian GPS baru
+    // Baru minta GPS jika benar-benar belum ada
     navigator.geolocation.getCurrentPosition(
-        (pos) => {
-            resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-        },
-        (error) => {
-            // Tolak eksekusi dan lempar pesan error
-            reject("Sinyal satelit tidak ditemukan. Pastikan GPS menyala dan izin lokasi browser diberikan.");
-        },
+        (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        () => reject("Sinyal satelit tidak ditemukan. Pastikan GPS menyala dan izin lokasi diberikan."),
         { enableHighAccuracy: false, timeout: 10000 }
     );
 });
