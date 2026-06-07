@@ -472,8 +472,6 @@
     console.log("✅ [Modul 2] Patch Jadwal Pemupukan E-RDKK v3.0 aktif.");
 
 })();
-
-})();
 // ============================================================
 // PATCH SMART FARMING - PPL MILENIAL WAJO
 // Berisi: Riwayat, Multi-Lahan, Notifikasi, Harga Pupuk, Fix GPS
