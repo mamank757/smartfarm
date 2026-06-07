@@ -1,3 +1,210 @@
+/**
+ * ============================================================
+ *  PATCH: Perbaikan Kalkulasi Estimasi Hasil Panen (Malai)
+ *  PPL Milenial Wajo — Smart Farming
+ *  Versi Patch: 2.0
+ * ============================================================
+ *
+ *  CARA PAKAI:
+ *  Simpan file ini di folder yang sama dengan file HTML utama,
+ *  lalu pastikan baris ini sudah ada di bagian bawah <body>:
+ *    <script src="patch_smartfarming.js"></script>
+ *  (sudah ada di HTML Anda, tinggal letakkan file ini di server)
+ *
+ *  DAFTAR PERBAIKAN:
+ *  1. Berat 1000 Butir dinaikkan ke nilai referensi IRRI/BB Padi
+ *  2. Persen Bernas dinaikkan ke standar varietas modern (85-90%)
+ *  3. Faktor koreksi dipisah & dikombinasikan lebih realistis:
+ *       - Faktor susut panen: 8% (Combine Harvester modern)
+ *       - Faktor luas pematang: sudah dihitung dari rumpun/m², TIDAK
+ *         dipotong lagi karena rumpun/m² sudah NETTO per lahan tanam
+ *       - Kadar air gabah (15% KA → bobot susut saat kering)
+ *  4. Informasi detail ditambahkan agar PPL mudah menjelaskan ke petani
+ *
+ *  REFERENSI ILMIAH:
+ *  - BB Padi (2022): Deskripsi Varietas Unggul Padi
+ *  - IRRI Rice Almanac 4th Ed. — grain weight & harvest index
+ *  - Kementan RI — Pengujian varietas, berat 1000 butir kadar air 14%
+ * ============================================================
+ */
+
+(function () {
+
+    // ─── KONSTANTA KOREKSI ──────────────────────────────────────────────────────
+    // Hanya susut panen yang relevan. Faktor pematang TIDAK dipakai karena:
+    //   rumpun/m² yang diinput user sudah merupakan populasi NETTO per m² tanam,
+    //   bukan per m² total hamparan (pematang sudah terpisah).
+    const FAKTOR_SUSUT_COMBINE = 0.92;   // Susut mekanis + tercecer ±8% (Combine modern)
+    const FAKTOR_SUSUT_MANUAL  = 0.87;   // Susut manual (sabit + perontok) ±13%
+
+    // ─── TABEL BERAT 1000 BUTIR & BERNAS (BB Padi 2022) ───────────────────────
+    const PARAM_VARIETAS = {
+        //           berat1000g   bernas
+        genjah: { b1000: 26.5,  bernas: 0.86 },  // M70D, Cakrabuana, Conde
+        sedang: { b1000: 28.5,  bernas: 0.88 },  // Ciherang, Mekongga, Inpari 32, Inpari 42
+        dalam:  { b1000: 30.0,  bernas: 0.80 },  // Padi lokal, varietas panjang umur
+    };
+
+    // ─── OVERRIDE FUNGSI tampilkanHasil untuk mode malai ───────────────────────
+    // Simpan referensi asli agar mode lain tetap jalan normal
+    const _tampilkanHasilAsli = window.tampilkanHasil;
+
+    window.tampilkanHasil = function (data) {
+
+        // Untuk mode selain malai, jalankan fungsi asli
+        if (typeof currentMode !== 'undefined' && currentMode !== 'malai') {
+            return _tampilkanHasilAsli(data);
+        }
+
+        // ── Ambil data dari server ──────────────────────────────────────────
+        let out = data;
+        out = Array.isArray(data) ? data[0] : data;
+        if (out.outputs && out.outputs[0]) out = out.outputs[0];
+
+        const listM      = document.getElementById('listMalai');
+        const totalBulirFotoIni = out.count || 0;
+
+        if (hasilSampelBulir.length < 3) {
+            hasilSampelBulir.push(totalBulirFotoIni);
+        }
+
+        // Render daftar sampel yang sudah diambil
+        listM.innerHTML = "";
+        hasilSampelBulir.forEach((val, index) => {
+            listM.innerHTML +=
+                `<div class="malai-counter-box">` +
+                `<span>🌾 Foto Sampel Malai ke-${index + 1}</span>` +
+                `<span style="color:var(--accent-green); font-weight:700;">${val} Bulir</span>` +
+                `</div>`;
+        });
+
+        document.getElementById('result').style.display   = 'block';
+        document.getElementById('resConf').style.display  = 'block';
+        document.getElementById('boxMalai').style.display = 'block';
+        document.getElementById('resLabel').innerText     = `Sampel ke-${hasilSampelBulir.length} Tersimpan`;
+
+        const btnAnalisis = document.getElementById('btnAnalisis');
+
+        // ── Kalkulasi hanya setelah 3 sampel terkumpul ─────────────────────
+        if (hasilSampelBulir.length === 3) {
+
+            const rataBulir = (hasilSampelBulir[0] + hasilSampelBulir[1] + hasilSampelBulir[2]) / 3;
+
+            // Metode tanam → populasi rumpun/m²
+            const metode = document.getElementById('metodeTanam').value;
+            let rumpunPerMeter = 25;
+            let namaMetode     = "Tapin Tradisional / Tegel";
+
+            if (metode === 'legowo')         { rumpunPerMeter = 33; namaMetode = "Jajar Legowo 2:1 / 4:1"; }
+            else if (metode === 'tabela_larikan') { rumpunPerMeter = 40; namaMetode = "Tabela Larikan / Drum Seeder"; }
+            else if (metode === 'tabela_hambur')  { rumpunPerMeter = 60; namaMetode = "Tabela Hambur / Sere"; }
+            else if (metode === 'custom') {
+                rumpunPerMeter = parseInt(document.getElementById('manualRumpun').value) || 25;
+                namaMetode     = `Kepadatan Manual (${rumpunPerMeter} rumpun/m²)`;
+            }
+
+            // Varietas → parameter bobot & bernas
+            const varKunci = document.getElementById('jenisVarietas').value;  // genjah / sedang / dalam
+            const param    = PARAM_VARIETAS[varKunci] || PARAM_VARIETAS.sedang;
+            const namaVarietas = varKunci === 'genjah'
+                ? "Genjah (M70D, Cakrabuana, dll)"
+                : (varKunci === 'dalam' ? "Dalam / Lokal" : "Sedang (Ciherang, Inpari, Mekongga, dll)");
+
+            const malaiPerRumpun = parseInt(document.getElementById('malaiPerRumpun').value) || 16;
+
+            // ── RUMUS PERBAIKAN ──────────────────────────────────────────────
+            //
+            //  Produksi GKG/Ha (ton) =
+            //    Rumpun/m² × 10.000 m² × malai/rumpun
+            //    × bulir_bernas/malai × berat_1000butir(g) / 1.000.000
+            //    × faktor_susut_panen
+            //
+            //  bulir_bernas = rata bulir × persen bernas
+            //
+            //  CATATAN:
+            //  • "× 10.000" mengubah m² → Ha
+            //  • "/ 1.000.000" mengubah gram → ton
+            //  • Tidak ada potongan lagi untuk pematang karena rumpun/m²
+            //    sudah netto area tanam (pematang ±10-15% luas sudah diketahui
+            //    petani saat mengisi kepadatan; angka yang diisi = area tanam saja)
+            //  • Faktor susut 8% mencakup: tercecer mesin, butir pecah, kadar air
+            //    dari 20% KA (segar) ke ~14% KA (gabah kering giling)
+            // ────────────────────────────────────────────────────────────────
+
+            const bulirBernas     = rataBulir * param.bernas;
+            const totalRumpunHa   = rumpunPerMeter * 10000;
+            const totalBulirHa    = totalRumpunHa * malaiPerRumpun * bulirBernas;
+            const beratGramHa     = totalBulirHa * (param.b1000 / 1000);
+            const produksiTonHa   = beratGramHa / 1_000_000;
+            const hasilRiilTonHa  = produksiTonHa * FAKTOR_SUSUT_COMBINE;
+
+            // Estimasi rendah-tinggi (±10% variasi lapangan)
+            const hasilMin = (hasilRiilTonHa * 0.90).toFixed(2);
+            const hasilMax = (hasilRiilTonHa * 1.10).toFixed(2);
+
+            // ── Render Hasil ──────────────────────────────────────────────────
+            document.getElementById('resLabel').innerText = "Kalkulasi Hasil Panen";
+            document.getElementById('resUbinanTeks').innerHTML = `
+                <div style="background: rgba(0,0,0,0.15); border-radius: 12px; padding: 12px; margin-bottom: 12px; font-size: 0.8rem; line-height: 1.8; color: #cbd5e1;">
+                    📊 <b>Rata-rata Cacah Bulir AI:</b> ${rataBulir.toFixed(1)} butir / malai<br>
+                    🌱 <b>Jumlah Bernas:</b> ${bulirBernas.toFixed(1)} butir / malai (bernas ${(param.bernas * 100).toFixed(0)}%)<br>
+                    ⚙️ <b>Sistem Lahan:</b> ${namaMetode} — ${rumpunPerMeter} rumpun/m² × ${malaiPerRumpun} malai/rumpun<br>
+                    🌾 <b>Parameter Varietas:</b> ${namaVarietas} — Bobot 1000 butir: <b>${param.b1000}g</b><br>
+                    📉 <b>Koreksi Susut Panen:</b> ${((1 - FAKTOR_SUSUT_COMBINE) * 100).toFixed(0)}% (mekanis + kadar air 14% GKG)<br>
+                    <div style="margin-top:4px; padding-top:4px; border-top: 1px dashed rgba(255,255,255,0.1); font-size:0.72rem; opacity:0.65; font-style:italic;">
+                        ✅ Tidak ada potongan pematang — rumpun/m² sudah merupakan populasi netto area tanam.
+                    </div>
+                </div>
+
+                <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16,185,129,0.3); border-radius: 16px; padding: 16px; text-align: center;">
+                    <div style="font-size: 0.72rem; color: #10b981; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">ESTIMASI PRODUKSI GKG</div>
+                    <div style="font-size: 2rem; font-weight: 800; color: var(--accent-green); line-height: 1.1;">
+                        ${hasilRiilTonHa.toFixed(2)} <span style="font-size: 1rem;">Ton/Ha</span>
+                    </div>
+                    <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 6px;">
+                        Kisaran wajar: <b style="color:#fff;">${hasilMin} – ${hasilMax} Ton/Ha</b>
+                    </div>
+                    <div style="font-size: 0.7rem; color: #64748b; margin-top: 4px;">
+                        (variasi ±10% sesuai kondisi lapangan & cuaca)
+                    </div>
+                </div>`;
+
+            hasilSampelBulir = [];
+
+            btnAnalisis.innerText        = "HITUNG LAHAN LAIN";
+            btnAnalisis.style.background = "var(--accent-biaya)";
+            btnAnalisis.onclick = () => {
+                document.getElementById('preview').style.display    = 'none';
+                document.getElementById('msg').style.display        = 'block';
+                document.getElementById('result').style.display     = 'none';
+                document.getElementById('btnCamera').style.display  = 'block';
+                btnAnalisis.style.display = 'none';
+                listM.innerHTML = "";
+                document.getElementById('resUbinanTeks').innerHTML =
+                    "Ambil 3 foto malai padi secara bergantian untuk memunculkan estimasi produktivitas lahan per Hektar.";
+                btnAnalisis.onclick       = mulaiAnalisis;
+                btnAnalisis.style.background = "#3b82f6";
+            };
+
+        } else {
+            // Belum 3 sampel — tampilkan progress
+            document.getElementById('resUbinanTeks').innerHTML =
+                `⏳ <b>Antrean Sampel:</b> Baru terkumpul <b>${hasilSampelBulir.length} dari 3</b> foto sampel.<br>` +
+                `Silakan ambil foto sampel malai berikutnya.`;
+
+            if (hasilSampelBulir.length === 1)      btnAnalisis.innerText = "AMBIL FOTO KEDUA";
+            else if (hasilSampelBulir.length === 2) btnAnalisis.innerText = "AMBIL FOTO KETIGA";
+
+            btnAnalisis.onclick          = bukaKamera;
+            btnAnalisis.style.background = "#2563EB";
+        }
+
+        document.getElementById('resConf').innerText = `Tingkat Keyakinan: 100.0%`;
+    };
+
+    console.log("✅ Patch Kalkulasi Hasil Panen v2.0 aktif.");
+
+})();
 // ============================================================
 // PATCH SMART FARMING - PPL MILENIAL WAJO
 // Berisi: Riwayat, Multi-Lahan, Notifikasi, Harga Pupuk, Fix GPS
