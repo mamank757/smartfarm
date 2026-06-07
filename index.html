@@ -1363,7 +1363,22 @@ body.light-mode .harga-table td { color: #334155 !important; border-bottom: 1px 
             </div>
 
             <div id="boxBWD" style="display: none; text-align: center;">
-    <div id="cameraContainer" style="position: relative; width: 100%; max-width: 300px; margin: 0 auto; overflow: hidden; border-radius: 20px; background: #000;">
+
+    <!-- PANEL PROMPT AKTIVASI KAMERA (tampil pertama saat masuk menu BWD) -->
+    <div id="bwdCameraPrompt" style="padding: 10px 0 20px 0;">
+        <div style="font-size: 2.5rem; margin-bottom: 12px;">🍃</div>
+        <h4 style="margin: 0 0 8px 0; color: var(--text-main); font-size: 1.05rem; font-weight: 700;">Uji BWD — Bagan Warna Daun</h4>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 20px 0; line-height: 1.6;">
+            Fitur ini menggunakan kamera untuk menganalisis warna daun padi secara AI dan menentukan kebutuhan pupuk Urea.<br>
+            <span style="color: var(--accent-bwd); font-weight: 600;">Kamera akan aktif setelah Anda mengizinkan.</span>
+        </p>
+        <button class="btn-main" id="btnAktifkanKameraBWD" onclick="aktifkanKameraBWD()" style="background: var(--accent-bwd); color: #fff; max-width: 280px; margin: 0 auto;">
+            📷 AKTIFKAN KAMERA
+        </button>
+    </div>
+
+    <!-- AREA KAMERA (tersembunyi sampai pengguna klik tombol aktifkan) -->
+    <div id="cameraContainer" style="display: none; position: relative; width: 100%; max-width: 300px; margin: 0 auto; overflow: hidden; border-radius: 20px; background: #000;">
         <video id="videoElement" autoplay playsinline muted style="width: 100%; height: 300px; object-fit: cover;"></video>
         
         <img id="bwdPreviewImage" style="display: none; width: 100%; height: 300px; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 10;">
@@ -1371,7 +1386,7 @@ body.light-mode .harga-table td { color: #334155 !important; border-bottom: 1px 
         <div id="focusBox" style="position: absolute; top: 25%; left: 42%; width: 16%; height: 50%; border: 3px solid var(--accent-green); border-radius: 8px; box-shadow: 0 0 0 999px rgba(0,0,0,0.5); z-index: 15;"></div>
     </div>
     
-    <button class="btn-main" id="btnCapture" style="margin-top: 20px; background: var(--accent-green);">AMBIL DAN ANALISIS DAUN</button>
+    <button class="btn-main" id="btnCapture" style="display: none; margin-top: 20px; background: var(--accent-green);">AMBIL DAN ANALISIS DAUN</button>
     <canvas id="hiddenCanvas" style="display:none;"></canvas>
     <div id="outputBWD" style="margin-top: 20px; text-align: left;"></div>
 </div>
@@ -2128,6 +2143,15 @@ function getMovingAverage(data, windowSize = 3) {
         function switchMode(mode) {
     if (mode !== 'bwd') {
         stopCamera();
+        // Reset tampilan BWD ke prompt awal agar tidak tertinggal kamera aktif
+        const bwdPrompt    = document.getElementById('bwdCameraPrompt');
+        const camContainer = document.getElementById('cameraContainer');
+        const btnCapture   = document.getElementById('btnCapture');
+        const btnAktifkan  = document.getElementById('btnAktifkanKameraBWD');
+        if (bwdPrompt)    bwdPrompt.style.display    = 'block';
+        if (camContainer) camContainer.style.display = 'none';
+        if (btnCapture)   btnCapture.style.display   = 'none';
+        if (btnAktifkan)  { btnAktifkan.innerText = '📷 AKTIFKAN KAMERA'; btnAktifkan.disabled = false; btnAktifkan.style.opacity = '1'; }
     }
     
     currentMode = mode;
@@ -2180,16 +2204,24 @@ function getMovingAverage(data, windowSize = 3) {
         document.getElementById('btnAnalisis').style.display = 'none';
         document.getElementById('result').style.display = 'block';
         document.getElementById('resConf').style.display = 'none';
-        document.getElementById('resLabel').innerText = "Arahkan Kamera ke Daun Padi";
-        
-        const previewImg = document.getElementById('bwdPreviewImage');
-        if(previewImg) previewImg.style.display = 'none';
-        const focusBox = document.getElementById('focusBox');
-        if(focusBox) focusBox.style.display = 'block';
-        const outBWD = document.getElementById('outputBWD');
-        if(outBWD) outBWD.innerHTML = '';
+        document.getElementById('resLabel').innerText = "Uji BWD — Pilih Daun Padi";
 
-        if (typeof startBWDCamera === 'function') startBWDCamera();
+        // Reset tampilan BWD ke kondisi awal (prompt aktivasi kamera)
+        const bwdPrompt = document.getElementById('bwdCameraPrompt');
+        const camContainer = document.getElementById('cameraContainer');
+        const btnCapture = document.getElementById('btnCapture');
+        const previewImg = document.getElementById('bwdPreviewImage');
+        const focusBox = document.getElementById('focusBox');
+        const outBWD = document.getElementById('outputBWD');
+
+        if (bwdPrompt)    bwdPrompt.style.display = 'block';
+        if (camContainer) camContainer.style.display = 'none';
+        if (btnCapture)   btnCapture.style.display = 'none';
+        if (previewImg)   previewImg.style.display = 'none';
+        if (focusBox)     focusBox.style.display = 'block';
+        if (outBWD)       outBWD.innerHTML = '';
+
+        // TIDAK memanggil startBWDCamera() — kamera hanya aktif saat pengguna klik tombol
     }
 
     if (sub !== '') { 
@@ -3242,6 +3274,58 @@ function isWilayahSulsel(lat, lon) {
             }
         }
 
+        // Fungsi aktivasi kamera BWD — dipanggil MANUAL oleh pengguna lewat tombol
+        async function aktifkanKameraBWD() {
+            const btnAktifkan  = document.getElementById('btnAktifkanKameraBWD');
+            const bwdPrompt    = document.getElementById('bwdCameraPrompt');
+            const camContainer = document.getElementById('cameraContainer');
+            const btnCapture   = document.getElementById('btnCapture');
+
+            // Ubah tombol ke status loading
+            if (btnAktifkan) {
+                btnAktifkan.innerText = '⏳ Mengaktifkan Kamera...';
+                btnAktifkan.disabled = true;
+                btnAktifkan.style.opacity = '0.7';
+            }
+
+            try {
+                await startBWDCamera();
+
+                // Kamera berhasil → sembunyikan prompt, tampilkan area kamera
+                if (bwdPrompt)    bwdPrompt.style.display = 'none';
+                if (camContainer) camContainer.style.display = 'block';
+                if (btnCapture)   btnCapture.style.display = 'block';
+
+                document.getElementById('resLabel').innerText = "Arahkan Kamera ke Daun Padi";
+
+            } catch (err) {
+                // Gagal → kembalikan tombol ke semula
+                if (btnAktifkan) {
+                    btnAktifkan.innerText = '📷 AKTIFKAN KAMERA';
+                    btnAktifkan.disabled = false;
+                    btnAktifkan.style.opacity = '1';
+                }
+            }
+        }
+
+        // Fungsi uji ulang BWD — reset state & aktifkan kamera kembali
+        async function ujiUlangBWD() {
+            const bwdPreview = document.getElementById('bwdPreviewImage');
+            const focusBox   = document.getElementById('focusBox');
+            const outBWD     = document.getElementById('outputBWD');
+            const btnCapture = document.getElementById('btnCapture');
+
+            if (bwdPreview) bwdPreview.style.display = 'none';
+            if (focusBox)   focusBox.style.display   = 'block';
+            if (outBWD)     outBWD.innerHTML          = '';
+            if (btnCapture) { btnCapture.innerText = 'AMBIL DAN ANALISIS DAUN'; btnCapture.disabled = false; btnCapture.style.opacity = '1'; }
+
+            document.getElementById('resLabel').innerText = "Arahkan Kamera ke Daun Padi";
+
+            // Aktifkan kamera kembali
+            await startBWDCamera();
+        }
+
         document.getElementById('btnCapture').addEventListener('click', async () => {
     const video = document.getElementById('videoElement');
     const canvas = document.getElementById('hiddenCanvas');
@@ -3428,6 +3512,9 @@ function isWilayahSulsel(lat, lon) {
                         ${getSaranPupukBWD(skala)}
                     </div>
                 </div>
+                <button class="btn-main" onclick="ujiUlangBWD()" style="margin-top: 14px; background: #0e7490; color: #fff;">
+                    🔄 UJI ULANG / DAUN LAIN
+                </button>
             `;
         }
 
@@ -4797,7 +4884,10 @@ document.getElementById('resPenyebabHama').innerHTML = (hasilHama.penyebab || "-
                         <h4 style="color:var(--accent-green); margin:0 0 5px 0; font-size:0.95rem;">📋 Rekomendasi Utama:</h4>
                         <div class="vote-summary">📊 Mayoritas: ${kamusWarna[winnerKey]} (${maxVotes} dari ${colors.length} daun)</div>
                         <div style="font-size: 0.85rem; display: flex; gap: 8px; align-items: flex-start;"><span>✅</span><span>${winData?.rec || "-"}</span></div>
-                    </div>`;
+                    </div>
+                    <button class="btn-main" onclick="ujiUlangBWD()" style="margin-top: 14px; background: #0e7490; color: #fff;">
+                        🔄 UJI ULANG / DAUN LAIN
+                    </button>`;
 
                 document.getElementById('resLabel').innerText = "Hasil Analisis Warna Daun";
                 let finalConfidence = (1 - akumulasiSalah) * 100; if (finalConfidence > 99.9) finalConfidence = 99.9;
