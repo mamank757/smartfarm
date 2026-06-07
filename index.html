@@ -2174,38 +2174,25 @@ function getMovingAverage(data, windowSize = 3) {
     }
 
     // Reset UI BWD
-    if (mode === 'bwd') {
-        document.getElementById('btnCamera').style.display = 'none';
-        document.getElementById('scanWindow').style.display = 'none';
-        document.getElementById('btnAnalisis').style.display = 'none';
-        document.getElementById('result').style.display = 'block';
-        document.getElementById('resConf').style.display = 'none';
-        document.getElementById('resLabel').innerText = "Arahkan Kamera ke Daun Padi";
-        
-        const previewImg = document.getElementById('bwdPreviewImage');
-        if(previewImg) previewImg.style.display = 'none';
-        const focusBox = document.getElementById('focusBox');
-        if(focusBox) focusBox.style.display = 'block';
-        const outBWD = document.getElementById('outputBWD');
-        if(outBWD) outBWD.innerHTML = '';
-
-           }
-
-    if (sub !== '') { 
-        subEl.innerText = sub; 
-        subEl.style.display = 'block'; 
-    } else { 
-        subEl.style.display = 'none'; 
-    }
-
-    // Reset tombol analisis
-    const btnAnal = document.getElementById('btnAnalisis');
-    if (btnAnal) {
-        btnAnal.innerText = "🚀 MULAI ANALISIS";
-        btnAnal.onclick = mulaiAnalisis;
-        btnAnal.style.background = "#3b82f6";
-        btnAnal.style.color = "#ffffff";
-    }
+if (mode === 'bwd') {
+    document.getElementById('msg').innerHTML = "Ambil foto daun padi (letakkan di atas kertas putih/terang) untuk dianalisis AI.";
+    document.getElementById('msg').style.display = 'block';
+    
+    // 1. Munculkan tombol jepret & jendela preview saja
+    document.getElementById('btnCamera').style.display = 'block'; 
+    document.getElementById('scanWindow').style.display = 'flex';
+    
+    // 2. SEMBUNYIKAN tombol analisis & kembalikan ke teks standar
+    const btnAnalisis = document.getElementById('btnAnalisis');
+    btnAnalisis.style.display = 'none'; // <-- Disembunyikan dulu
+    btnAnalisis.innerText = "MULAI ANALISIS"; // <-- Teks standar
+    btnAnalisis.onclick = mulaiAnalisis; 
+    
+    // 3. Sembunyikan hasil lama
+    document.getElementById('result').style.display = 'none';
+    const boxBWD = document.getElementById('boxBWD');
+    if (boxBWD) boxBWD.style.display = 'none';
+}
 
     if (mode !== 'malai') {
         hasilSampelBulir = [];
