@@ -843,7 +843,7 @@ body.light-mode .toast-notif { background: #ffffff; }
         </button>
         <button class="fab-kecil fab-riwayat" onclick="bukaPanel('riwayat')">
             <span class="fab-icon">📋</span>
-            <span id="fabRiwayatLabel">Riwayat Deteksi</span>
+            <span id="fabRiwayatLabel">Riwayat Analisis</span>
         </button>
         <button class="fab-kecil fab-notif" onclick="bukaPanel('notif')" id="fabNotifBtn">
             <span class="fab-icon">🔔</span>
@@ -1401,7 +1401,7 @@ function updateBadgeRiwayat() {
     const list = getRiwayat();
     const el = document.getElementById('fabRiwayatLabel');
     // Ubah kata 'Riwayat' menjadi 'Riwayat Deteksi' di dua tempat ini:
-    if (el) el.textContent = list.length > 0 ? `Riwayat Deteksi (${list.length})` : 'Riwayat Deteksi';
+    if (el) el.textContent = list.length > 0 ? `Riwayat Analisis (${list.length})` : 'Riwayat Analisis';
 }
 
 // ============================================================
