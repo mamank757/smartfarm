@@ -344,7 +344,7 @@
                 📋 HASIL REKOMENDASI DOSIS PEMUPUKAN
             </div>
 
-            <b>📍 Wilayah Binaan:</b> ${kecInput}<br>
+            <b>📍 Wilayah:</b> ${kecInput}<br>
             <b>📐 Luas Hamparan:</b> ${luas} Ha<br><br>
 
             ${org > 0 ? `
