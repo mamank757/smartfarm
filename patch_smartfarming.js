@@ -1710,9 +1710,20 @@ window.tampilkanHasil = function(data) {
 // GERBANG IZIN GPS TUNGGAL
 // ============================================================
 window.mintaIzinGPS = function(callbackBerhasil) {
-    // 1. Jika sudah pernah diizinkan, langsung jalan
+    // 1. Jika sudah pernah diizinkan, ambil posisi sekarang lalu langsung jalan
     if (localStorage.getItem('izin_gps_diberikan') === 'true') {
-        callbackBerhasil();
+        // Ambil posisi fresh agar flyTo akurat, lalu lanjut ke callback
+        navigator.geolocation.getCurrentPosition(
+            function(pos) {
+                window._koordinatTerakhir = pos;
+                callbackBerhasil();
+            },
+            function() {
+                // Gagal ambil posisi baru — tetap lanjut, flyTo pakai cache lama jika ada
+                callbackBerhasil();
+            },
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
+        );
         return;
     }
 
@@ -1773,6 +1784,14 @@ window.modeJalan = function() {
                 'border-radius:20px; z-index:1000; font-size:14px; font-weight:bold;' +
                 'border:1px solid #22d3ee; white-space:nowrap; text-align:center;';
             document.body.appendChild(gpsMonitor);
+        }
+
+        // ── LOMPAT KE POSISI PENGGUNA SEBELUM WARMUP ────────────────────────
+        // mintaIzinGPS sudah menyimpan koordinat awal di window._koordinatTerakhir.
+        // Gunakan itu untuk langsung flyTo agar peta tidak diam di posisi lama.
+        if (window._koordinatTerakhir && typeof map !== 'undefined' && map) {
+            const posAwal = window._koordinatTerakhir.coords;
+            map.flyTo([posAwal.latitude, posAwal.longitude], 18, { duration: 1.2 });
         }
 
         // ── PARAMETER ANTI-DRIFT (lebih ketat dari sebelumnya) ──
