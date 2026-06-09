@@ -164,8 +164,8 @@
 
         var teksStatus;
         if      (sisa === 0) teksStatus = label + ': Habis — reset tengah malam';
-        else if (sisa <= 3)  teksStatus = label + ': Sisa ' + sisa + 'x — hampir habis!';
-        else                 teksStatus = label + ': Sisa ' + sisa + 'x dari ' + batas + 'x';
+        else if (sisa <= 3)  teksStatus = label + ': Sisa ' + sisa + ' - hampir habis!';
+        else                 teksStatus = label + ': Sisa ' + sisa + 'dari ' + batas ;
 
         var bar = document.createElement('div');
         bar.id  = 'sf-kuota-bar';
@@ -179,7 +179,7 @@
             '<div style="display:flex;justify-content:space-between;' +
             'align-items:center;max-width:480px;margin:0 auto;gap:10px;">' +
                 '<span style="font-size:11px;color:#94a3b8;white-space:nowrap;' +
-                'font-weight:600;letter-spacing:0.5px;">📷 KUOTA DETEKSI HARI INI</span>' +
+                'font-weight:600;letter-spacing:0.5px;">📷 KUOTA DETEKSI HARI INI:</span>' +
                 '<div style="flex:1;height:6px;background:rgba(255,255,255,0.08);' +
                 'border-radius:3px;overflow:hidden;">' +
                     '<div style="height:100%;width:' + persen + '%;' +
