@@ -2799,6 +2799,25 @@ if (!document.getElementById('appMessageStyle')) {
 function isWilayahSulsel(lat, lon) {
     return lat >= -8.0 && lat <= -1.5 && lon >= 119.0 && lon <= 122.5;
 }
+        // Fungsi bantu: resize & center-crop foto ke ukuran 640x640
+        function resizeTo640(img) {
+            const TARGET = 640;
+            const canvas = document.createElement('canvas');
+            canvas.width  = TARGET;
+            canvas.height = TARGET;
+            const ctx = canvas.getContext('2d');
+
+            // Hitung area crop terpusat (center-crop) agar proporsional
+            const srcSize = Math.min(img.width, img.height);
+            const srcX    = (img.width  - srcSize) / 2;
+            const srcY    = (img.height - srcSize) / 2;
+
+            // Sedikit peningkatan kontras agar AI lebih mudah membaca
+            ctx.filter = 'brightness(1.02) contrast(1.08)';
+            ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, TARGET, TARGET);
+            return canvas;
+        }
+
         function handleFile(event) {
     const file = event.target.files[0];
     const reader = new FileReader();
@@ -2806,12 +2825,9 @@ function isWilayahSulsel(lat, lon) {
         const img = new Image();
         img.src = e.target.result;
         img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = 800; canvas.height = (img.height * 800) / img.width;
-            ctx.filter = 'brightness(0.9) contrast(1.1)';
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            base64Image = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+            // Resize ke 640x640 (center-crop) sebelum dikirim ke AppScript
+            const canvas = resizeTo640(img);
+            base64Image = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
             document.getElementById('preview').src = canvas.toDataURL('image/jpeg');
             document.getElementById('preview').style.display = 'block';
             document.getElementById('msg').style.display = 'none';
@@ -3338,24 +3354,29 @@ function isWilayahSulsel(lat, lon) {
         return;
     }
 
-    // Ambil ukuran asli frame video
+    // Ambil ukuran asli frame video ke canvas sementara
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0);
 
-    // Resize gambar agar pengiriman ke server lebih ringan dan cepat
+    // Resize ke 640x640 (center-crop) sebelum dikirim ke AppScript
+    const TARGET_BWD = 640;
     const exportCanvas = document.createElement('canvas');
     const exportCtx = exportCanvas.getContext('2d');
-    const targetWidth = 800; // Resolusi aman untuk AI Roboflow
-    exportCanvas.width = targetWidth;
-    exportCanvas.height = (video.videoHeight * targetWidth) / video.videoWidth;
-    
-    // Tambahkan filter brightness & contrast sedikit agar AI lebih akurat membaca warna
-    exportCtx.filter = 'brightness(1.05) contrast(1.1)';
-    exportCtx.drawImage(canvas, 0, 0, exportCanvas.width, exportCanvas.height);
+    exportCanvas.width  = TARGET_BWD;
+    exportCanvas.height = TARGET_BWD;
 
-    // Ubah gambar menjadi format base64
-    const base64Img = exportCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+    // Center-crop: ambil area persegi di tengah frame video
+    const srcSizeBWD = Math.min(video.videoWidth, video.videoHeight);
+    const srcXBWD    = (video.videoWidth  - srcSizeBWD) / 2;
+    const srcYBWD    = (video.videoHeight - srcSizeBWD) / 2;
+
+    // Filter brightness & contrast agar AI lebih akurat membaca warna daun
+    exportCtx.filter = 'brightness(1.05) contrast(1.1)';
+    exportCtx.drawImage(canvas, srcXBWD, srcYBWD, srcSizeBWD, srcSizeBWD, 0, 0, TARGET_BWD, TARGET_BWD);
+
+    // Ubah gambar menjadi format base64 640x640
+    const base64Img = exportCanvas.toDataURL('image/jpeg', 0.82).split(',')[1];
 
     // --- TAMPILKAN PREVIEW FOTO ---
     const previewImg = document.getElementById('bwdPreviewImage');
@@ -6256,5 +6277,56 @@ async function cariHargaPestisida() {
 </div>
 <script src="patch_smartfarming.js"></script>
 <script src="patch_riwayat_tambahan.js"></script>
+<script src="patch_cuaca_langsung.js"></script>
+
+<script>
+// ================================================================
+//  GUARD: aktifkanGPS — pisahkan antara mode cuaca dan ukur lahan
+//
+//  Masalah: patch_cuaca_langsung.js menimpa window.aktifkanGPS
+//  menjadi alias ke sinkronGPSCuaca(). Akibatnya jika tombol GPS
+//  di mode ukur lahan dipanggil, dia akan masuk ke alur cuaca.
+//
+//  Solusi: setelah semua patch dimuat, bungkus aktifkanGPS agar
+//  routing-nya berdasarkan currentMode:
+//    - mode 'cuaca'  → tetap pakai sinkronGPSCuaca (dari patch)
+//    - mode lainnya  → minta user aktifkan GPS HP secara manual
+//                      (ukur lahan pakai fokusLokasiSekarang &
+//                       watchPosition sendiri — tidak perlu aktifkanGPS)
+// ================================================================
+(function() {
+    // Simpan referensi ke versi patch (sinkronGPSCuaca)
+    const _gpsUntukCuaca = window.aktifkanGPS || window.sinkronGPSCuaca;
+
+    window.aktifkanGPS = async function() {
+        // Baca currentMode — dideklarasikan sebagai 'let' di script utama HTML,
+        // patch_cuaca menyimpan state di closure-nya sendiri.
+        // Cara paling aman: baca dari tab yang sedang aktif di DOM.
+        const tabAktif = document.querySelector('.tab-btn.active');
+        const modeSekarang = tabAktif ? tabAktif.id.replace('tab','').toLowerCase() : '';
+
+        if (modeSekarang === 'ukur') {
+            // Mode ukur lahan: jangan panggil patch cuaca.
+            // Peta ukur lahan sudah punya GPS sendiri via fokusLokasiSekarang()
+            // dan watchPosition di modeJalan(). Cukup berikan panduan ke user.
+            const pesan = '📍 Untuk ukur lahan:\n\n' +
+                '1. Pastikan GPS di HP sudah aktif\n' +
+                '2. Tekan 🗺️ "Gambar di Peta" atau 🚶 "Jalan Keliling"\n' +
+                '3. Peta akan otomatis pindah ke lokasi Anda';
+            alert(pesan);
+            return;
+        }
+
+        // Mode cuaca atau lainnya → gunakan fungsi patch cuaca
+        if (typeof _gpsUntukCuaca === 'function') {
+            await _gpsUntukCuaca();
+        }
+    };
+
+    console.log('✅ [guard-gps] aktifkanGPS sudah dipisahkan: cuaca vs ukur lahan.');
+})();
+    </script> 
+    <script src="patch_perbaikan_ilmiah.js"></script>
+    <script src="patch_kuota_harian.js"></script>
 </body>
 </html>
