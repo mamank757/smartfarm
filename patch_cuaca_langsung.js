@@ -520,7 +520,7 @@
             '<span id="ikonBtnGPSSinkron" style="font-size:1.1rem;">' + ikonTombol + '</span>' +
             '<span id="teksBtnGPSSinkron">' + teksTombol + '</span>' +
             '</button>' +
-            '<div style="font-size:0.7rem;color:#d8dce3;text-align:center;line-height:1.5;padding:0 8px;margin-bottom:4px;">' +
+            '<div style="font-size:0.7rem;color:#38b6ff;text-align:center;line-height:1.5;padding:0 8px;margin-bottom:4px;">' +
             'Setelah GPS tersinkron, <b>semua parameter cuaca diperbarui</b> dan risiko penyakit & hama muncul berdasarkan lokasi sawah Anda.' +
             '</div>';
 
