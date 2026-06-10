@@ -162,33 +162,29 @@
         else if (sisa > 0) warna = '#ef4444';
         else               warna = '#7f1d1d';
 
-        var teksStatus;
-        if      (sisa === 0) teksStatus = label + ': Habis — reset tengah malam';
-        else if (sisa <= 3)  teksStatus = label + ': Sisa ' + sisa + ' - hampir habis!';
-        else                 teksStatus = label + ': Sisa ' + sisa + ' dari ' + batas ;
+       var teksStatus;
+        // Dibuat lebih ringkas agar aman di layar HP
+        if      (sisa === 0) teksStatus = label + ': Habis';
+        else if (sisa <= 3)  teksStatus = label + ': Sisa ' + sisa + ' (Hampir habis!)';
+        else                 teksStatus = label + ': Sisa ' + sisa + ' dari ' + batas;
 
         var bar = document.createElement('div');
         bar.id  = 'sf-kuota-bar';
         bar.style.cssText =
             'position:fixed;bottom:48px;left:0;right:0;z-index:500;' +
-            'padding:6px 16px;background:rgba(11,21,40,0.92);' +
+            'padding:6px 12px;background:rgba(11,21,40,0.92);' +
             'backdrop-filter:blur(6px);' +
             'border-top:1px solid rgba(255,255,255,0.06);' +
             'font-family:inherit;';
+            
+        // [PERBAIKAN CSS] Mengurangi min-width dan memperpendek teks kiri
         bar.innerHTML =
-            '<div style="display:flex;justify-content:space-between;' +
-            'align-items:center;max-width:480px;margin:0 auto;gap:10px;">' +
-                '<span style="font-size:11px;color:#94a3b8;white-space:nowrap;' +
-                'font-weight:600;letter-spacing:0.5px;">📷 KUOTA DETEKSI ANDA HARI INI:</span>' +
-                '<div style="flex:1;height:6px;background:rgba(255,255,255,0.08);' +
-                'border-radius:3px;overflow:hidden;">' +
-                    '<div style="height:100%;width:' + persen + '%;' +
-                    'background:' + warna + ';border-radius:3px;' +
-                    'transition:width 0.4s ease;"></div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;max-width:480px;margin:0 auto;gap:8px;">' +
+                '<span style="font-size:11px;color:#94a3b8;white-space:nowrap;font-weight:600;">📷 KUOTA:</span>' +
+                '<div style="flex:1;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;">' +
+                    '<div style="height:100%;width:' + persen + '%;background:' + warna + ';border-radius:3px;transition:width 0.4s ease;"></div>' +
                 '</div>' +
-                '<span style="font-size:11px;color:' + warna + ';' +
-                'white-space:nowrap;font-weight:700;min-width:160px;' +
-                'text-align:right;">' + teksStatus + '</span>' +
+                '<span style="font-size:11px;color:' + warna + ';font-weight:700;text-align:right;">' + teksStatus + '</span>' +
             '</div>';
         document.body.appendChild(bar);
     }
