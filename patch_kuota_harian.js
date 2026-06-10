@@ -180,7 +180,7 @@
         // [PERBAIKAN CSS] Mengurangi min-width dan memperpendek teks kiri
         bar.innerHTML =
             '<div style="display:flex;justify-content:space-between;align-items:center;max-width:480px;margin:0 auto;gap:8px;">' +
-                '<span style="font-size:11px;color:#94a3b8;white-space:nowrap;font-weight:600;">📷 KUOTA:</span>' +
+                '<span style="font-size:11px;color:#94a3b8;white-space:nowrap;font-weight:600;">📷 KUOTA ANDA HARI INI:</span>' +
                 '<div style="flex:1;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;">' +
                     '<div style="height:100%;width:' + persen + '%;background:' + warna + ';border-radius:3px;transition:width 0.4s ease;"></div>' +
                 '</div>' +
