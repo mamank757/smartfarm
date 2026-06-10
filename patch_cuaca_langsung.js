@@ -3,37 +3,20 @@
  *  PATCH: Menu Risiko Cuaca — Tampil Langsung via BTS,
  *         Sinkron GPS untuk Data Akurat + Risiko Lengkap
  *  PPL Milenial Wajo — Smart Farming
- *  Versi: 2.2 (sinkronisasi penuh dengan index.html)
+ *  Versi: 2.4 (FIX: nilai input tanggal/varietas tidak hilang)
  * ============================================================
  *
- *  CARA PASANG (urutan wajib):
- *    <script src="patch_smartfarming.js"></script>
- *    <script src="patch_riwayat_tambahan.js"></script>
- *    <script src="patch_cuaca_langsung.js"></script>  ← paling akhir
+ *  BUG YANG DIPERBAIKI (v2.3 → v2.4):
+ *  renderUITombolGPS() menimpa innerHTML #gpsPrompt secara total,
+ *  menyebabkan nilai #tglTanamCuaca & #umurVarietasCuaca terhapus
+ *  sebelum analisisFaseTanaman() sempat membacanya → umurHari = 0.
  *
- *  CARA KERJA:
- *  TAHAP 1 — OTOMATIS saat klik menu "RISIKO CUACA":
- *    • Ambil lokasi via BTS/IP (tanpa minta izin GPS)
- *    • Tampilkan langsung:
- *        - 📍 Lokasi Koordinat
- *        - 🔮 Prediksi Atmosfer (1 Jam Kedepan)
- *        - 🕒 Prakiraan Cuaca Per Jam
- *        - 📅 Prakiraan 7 Hari Kedepan
- *        - 📊 Real-Time Parameter Lahan (Satelit)
- *        - 🛰️ Analisis Satelit Mikro Spasial Lahan
- *
- *  TAHAP 2 — Setelah tekan "SINKRONKAN GPS & SATELIT":
- *    • Ambil koordinat GPS presisi tinggi
- *    • Refresh SEMUA parameter cuaca dengan data akurat
- *    • Tampilkan tambahan:
- *        - ⚠️ Risiko Blast Padi
- *        - 🍂 Hawar Pelepah (Sheath Blight)
- *        - 🪳 Wereng Batang Coklat
- *        - 🐛 Penggerek Batang Padi
- *        - 🌾 Tungro (Virus)
- *        - 🐀 Peringatan Hama Tikus
- *        - 🌱 Fase Tanaman Saat Ini
- *        - 📈 Proyeksi Iklim ENSO / IOD / SST
+ *  FIX:
+ *  1. Baca & simpan nilai input SEBELUM innerHTML diganti.
+ *  2. Restore nilai tersebut SETELAH render selesai.
+ *  3. localStorage hanya dipakai sebagai fallback (tidak timpa input user).
+ *  4. Setiap kali user mengubah input, nilai disimpan ke state lokal patch
+ *     sehingga survive melewati render ulang berikutnya.
  * ============================================================
  */
 
@@ -58,48 +41,119 @@
         sedangMemuat: false,
         gpsAktif: false,
         btsSudahDicoba: false,
+        // ── BARU: simpan nilai input agar survive render ulang ──
+        inputTglTanam:    '',
+        inputUmurVar:     'sedang',
     };
 
     // =========================================================================
     //  UTILITAS
     // =========================================================================
 
-    async function fetchRetry(url, maxCoba = 3, jedaMs = 1500) {
-        for (let i = 0; i < maxCoba; i++) {
+    async function fetchRetry(url, maxCoba, jedaMs) {
+        maxCoba = maxCoba || 3;
+        jedaMs  = jedaMs  || 1500;
+        for (var i = 0; i < maxCoba; i++) {
             try {
-                const ctrl = new AbortController();
-                const t = setTimeout(() => ctrl.abort(), 12000);
-                const res = await fetch(url, { signal: ctrl.signal });
+                var ctrl = new AbortController();
+                var t = setTimeout(function(){ ctrl.abort(); }, 12000);
+                var res = await fetch(url, { signal: ctrl.signal });
                 clearTimeout(t);
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 return await res.json();
             } catch (e) {
-                if (i < maxCoba - 1) await new Promise(r => setTimeout(r, jedaMs));
+                if (i < maxCoba - 1) await new Promise(function(r){ setTimeout(r, jedaMs); });
                 else throw e;
             }
         }
     }
 
     function tglMinus(hari) {
-        const d = new Date();
+        var d = new Date();
         d.setDate(d.getDate() - hari);
         return d.toISOString().split('T')[0];
     }
 
     async function reverseGeocode(lat, lon) {
         try {
-            const res = await fetch(
+            var res = await fetch(
                 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + lat + '&lon=' + lon,
                 { headers: { 'User-Agent': 'SmartFarming-PPLWajo/2.0' } }
             );
             if (!res.ok) return null;
-            const d = await res.json();
-            const a = d.address || {};
-            const desa = a.village || a.suburb || a.hamlet || a.town || 'Lokasi';
-            const kab  = a.county  || a.city   || a.municipality || '';
+            var d = await res.json();
+            var a = d.address || {};
+            var desa = a.village || a.suburb || a.hamlet || a.town || 'Lokasi';
+            var kab  = a.county  || a.city   || a.municipality || '';
             return desa + ', Kab. ' + kab;
         } catch (e) {
             return null;
+        }
+    }
+
+    // =========================================================================
+    //  HELPER: baca nilai input ke state (panggil sebelum render ulang)
+    // =========================================================================
+
+    function simpanNilaiInput() {
+        var tglEl = document.getElementById('tglTanamCuaca');
+        var varEl = document.getElementById('umurVarietasCuaca');
+        if (tglEl && tglEl.value) state.inputTglTanam = tglEl.value;
+        if (varEl && varEl.value) state.inputUmurVar  = varEl.value;
+    }
+
+    // =========================================================================
+    //  HELPER: pasang nilai input ke DOM (panggil setelah render ulang)
+    // =========================================================================
+
+    function restoreNilaiInput() {
+        var tglEl = document.getElementById('tglTanamCuaca');
+        var varEl = document.getElementById('umurVarietasCuaca');
+
+        // Prioritas 1: nilai di state (dari input user sesi ini)
+        if (tglEl && state.inputTglTanam) {
+            tglEl.value = state.inputTglTanam;
+        }
+        if (varEl && state.inputUmurVar) {
+            varEl.value = state.inputUmurVar;
+        }
+
+        // Prioritas 2: localStorage — hanya jika state masih kosong
+        try {
+            var la = JSON.parse(localStorage.getItem('sf_lahan_aktif') || 'null');
+            if (la) {
+                if (tglEl && !tglEl.value && la.tglTanam)     tglEl.value = la.tglTanam;
+                if (varEl && varEl.value === 'sedang' && la.varietasUmur) varEl.value = la.varietasUmur;
+            }
+        } catch(e) {}
+
+        // Pasang event listener agar perubahan user langsung tersimpan ke state
+        pasangListenerInput();
+    }
+
+    // =========================================================================
+    //  HELPER: pasang event listener di input (idempotent)
+    // =========================================================================
+
+    function pasangListenerInput() {
+        var tglEl = document.getElementById('tglTanamCuaca');
+        var varEl = document.getElementById('umurVarietasCuaca');
+
+        if (tglEl && !tglEl._patchListened) {
+            tglEl._patchListened = true;
+            tglEl.addEventListener('change', function() {
+                state.inputTglTanam = tglEl.value;
+            });
+            tglEl.addEventListener('input', function() {
+                state.inputTglTanam = tglEl.value;
+            });
+        }
+
+        if (varEl && !varEl._patchListened) {
+            varEl._patchListened = true;
+            varEl.addEventListener('change', function() {
+                state.inputUmurVar = varEl.value;
+            });
         }
     }
 
@@ -108,9 +162,8 @@
     // =========================================================================
 
     async function dapatkanLokasiVIABTS() {
-        // Jika sudah ada cache GPS sebelumnya, pakai itu
         if (window._koordinatTerakhir) {
-            const pos = window._koordinatTerakhir;
+            var pos = window._koordinatTerakhir;
             return {
                 lat: pos.coords.latitude,
                 lon: pos.coords.longitude,
@@ -119,10 +172,8 @@
             };
         }
 
-        // Coba navigator.geolocation dengan enableHighAccuracy: false
-        // (menggunakan sinyal BTS/WiFi, TIDAK butuh GPS chip)
         try {
-            const pos = await new Promise((resolve, reject) => {
+            var pos = await new Promise(function(resolve, reject) {
                 navigator.geolocation.getCurrentPosition(resolve, reject, {
                     enableHighAccuracy: false,
                     timeout: 8000,
@@ -137,10 +188,9 @@
             };
         } catch (e) {}
 
-        // IP Geolocation sebagai fallback
-        const ipSources = [
+        var ipSources = [
             async function() {
-                const d = await fetchRetry('https://ipapi.co/json/', 1, 0);
+                var d = await fetchRetry('https://ipapi.co/json/', 1, 0);
                 if (d.latitude && d.longitude) {
                     return {
                         lat: parseFloat(d.latitude),
@@ -152,7 +202,7 @@
                 return null;
             },
             async function() {
-                const d = await fetchRetry('https://ip-api.com/json/?fields=lat,lon,city,regionName', 1, 0);
+                var d = await fetchRetry('https://ip-api.com/json/?fields=lat,lon,city,regionName', 1, 0);
                 if (d.lat && d.lon) {
                     return {
                         lat: parseFloat(d.lat),
@@ -167,7 +217,7 @@
 
         for (var i = 0; i < ipSources.length; i++) {
             try {
-                const hasil = await ipSources[i]();
+                var hasil = await ipSources[i]();
                 if (hasil) return hasil;
             } catch (e) {}
         }
@@ -180,7 +230,7 @@
     // =========================================================================
 
     async function fetchDataCuaca(lat, lon) {
-        const urlForecast =
+        var urlForecast =
             'https://api.open-meteo.com/v1/forecast' +
             '?latitude=' + lat + '&longitude=' + lon +
             '&current=rain,temperature_2m,relative_humidity_2m,dew_point_2m,' +
@@ -190,18 +240,18 @@
             '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum' +
             '&forecast_days=7&timezone=auto';
 
-        const urlArchive =
+        var urlArchive =
             'https://archive-api.open-meteo.com/v1/archive' +
             '?latitude=' + lat + '&longitude=' + lon +
             '&start_date=' + tglMinus(30) + '&end_date=' + tglMinus(1) +
             '&daily=precipitation_sum&timezone=auto';
 
-        const [forecast, archive] = await Promise.all([
+        var results = await Promise.all([
             fetchRetry(urlForecast),
             fetchRetry(urlArchive).catch(function() { return { daily: { precipitation_sum: [] } }; })
         ]);
 
-        return { forecast: forecast, archive: archive };
+        return { forecast: results[0], archive: results[1] };
     }
 
     // =========================================================================
@@ -210,16 +260,16 @@
 
     function cuacaDariKode(code) {
         if (code === 0)                              return { ikon: '☀️', teks: 'Cerah' };
-        if ([1,2,3].includes(code))                 return { ikon: '☁️', teks: 'Berawan' };
-        if ([45,48].includes(code))                 return { ikon: '🌫️', teks: 'Berkabut' };
-        if ([51,53,55,61,63,80,81].includes(code))  return { ikon: '🌧️', teks: 'Hujan Ringan' };
-        if ([65,82].includes(code))                 return { ikon: '🌧️', teks: 'Hujan Lebat' };
-        if ([95,96,99].includes(code))              return { ikon: '⛈️', teks: 'Badai Petir' };
+        if ([1,2,3].indexOf(code) > -1)             return { ikon: '☁️', teks: 'Berawan' };
+        if ([45,48].indexOf(code) > -1)             return { ikon: '🌫️', teks: 'Berkabut' };
+        if ([51,53,55,61,63,80,81].indexOf(code) > -1) return { ikon: '🌧️', teks: 'Hujan Ringan' };
+        if ([65,82].indexOf(code) > -1)             return { ikon: '🌧️', teks: 'Hujan Lebat' };
+        if ([95,96,99].indexOf(code) > -1)          return { ikon: '⛈️', teks: 'Badai Petir' };
         return { ikon: '⛅', teks: 'Berawan' };
     }
 
     function tampilkanSkeleton() {
-        const hourlyBox = document.getElementById('hourlyForecastContainer');
+        var hourlyBox = document.getElementById('hourlyForecastContainer');
         if (hourlyBox) {
             hourlyBox.innerHTML = Array(8).fill(0).map(function() {
                 return '<div class="hourly-card" style="min-width:75px;opacity:0.5;">' +
@@ -229,7 +279,7 @@
                     '</div>';
             }).join('');
         }
-        const dailyBox = document.getElementById('dailyForecastContainer');
+        var dailyBox = document.getElementById('dailyForecastContainer');
         if (dailyBox) {
             dailyBox.innerHTML = Array(7).fill(0).map(function() {
                 return '<div class="daily-item">' +
@@ -241,34 +291,36 @@
         }
         ['rainNow','rainMonthly','suhuNow','humidityNow','windNow','pressNow',
          'tempUpper','dpSpread','capeVal','windDir'].forEach(function(id) {
-            const el = document.getElementById(id);
+            var el = document.getElementById(id);
             if (el) el.innerHTML = '<span style="background:#1e2f45;border-radius:4px;display:inline-block;width:65px;height:13px;"></span>';
         });
     }
 
     function renderDataCuaca(forecast, archive, koordinat) {
-        const cur    = forecast.current;
-        const hourly = forecast.hourly;
-        const daily  = forecast.daily;
+        var cur    = forecast.current;
+        var hourly = forecast.hourly;
+        var daily  = forecast.daily;
 
-        const now = new Date();
-        const waktuStr =
+        var now = new Date();
+        var waktuStr =
             now.getFullYear() + '-' +
             String(now.getMonth()+1).padStart(2,'0') + '-' +
             String(now.getDate()).padStart(2,'0') + 'T' +
             String(now.getHours()).padStart(2,'0') + ':00';
-        let idx = hourly.time.findIndex(function(t) { return t.startsWith(waktuStr); });
+        var idx = hourly.time.findIndex(function(t) { return t.startsWith(waktuStr); });
         if (idx === -1) idx = hourly.time.findIndex(function(t) { return new Date(t) >= now; });
         if (idx === -1) idx = 0;
 
         // ── Lokasi ───────────────────────────────────────────────────────────
-        const lokasiEl = document.getElementById('lokasiSawah');
-        const alamatEl = document.getElementById('alamatDesa');
+        var lokasiEl = document.getElementById('lokasiSawah');
+        var alamatEl = document.getElementById('alamatDesa');
         if (lokasiEl) lokasiEl.innerText = koordinat.lat.toFixed(5) + ', ' + koordinat.lon.toFixed(5);
         if (alamatEl) {
-            const warnaBadge = koordinat.akurasi === 'gps' ? '#10b981' : (koordinat.akurasi === 'bts' ? '#f59e0b' : '#64748b');
-            const ikonBadge  = koordinat.akurasi === 'gps' ? '🛰️' : '📡';
-            const labelBadge = koordinat.akurasi === 'gps' ? 'GPS Akurat' : (koordinat.akurasi === 'bts' ? 'Lokasi dari sinyal BTS/WiFi' : 'Estimasi Wilayah');
+            var warnaBadge = koordinat.akurasi === 'gps' ? '#10b981' : (koordinat.akurasi === 'bts' ? '#f59e0b' : '#64748b');
+            var ikonBadge  = koordinat.akurasi === 'gps' ? '🛰️' : '📡';
+            var labelBadge = koordinat.akurasi === 'gps'
+                ? 'GPS Akurat'
+                : (koordinat.akurasi === 'bts' ? 'Lokasi dari sinyal BTS/WiFi' : 'Estimasi Wilayah');
             alamatEl.innerHTML =
                 '<b>' + koordinat.label + '</b>' +
                 '<span style="display:inline-block;margin-left:8px;font-size:0.7rem;padding:2px 8px;border-radius:6px;' +
@@ -277,13 +329,13 @@
         }
 
         // ── Prakiraan Per Jam ────────────────────────────────────────────────
-        const hourlyBox = document.getElementById('hourlyForecastContainer');
+        var hourlyBox = document.getElementById('hourlyForecastContainer');
         if (hourlyBox) {
             hourlyBox.innerHTML = '';
             for (var i = idx; i < idx + 12 && i < hourly.time.length; i++) {
-                const jam   = hourly.time[i].split('T')[1].substring(0,5);
-                const cuaca = cuacaDariKode(hourly.weather_code[i]);
-                const suhu  = hourly.temperature_2m[i].toFixed(0);
+                var jam   = hourly.time[i].split('T')[1].substring(0,5);
+                var cuaca = cuacaDariKode(hourly.weather_code[i]);
+                var suhu  = hourly.temperature_2m[i].toFixed(0);
                 hourlyBox.innerHTML +=
                     '<div class="hourly-card">' +
                     '<div class="time">' + jam + '</div>' +
@@ -294,16 +346,16 @@
         }
 
         // ── Prakiraan 7 Hari ─────────────────────────────────────────────────
-        const dailyBox = document.getElementById('dailyForecastContainer');
+        var dailyBox = document.getElementById('dailyForecastContainer');
         if (dailyBox) {
             dailyBox.innerHTML = '';
-            const HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+            var HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
             daily.time.forEach(function(tgl, j) {
-                const d    = new Date(tgl);
-                const hari = j === 0 ? 'Hari Ini' : HARI[d.getDay()];
-                const c    = cuacaDariKode(daily.weather_code[j]);
-                const maks = daily.temperature_2m_max[j].toFixed(0);
-                const min  = daily.temperature_2m_min[j].toFixed(0);
+                var d    = new Date(tgl);
+                var hari = j === 0 ? 'Hari Ini' : HARI[d.getDay()];
+                var c    = cuacaDariKode(daily.weather_code[j]);
+                var maks = daily.temperature_2m_max[j].toFixed(0);
+                var min  = daily.temperature_2m_min[j].toFixed(0);
                 dailyBox.innerHTML +=
                     '<div class="daily-item">' +
                     '<div class="day">' + hari + '</div>' +
@@ -314,11 +366,11 @@
         }
 
         // ── Parameter Real-Time ──────────────────────────────────────────────
-        const dp   = (cur.temperature_2m - cur.dew_point_2m).toFixed(1);
-        const cape = hourly.cape ? (hourly.cape[idx] || 0) : 0;
-        const t850 = hourly.temperature_850hPa ? hourly.temperature_850hPa[idx] : '-';
+        var dp   = (cur.temperature_2m - cur.dew_point_2m).toFixed(1);
+        var cape = hourly.cape ? (hourly.cape[idx] || 0) : 0;
+        var t850 = hourly.temperature_850hPa ? hourly.temperature_850hPa[idx] : '-';
 
-        function set(id, val) { const el = document.getElementById(id); if (el) el.innerHTML = val; }
+        function set(id, val) { var el = document.getElementById(id); if (el) el.innerHTML = val; }
         set('dpSpread',    dp + ' °C');
         set('suhuNow',     cur.temperature_2m + ' °C');
         set('humidityNow', cur.relative_humidity_2m + '%');
@@ -326,21 +378,21 @@
         set('pressNow',    cur.surface_pressure + ' hPa');
         set('tempUpper',   t850 + ' °C');
 
-        const capeEl = document.getElementById('capeVal');
+        var capeEl = document.getElementById('capeVal');
         if (capeEl) {
-            const st = cape > 2500 ? '‼️ EKSTREM' : (cape > 1000 ? '⚠️ WASPADA' : '✅ STABIL');
+            var st = cape > 2500 ? '‼️ EKSTREM' : (cape > 1000 ? '⚠️ WASPADA' : '✅ STABIL');
             capeEl.innerHTML = cape + ' J/kg<br><small>Status: ' + st + '</small>';
         }
 
-        const listHujan    = (archive.daily || {}).precipitation_sum || [];
-        const totalBulanan = listHujan.reduce(function(t,v){ return t+(v||0); }, 0);
+        var listHujan    = (archive.daily || {}).precipitation_sum || [];
+        var totalBulanan = listHujan.reduce(function(t,v){ return t+(v||0); }, 0);
         set('rainNow',     (cur.rain || 0).toFixed(1) + ' mm/jam');
         set('rainMonthly', '<b>' + totalBulanan.toFixed(1) + ' mm</b>');
 
-        const ARAH  = ['Utara','Timur Laut','Timur','Tenggara','Selatan','Barat Daya','Barat','Barat Laut'];
-        const dirEl = document.getElementById('windDir');
+        var ARAH  = ['Utara','Timur Laut','Timur','Tenggara','Selatan','Barat Daya','Barat','Barat Laut'];
+        var dirEl = document.getElementById('windDir');
         if (dirEl) {
-            const arahIdx = Math.round(cur.wind_direction_10m / 45) % 8;
+            var arahIdx = Math.round(cur.wind_direction_10m / 45) % 8;
             dirEl.innerHTML =
                 '<div style="display:flex;align-items:center;justify-content:flex-end;gap:5px;">' +
                 '<span style="transform:rotate(' + (cur.wind_direction_10m + 180) + 'deg)">⬆️</span>' +
@@ -349,14 +401,14 @@
 
         // ── Prediksi Atmosfer ────────────────────────────────────────────────
         var rainScore = 0;
-        const prob = hourly.precipitation_probability;
-        if (prob && (prob[idx + 1] ?? 0) >= 30) rainScore += 40;
+        var prob = hourly.precipitation_probability;
+        if (prob && ((prob[idx + 1] !== undefined ? prob[idx + 1] : 0) >= 30)) rainScore += 40;
         if (cape >= 1000)                        rainScore += 30;
         if (parseFloat(dp) <= 2)                 rainScore += 20;
         if (cur.relative_humidity_2m >= 90)      rainScore += 10;
 
-        const boxHujan = document.getElementById('prediksiHujan');
-        const txtHujan = document.getElementById('hujanNext');
+        var boxHujan = document.getElementById('prediksiHujan');
+        var txtHujan = document.getElementById('hujanNext');
         if (boxHujan && txtHujan) {
             boxHujan.style.display = 'block';
             if (rainScore >= 70) {
@@ -372,11 +424,8 @@
         }
 
         // ── Radar Satelit ────────────────────────────────────────────────────
-        const radarEl = document.getElementById('radarMap');
+        var radarEl = document.getElementById('radarMap');
         if (radarEl) radarEl.src = 'https://mamank757.github.io/peta?lat=' + koordinat.lat + '&lon=' + koordinat.lon;
-
-        // resLabel dan resConf (frame lama HTML) disembunyikan oleh muatCuaca.
-        // Status lokasi & akurasi kini tampil di #infoLokasiCuaca dalam gpsPrompt.
 
         return { cur: cur, dp: dp, cape: cape, idx: idx };
     }
@@ -388,15 +437,15 @@
     function hapusBoxRisiko() {
         document.querySelectorAll('#weatherData .info-box-risiko').forEach(function(el){ el.remove(); });
         document.querySelectorAll('#weatherData .info-box-dynamic').forEach(function(el){ el.remove(); });
-        const boxBlast = document.getElementById('boxBlastRisk');
+        var boxBlast = document.getElementById('boxBlastRisk');
         if (boxBlast) boxBlast.style.display = 'none';
-        const lokal = document.getElementById('localSstBox');
+        var lokal = document.getElementById('localSstBox');
         if (lokal) lokal.style.display = 'none';
     }
 
     function renderBannerTungguGPS() {
         hapusBoxRisiko();
-        const weatherData = document.getElementById('weatherData');
+        var weatherData = document.getElementById('weatherData');
         if (!weatherData) return;
         weatherData.insertAdjacentHTML('beforeend',
             '<div id="bannerTungguGPS" class="info-box info-box-risiko"' +
@@ -419,10 +468,10 @@
 
     function renderSemuaRisikoGPS(cur, dp) {
         hapusBoxRisiko();
-        const banner = document.getElementById('bannerTungguGPS');
+        var banner = document.getElementById('bannerTungguGPS');
         if (banner) banner.remove();
 
-        const boxBlast = document.getElementById('boxBlastRisk');
+        var boxBlast = document.getElementById('boxBlastRisk');
         if (boxBlast) {
             boxBlast.style.display = 'block';
             if (typeof window.analyzeDiseaseRisk === 'function') {
@@ -430,10 +479,13 @@
             }
         }
 
-        const weatherData = document.getElementById('weatherData');
+        var weatherData = document.getElementById('weatherData');
         if (!weatherData) return;
 
-        const fase = typeof window.analisisFaseTanaman === 'function'
+        // ── KUNCI FIX: pastikan nilai input sudah ter-restore sebelum analisis ──
+        restoreNilaiInput();
+
+        var fase = typeof window.analisisFaseTanaman === 'function'
             ? window.analisisFaseTanaman()
             : { fase: 'Belum diset', umurHari: 0, musim: '-' };
 
@@ -464,7 +516,7 @@
         if (typeof window.hitungRisikoTungro === 'function')
             weatherData.insertAdjacentHTML('beforeend', boksRisiko('🌾 Tungro (Virus)', window.hitungRisikoTungro(cur.temperature_2m, cur.relative_humidity_2m, cur.rain || 0, fase)));
 
-        const lokal = document.getElementById('localSstBox');
+        var lokal = document.getElementById('localSstBox');
         if (lokal) lokal.style.display = 'block';
         if (typeof window.loadGlobalClimateIndices === 'function') window.loadGlobalClimateIndices();
     }
@@ -474,8 +526,12 @@
     // =========================================================================
 
     function renderUITombolGPS(koordinat) {
-        const gpsPrompt = document.getElementById('gpsPrompt');
+        var gpsPrompt = document.getElementById('gpsPrompt');
         if (!gpsPrompt) return;
+
+        // ── FIX UTAMA: simpan nilai input sebelum innerHTML diganti ──────────
+        simpanNilaiInput();
+        // ─────────────────────────────────────────────────────────────────────
 
         var statusAkurasi, bgTombol, ikonTombol, teksTombol;
         if (koordinat.akurasi === 'gps') {
@@ -495,7 +551,6 @@
             teksTombol = 'SINKRONKAN GPS & SATELIT';
         }
 
-        gpsPrompt.style.display = 'block';
         gpsPrompt.innerHTML =
             '<div id="infoLokasiCuaca" style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:14px;padding:12px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;">' +
             '<div>' +
@@ -524,15 +579,9 @@
             'Setelah GPS tersinkron, <b>semua parameter cuaca diperbarui</b> dan risiko penyakit & hama muncul berdasarkan lokasi sawah Anda.' +
             '</div>';
 
-        try {
-            const la = JSON.parse(localStorage.getItem('sf_lahan_aktif') || 'null');
-            if (la) {
-                const tglEl = document.getElementById('tglTanamCuaca');
-                const varEl = document.getElementById('umurVarietasCuaca');
-                if (tglEl && la.tglTanam)     tglEl.value = la.tglTanam;
-                if (varEl && la.varietasUmur) varEl.value = la.varietasUmur;
-            }
-        } catch(e) {}
+        // ── FIX UTAMA: restore nilai input SETELAH innerHTML diganti ────────
+        restoreNilaiInput();
+        // ─────────────────────────────────────────────────────────────────────
     }
 
     // =========================================================================
@@ -543,16 +592,13 @@
         if (state.sedangMemuat) return;
         state.sedangMemuat = true;
 
-        const gpsPrompt   = document.getElementById('gpsPrompt');
-        const weatherData = document.getElementById('weatherData');
-        const result      = document.getElementById('result');
-        const resConf     = document.getElementById('resConf');
-        const resLabel    = document.getElementById('resLabel');
-        const boxBlast    = document.getElementById('boxBlastRisk');
+        var gpsPrompt   = document.getElementById('gpsPrompt');
+        var weatherData = document.getElementById('weatherData');
+        var result      = document.getElementById('result');
+        var resConf     = document.getElementById('resConf');
+        var resLabel    = document.getElementById('resLabel');
+        var boxBlast    = document.getElementById('boxBlastRisk');
 
-        // Sembunyikan frame status lama milik HTML (resLabel + resConf di #result)
-        // karena patch punya UI lokasi sendiri di dalam gpsPrompt (#infoLokasiCuaca).
-        // Akan dikembalikan visible oleh switchMode saat user pindah ke mode lain.
         if (resLabel) resLabel.style.display = 'none';
         if (resConf)  resConf.style.display  = 'none';
 
@@ -561,26 +607,29 @@
         if (result)      result.style.display      = 'block';
         if (boxBlast && !tampilkanRisiko) boxBlast.style.display = 'none';
 
+        // ── simpan nilai dulu sebelum render tombol GPS ──────────────────────
+        simpanNilaiInput();
         renderUITombolGPS(koordinat);
         tampilkanSkeleton();
 
         try {
-            const hasil = await fetchDataCuaca(koordinat.lat, koordinat.lon);
+            var hasil = await fetchDataCuaca(koordinat.lat, koordinat.lon);
             state.dataForecast = hasil.forecast;
             state.dataArchive  = hasil.archive;
 
-            const rendered = renderDataCuaca(hasil.forecast, hasil.archive, koordinat);
+            var rendered = renderDataCuaca(hasil.forecast, hasil.archive, koordinat);
 
             if (tampilkanRisiko) {
+                // ── pastikan nilai input ter-restore sebelum renderSemuaRisikoGPS ──
+                restoreNilaiInput();
                 renderSemuaRisikoGPS(rendered.cur, rendered.dp);
             } else {
                 renderBannerTungguGPS();
             }
         } catch (err) {
             console.error('[patch_cuaca] Gagal fetch:', err.message);
-            // Tampilkan error di dalam gpsPrompt (UI patch), bukan resLabel lama
-            const namaEl = document.getElementById('namaLokasiCuacaUI');
-            const statusEl = document.getElementById('statusLokasiCuacaUI');
+            var namaEl   = document.getElementById('namaLokasiCuacaUI');
+            var statusEl = document.getElementById('statusLokasiCuacaUI');
             if (namaEl)   namaEl.textContent = '⚠️ Gagal Memuat Data Cuaca';
             if (statusEl) statusEl.innerHTML = '<span style="color:#ef4444;">' + (err.message || 'Periksa koneksi internet') + '</span>';
         } finally {
@@ -592,14 +641,12 @@
     //  OVERRIDE switchMode
     // =========================================================================
 
-    const _switchModeAsli = window.switchMode;
+    var _switchModeAsli = window.switchMode;
 
     window.switchMode = function(mode) {
-        // Kembalikan resLabel & resConf ke visible sebelum switchMode asli jalan,
-        // agar mode lain (kamera, BWD, ukur, dll) bisa menggunakannya normal
         if (mode !== 'cuaca') {
-            const resLabel = document.getElementById('resLabel');
-            const resConf  = document.getElementById('resConf');
+            var resLabel = document.getElementById('resLabel');
+            var resConf  = document.getElementById('resConf');
             if (resLabel) resLabel.style.display = '';
             if (resConf)  resConf.style.display  = '';
         }
@@ -607,25 +654,21 @@
         _switchModeAsli(mode);
 
         if (mode === 'cuaca') {
-            // Pulihkan localSstBox jika GPS sudah aktif (HTML switchMode selalu hide-nya)
             if (state.gpsAktif) {
-                const boxLokal = document.getElementById('localSstBox');
+                var boxLokal = document.getElementById('localSstBox');
                 if (boxLokal) boxLokal.style.display = 'block';
             }
 
             setTimeout(async function() {
                 if (state.gpsAktif && state.koordinat) {
-                    // GPS sudah aktif → render ulang dengan risiko lengkap
                     state.sedangMemuat = false;
                     await muatCuaca(state.koordinat, true);
                     return;
                 }
                 if (state.btsSudahDicoba && state.koordinat) {
-                    // Prefetch sudah selesai di background → render langsung, tidak fetch ulang
                     state.sedangMemuat = false;
                     await muatCuaca(state.koordinat, false);
                 } else if (state.btsSudahDicoba && !state.koordinat) {
-                    // Prefetch sedang berjalan → tunggu sebentar lalu coba lagi
                     setTimeout(async function() {
                         if (state.koordinat) {
                             state.sedangMemuat = false;
@@ -633,12 +676,11 @@
                         }
                     }, 1500);
                 } else {
-                    // Belum dicoba sama sekali (fallback)
                     state.btsSudahDicoba = true;
                     try {
-                        const koordinat = await dapatkanLokasiVIABTS();
+                        var koordinat = await dapatkanLokasiVIABTS();
                         if (koordinat.akurasi === 'bts' || koordinat.akurasi === 'ip') {
-                            const nama = await reverseGeocode(koordinat.lat, koordinat.lon);
+                            var nama = await reverseGeocode(koordinat.lat, koordinat.lon);
                             if (nama) koordinat.label = nama;
                         }
                         state.koordinat = koordinat;
@@ -657,16 +699,19 @@
     // =========================================================================
 
     window.sinkronGPSCuaca = async function() {
-        const btn     = document.getElementById('btnGPSSinkron');
-        const ikonBtn = document.getElementById('ikonBtnGPSSinkron');
-        const teksBtn = document.getElementById('teksBtnGPSSinkron');
+        var btn     = document.getElementById('btnGPSSinkron');
+        var ikonBtn = document.getElementById('ikonBtnGPSSinkron');
+        var teksBtn = document.getElementById('teksBtnGPSSinkron');
+
+        // ── simpan nilai input sebelum proses GPS (antisipasi render ulang) ──
+        simpanNilaiInput();
 
         if (btn)     { btn.disabled = true; btn.style.opacity = '0.75'; }
         if (ikonBtn) ikonBtn.textContent = '⏳';
         if (teksBtn) teksBtn.textContent = 'MENCARI SINYAL GPS...';
 
         try {
-            const pos = await new Promise(function(resolve, reject) {
+            var pos = await new Promise(function(resolve, reject) {
                 navigator.geolocation.getCurrentPosition(
                     resolve,
                     function() {
@@ -679,13 +724,13 @@
             });
 
             window._koordinatTerakhir = pos;
-            const lat = pos.coords.latitude;
-            const lon = pos.coords.longitude;
+            var lat = pos.coords.latitude;
+            var lon = pos.coords.longitude;
 
             if (teksBtn) teksBtn.textContent = 'MENDAPATKAN NAMA LOKASI...';
 
             var label = lat.toFixed(5) + ', ' + lon.toFixed(5);
-            const namaLokasi = await reverseGeocode(lat, lon);
+            var namaLokasi = await reverseGeocode(lat, lon);
             if (namaLokasi) label = namaLokasi;
 
             state.koordinat = { lat: lat, lon: lon, label: label, akurasi: 'gps' };
@@ -700,8 +745,8 @@
             if (ikonBtn) ikonBtn.textContent = '✅';
             if (teksBtn) teksBtn.textContent = 'GPS TERSINKRON — KLIK UNTUK PERBARUI';
 
-            const namaEl   = document.getElementById('namaLokasiCuacaUI');
-            const statusEl = document.getElementById('statusLokasiCuacaUI');
+            var namaEl   = document.getElementById('namaLokasiCuacaUI');
+            var statusEl = document.getElementById('statusLokasiCuacaUI');
             if (namaEl)   namaEl.textContent = label;
             if (statusEl) statusEl.innerHTML = '<span style="color:#10b981;">✅ GPS Akurat — Analisis risiko aktif</span>';
 
@@ -727,7 +772,7 @@
     //  CSS
     // =========================================================================
 
-    const style = document.createElement('style');
+    var style = document.createElement('style');
     style.textContent =
         '@keyframes fadeInUpCuaca {' +
         'from{opacity:0;transform:translateY(10px);}' +
@@ -743,24 +788,10 @@
         'body.light-mode #bannerTungguGPS{background:rgba(59,130,246,0.04)!important;}';
     document.head.appendChild(style);
 
-    console.log('✅ [patch_cuaca_langsung v2.3] Aktif: BTS otomatis → GPS akurat + risiko lengkap.');
+    console.log('✅ [patch_cuaca_langsung v2.4] FIX: nilai input tanggal/varietas survive render ulang.');
 
     // =========================================================================
-    //  AUTO-INIT — Background Prefetch (strategi baru, v2.3)
-    //
-    //  Masalah v2.2: isModeAktif() tidak reliable karena:
-    //    - currentMode dideklarasi 'let' (scope lokal script tag, bukan window)
-    //    - patch di-load setelah switchMode('cuaca') dipanggil, tapi SEBELUM
-    //      window 'load' — state DOM bisa berubah oleh patch lain di antaranya
-    //
-    //  Strategi baru: ABAIKAN cek mode sama sekali.
-    //  Langsung fetch lokasi + data cuaca di background begitu patch di-load.
-    //  Hasilnya disimpan di `state`. Saat user berada/membuka tab cuaca,
-    //  data sudah siap → render instan. Tidak ada penundaan apapun.
-    //
-    //  Dua skenario yang ditangani:
-    //    A) Tab cuaca sudah aktif saat patch di-load → render langsung ke DOM
-    //    B) Tab cuaca belum aktif → data tersimpan di state, render saat diklik
+    //  AUTO-INIT — Background Prefetch
     // =========================================================================
 
     async function prefetchCuacaBackground() {
@@ -780,20 +811,14 @@
             state.koordinat = Object.assign({}, LOK_FALLBACK);
         }
 
-        // Cek apakah box cuaca sedang tampil (mode cuaca aktif saat ini)
         var boxCuaca = document.getElementById('boxCuaca');
         var modeCuacaAktif = boxCuaca && boxCuaca.style.display !== 'none';
 
         if (modeCuacaAktif) {
-            // Render langsung ke UI karena tab cuaca sedang terbuka
             await muatCuaca(state.koordinat, false);
         }
-        // Jika tidak aktif: state.koordinat sudah tersimpan.
-        // switchMode override akan pakai data ini saat tab diklik.
     }
 
-    // Jalankan segera — tidak perlu tunggu event apapun.
-    // Script ini sudah ada di akhir </body>, DOM pasti sudah siap.
     setTimeout(prefetchCuacaBackground, 100);
 
 })();
