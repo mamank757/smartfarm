@@ -54,12 +54,12 @@ if (window.__kuotaPatchDimuat) {
 
     // ── KONFIGURASI LABEL ────────────────────────────────────────────────────
     var LABEL_MENU = {
-        daun      : 'Penyakit',
-        hama      : 'Hama',
-        gulma     : 'Gulma',
-        tanah     : 'Tanah',
-        malai     : 'Panen',
-        bwd       : 'BWD',
+        daun      : 'Deteksi Penyakit',
+        hama      : 'Deteksi Hama',
+        gulma     : 'Deteksi Gulma',
+        tanah     : 'Deteksi Tanah',
+        malai     : 'Hitung Panen',
+        bwd       : 'Cek BWD',
         pestisida : 'Harga Pestisida',
         gabah     : 'Harga Gabah'
     };
