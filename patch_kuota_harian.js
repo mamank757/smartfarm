@@ -5,7 +5,9 @@
  * Fungsi: membatasi penggunaan AI deteksi foto maksimal N x PER MENU per hari
  * per perangkat (berbasis localStorage).
  *
- * Contoh: Penyakit 5x, Hama 5x, Gulma 5x, Tanah 5x, Panen 10x, BWD 5x
+ * Kuota per menu:
+ *   Penyakit 5x | Hama 5x | Gulma 5x | Tanah 5x | Panen 10x | BWD 5x
+ *   Harga Pestisida 5x | Harga Gabah 5x
  * — masing-masing dihitung TERPISAH.
  *
  * Reset otomatis: setiap tengah malam (00:00) secara lokal
@@ -13,71 +15,74 @@
  * Cara pakai: tambahkan di bagian paling bawah <body>, SETELAH semua patch lain:
  *   <script src="patch_kuota_harian.js"></script>
  *
+ * CHANGELOG v1.2:
+ * [NEW] Tambah menu 'pestisida' (Harga Pestisida, kuota 5x/hari)
+ * [NEW] Tambah menu 'gabah'     (Harga Gabah,      kuota 5x/hari)
+ *       Kedua menu baru menggunakan btnAnalisisPestisida / btnAnalisisGabah
+ *       (sesuaikan ID tombol dengan yang ada di index.html Anda).
+ *       Jika tombol Anda memakai ID berbeda, ubah di bagian KONFIGURASI TOMBOL
+ *       di bawah.
+ *
  * CHANGELOG v1.1 (bugfix):
  * [FIX 1] window.currentMode selalu undefined karena di index.html variabel
  *         dideklarasikan dengan `let` di root <script> — let/const TIDAK
  *         otomatis menjadi properti window. Solusi: baca currentMode langsung
- *         dari closure/scope aslinya via bridge window.__getCurrentMode().
- * [FIX 2] window.mulaiAnalisis = undefined saat patch dimuat karena
- *         mulaiAnalisis() dideklarasikan sebagai `async function` di dalam
- *         <script> yang sama dengan currentMode — bukan window.mulaiAnalisis.
- *         Solusi: intercept via override btnAnalisis.onclick + event listener,
- *         bukan override window.mulaiAnalisis.
- * [FIX 3] btnCapture di-clone sebelum addEventListener asli terpasang
- *         (patch dimuat setelah HTML tapi belum tentu setelah semua
- *         addEventListener). Solusi: gunakan capture-phase event delegation
- *         di document level, bukan clone tombol.
+ *         dari closure/scope aslinya via intercept switchMode → window._kuotaMode.
+ * [FIX 2] window.mulaiAnalisis = undefined saat patch dimuat karena fungsi
+ *         dideklarasikan sebagai `async function` di closure. Solusi: intercept
+ *         via capture-phase event delegation di document level.
+ * [FIX 3] btnCapture di-clone sebelum addEventListener asli terpasang.
+ *         Solusi: event delegation capture-phase, tidak ada clone.
  * =============================================================================
  */
 
 (function () {
     'use strict';
 
-    // ── KONFIGURASI ──────────────────────────────────────────────────────────
+    // ── KONFIGURASI KUOTA ────────────────────────────────────────────────────
     var KUOTA_PER_MENU = {
-        daun  : 5,
-        hama  : 5,
-        gulma : 5,
-        tanah : 5,
-        malai : 10,
-        bwd   : 5
+        daun      : 5,
+        hama      : 5,
+        gulma     : 5,
+        tanah     : 5,
+        malai     : 10,
+        bwd       : 5,
+        pestisida : 5,   // ← BARU: Harga Pestisida
+        gabah     : 5    // ← BARU: Harga Gabah
     };
 
+    // ── KONFIGURASI LABEL ────────────────────────────────────────────────────
+    var LABEL_MENU = {
+        daun      : 'Penyakit',
+        hama      : 'Hama',
+        gulma     : 'Gulma',
+        tanah     : 'Tanah',
+        malai     : 'Panen',
+        bwd       : 'BWD',
+        pestisida : 'Harga Pestisida',  // ← BARU
+        gabah     : 'Harga Gabah'       // ← BARU
+    };
+
+    // ── KONFIGURASI TOMBOL ───────────────────────────────────────────────────
+    // ID tombol "Analisis" untuk masing-masing menu baru.
+    // Sesuaikan dengan ID yang dipakai di index.html Anda!
+    var TOMBOL_MENU = {
+        pestisida : '#btnCariPestisida',  // ← sesuaikan jika perlu
+        gabah     : '#btnCariGabah'       // ← sesuaikan jika perlu
+    };
+
+    // ── INTERNAL ─────────────────────────────────────────────────────────────
     var KEY_STORAGE = 'sf_kuota_v2';
     var MODE_AI     = Object.keys(KUOTA_PER_MENU);
 
-    var LABEL_MENU = {
-        daun  : 'Penyakit',
-        hama  : 'Hama',
-        gulma : 'Gulma',
-        tanah : 'Tanah',
-        malai : 'Panen',
-        bwd   : 'BWD'
-    };
-
-    // ── BRIDGE: Baca currentMode dari scope asli index.html ──────────────────
-    //
-    // Masalah: `let currentMode` di index.html TIDAK menjadi window.currentMode
-    // karena let/const tidak masuk ke object window. Patch luar tidak bisa
-    // membacanya lewat window.currentMode — selalu undefined.
-    //
-    // Solusi: minta index.html mengekspos getter via window.__getCurrentMode.
-    // Karena kita tidak bisa edit index.html, kita inject script inline yang
-    // dieksekusi di scope yang sama dengan currentMode menggunakan
-    // document.currentScript trick atau — lebih andal — inject <script> tag
-    // ke <head> SEBELUM body selesai render. Cara paling andal untuk patch
-    // eksternal: override switchMode (yang SUDAH di window) untuk menyimpan
-    // mode terakhir ke window._kuotaMode setiap kali berubah.
-
+    // ── BRIDGE: Baca mode aktif ───────────────────────────────────────────────
     function getModeAktif() {
-        // Prioritas 1: nilai yang kita simpan sendiri via intercept switchMode
         if (typeof window._kuotaMode === 'string') return window._kuotaMode;
-        // Prioritas 2: fallback ke window.currentMode (jika ada versi lain)
         if (typeof window.currentMode === 'string') return window.currentMode;
         return null;
     }
 
-    // ── FUNGSI DATA KUOTA ────────────────────────────────────────────────────
+    // ── FUNGSI DATA KUOTA ─────────────────────────────────────────────────────
 
     function ambilDataKuota() {
         var hariIni = new Date().toISOString().slice(0, 10);
@@ -85,7 +90,15 @@
             var raw = localStorage.getItem(KEY_STORAGE);
             if (raw) {
                 var data = JSON.parse(raw);
-                if (data.tanggal === hariIni) return data;
+                if (data.tanggal === hariIni) {
+                    // Pastikan key baru ada (upgrade data lama)
+                    MODE_AI.forEach(function (m) {
+                        if (typeof data.terpakai[m] === 'undefined') {
+                            data.terpakai[m] = 0;
+                        }
+                    });
+                    return data;
+                }
             }
         } catch (e) {}
         var terpakai = {};
@@ -120,7 +133,7 @@
         simpanDataKuota(data);
     }
 
-    // ── MODAL PERINGATAN ─────────────────────────────────────────────────────
+    // ── MODAL PERINGATAN ──────────────────────────────────────────────────────
 
     function tampilkanModalKuotaHabis(mode) {
         var label = LABEL_MENU[mode] || mode;
@@ -144,7 +157,7 @@
         }
     }
 
-    // ── INDIKATOR KUOTA DI UI ────────────────────────────────────────────────
+    // ── INDIKATOR KUOTA DI UI ─────────────────────────────────────────────────
 
     function renderIndikatorKuota(mode) {
         var elLama = document.getElementById('sf-kuota-bar');
@@ -162,8 +175,7 @@
         else if (sisa > 0) warna = '#ef4444';
         else               warna = '#7f1d1d';
 
-       var teksStatus;
-        // Dibuat lebih ringkas agar aman di layar HP
+        var teksStatus;
         if      (sisa === 0) teksStatus = label + ': Habis';
         else if (sisa <= 3)  teksStatus = label + ': Sisa ' + sisa + ' (Hampir habis!)';
         else                 teksStatus = label + ': Sisa ' + sisa + ' dari ' + batas;
@@ -176,8 +188,7 @@
             'backdrop-filter:blur(6px);' +
             'border-top:1px solid rgba(255,255,255,0.06);' +
             'font-family:inherit;';
-            
-        // [PERBAIKAN CSS] Mengurangi min-width dan memperpendek teks kiri
+
         bar.innerHTML =
             '<div style="display:flex;justify-content:space-between;align-items:center;max-width:480px;margin:0 auto;gap:8px;">' +
                 '<span style="font-size:11px;color:#94a3b8;white-space:nowrap;font-weight:600;">📷 KUOTA ANDA HARI INI:</span>' +
@@ -189,28 +200,15 @@
         document.body.appendChild(bar);
     }
 
-    // ── FIX 1: Intercept switchMode untuk selalu tahu mode aktif ─────────────
-    //
-    // switchMode() ada di window (fungsi biasa di <script>), jadi bisa di-wrap.
-    // Setiap kali mode berganti, kita simpan ke window._kuotaMode agar
-    // getModeAktif() selalu akurat tanpa perlu akses `let currentMode` asli.
-
+    // ── FIX 1: Intercept switchMode ───────────────────────────────────────────
     var _switchModeAsli = window.switchMode;
     window.switchMode = function (mode) {
-        window._kuotaMode = mode;   // ← simpan sebelum memanggil asli
+        window._kuotaMode = mode;
         _switchModeAsli.apply(this, arguments);
         renderIndikatorKuota(mode);
     };
 
-    // ── FIX 2: Intercept btnAnalisis (daun, hama, gulma, tanah, malai) ────────
-    //
-    // mulaiAnalisis() bukan window.mulaiAnalisis — ia adalah `async function`
-    // di closure script yang sama. Override window.mulaiAnalisis tidak bekerja
-    // karena tombol memanggil mulaiAnalisis() lewat scope lokal, bukan window.
-    //
-    // Solusi: pasang event listener capture-phase di document. Karena capture
-    // berjalan SEBELUM listener asli, kita bisa membatalkan klik sebelum
-    // mulaiAnalisis() dipanggil, tanpa perlu tahu di mana fungsi itu ada.
+    // ── FIX 2: Intercept btnAnalisis (daun, hama, gulma, tanah, malai) ─────────
 
     document.addEventListener('click', function (e) {
         var btn = e.target.closest('#btnAnalisis');
@@ -219,8 +217,11 @@
         var mode = getModeAktif();
         if (!mode || !MODE_AI.includes(mode) || mode === 'bwd') return;
 
+        // Menu harga menggunakan tombol terpisah, bukan btnAnalisis — skip
+        if (mode === 'pestisida' || mode === 'gabah') return;
+
         if (sisaKuotaMenu(mode) <= 0) {
-            e.stopImmediatePropagation(); // Hentikan semua listener lain
+            e.stopImmediatePropagation();
             e.preventDefault();
             tampilkanModalKuotaHabis(mode);
             return;
@@ -228,20 +229,10 @@
 
         pakaiSatuKuota(mode);
         renderIndikatorKuota(mode);
-        // Biarkan klik berlanjut ke handler asli (mulaiAnalisis)
 
-    }, true /* capture phase */);
+    }, true);
 
-    // ── FIX 3: Intercept btnCapture (BWD) via event delegation ───────────────
-    //
-    // Patch lama meng-clone btnCapture untuk mengganti listener.
-    // Masalah: addEventListener asli di index.html mungkin belum terpasang
-    // saat patch ini dimuat, sehingga clone memindahkan listener yang belum ada.
-    // Setelah clone, listener asli dipasang ke elemen lama yang sudah dibuang.
-    //
-    // Solusi: sama dengan Fix 2 — event delegation capture-phase di document.
-    // Kita tidak perlu clone apa pun. Listener kita berjalan lebih dulu,
-    // bisa membatalkan jika kuota habis, atau membiarkan handler asli jalan.
+    // ── FIX 3: Intercept btnCapture (BWD) ─────────────────────────────────────
 
     document.addEventListener('click', function (e) {
         var btn = e.target.closest('#btnCapture');
@@ -259,17 +250,59 @@
 
         pakaiSatuKuota('bwd');
         renderIndikatorKuota('bwd');
-        // Biarkan handler asli BWD jalan (jalankanCaptureBWD di index.html)
 
-    }, true /* capture phase */);
+    }, true);
 
-    // ── Tampilkan indikator saat load jika sudah di mode AI ─────────────────
+    // ── BARU: Intercept tombol Harga Pestisida ────────────────────────────────
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest(TOMBOL_MENU.pestisida);
+        if (!btn) return;
+
+        if (sisaKuotaMenu('pestisida') <= 0) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            tampilkanModalKuotaHabis('pestisida');
+            return;
+        }
+
+        pakaiSatuKuota('pestisida');
+        renderIndikatorKuota('pestisida');
+        // Biarkan handler asli harga pestisida jalan
+
+    }, true);
+
+    // ── BARU: Intercept tombol Harga Gabah ────────────────────────────────────
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest(TOMBOL_MENU.gabah);
+        if (!btn) return;
+
+        if (sisaKuotaMenu('gabah') <= 0) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            tampilkanModalKuotaHabis('gabah');
+            return;
+        }
+
+        pakaiSatuKuota('gabah');
+        renderIndikatorKuota('gabah');
+        // Biarkan handler asli harga gabah jalan
+
+    }, true);
+
+    // ── BARU: Intercept via switchMode untuk menu harga (jika pakai switchMode) ─
+    // Jika menu Pestisida/Gabah di-switch via switchMode('pestisida') /
+    // switchMode('gabah'), indikator otomatis tampil lewat wrap switchMode di atas.
+    // Tidak perlu kode tambahan.
+
+    // ── Tampilkan indikator saat load ─────────────────────────────────────────
     window.addEventListener('load', function () {
         renderIndikatorKuota(getModeAktif());
     });
 
     console.log(
-        '%c✅ patch_kuota_harian.js v1.1 (per menu) dimuat',
+        '%c✅ patch_kuota_harian.js v1.2 (+ pestisida & gabah) dimuat',
         'color: #f59e0b; font-weight: bold;'
     );
 
