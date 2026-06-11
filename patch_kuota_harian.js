@@ -15,7 +15,7 @@
  * Cara pakai: tambahkan di bagian paling bawah <body>, SETELAH semua script lain:
  *   <script src="patch_kuota_harian.js"></script>
  *
- * CHANGELOG v1.3 (bugfix & improvement):
+ * CHANGELOG v1.4 (bugfix kuota pestisida & gabah):
  * [FIX 1] switchMode bisa undefined saat patch dimuat → tambah pengecekan
  *         typeof sebelum dipanggil agar tidak crash.
  * [FIX 2] kembalikanSatuKuota tidak pernah dipanggil → sekarang dipanggil
@@ -23,10 +23,15 @@
  * [FIX 3] ambilDataKuota pakai UTC (toISOString) → diganti ke tanggal LOKAL
  *         agar reset tepat tengah malam waktu WITA (UTC+8), bukan jam 08:00.
  * [FIX 4] Guard duplikasi: jika patch sudah dimuat sebelumnya, henti langsung.
+ * [FIX 5] UTAMA: Intercept pestisida & gabah lewat WRAP FUNGSI, bukan click
+ *         listener. Ini mengatasi kasus tombol shortcut yang tidak punya ID,
+ *         dan onclick="" di HTML yang memanggil fungsi langsung tanpa lewat
+ *         event listener patch. Wrap dilakukan setelah window.load agar fungsi
+ *         asli sudah pasti terdefinisi di scope window.
  * =============================================================================
  */
 
-// ── FIX 4: Guard agar patch tidak jalan dua kali ─────────────────────────────
+// ── Guard agar patch tidak jalan dua kali ────────────────────────────────────
 if (window.__kuotaPatchDimuat) {
     console.warn('⚠️ patch_kuota_harian.js sudah dimuat sebelumnya. Dibatalkan.');
 } else {
@@ -59,12 +64,6 @@ if (window.__kuotaPatchDimuat) {
         gabah     : 'Harga Gabah'
     };
 
-    // ── KONFIGURASI TOMBOL ───────────────────────────────────────────────────
-    var TOMBOL_MENU = {
-        pestisida : '#btnCariPestisida',  // ← sesuaikan jika perlu
-        gabah     : '#btnCariGabah'       // ← sesuaikan jika perlu
-    };
-
     // ── INTERNAL ─────────────────────────────────────────────────────────────
     var KEY_STORAGE = 'sf_kuota_v2';
     var MODE_AI     = Object.keys(KUOTA_PER_MENU);
@@ -76,7 +75,7 @@ if (window.__kuotaPatchDimuat) {
         return null;
     }
 
-    // ── FIX 3: Tanggal lokal, bukan UTC ──────────────────────────────────────
+    // ── Tanggal lokal, bukan UTC ──────────────────────────────────────────────
     function getTanggalLokal() {
         var d = new Date();
         var thn = d.getFullYear();
@@ -88,7 +87,7 @@ if (window.__kuotaPatchDimuat) {
     // ── FUNGSI DATA KUOTA ─────────────────────────────────────────────────────
 
     function ambilDataKuota() {
-        var hariIni = getTanggalLokal(); // ← FIX 3: pakai waktu lokal
+        var hariIni = getTanggalLokal();
         try {
             var raw = localStorage.getItem(KEY_STORAGE);
             if (raw) {
@@ -131,7 +130,6 @@ if (window.__kuotaPatchDimuat) {
         return true;
     }
 
-    // ── FIX 2: kembalikanSatuKuota sekarang benar-benar dipakai ──────────────
     function kembalikanSatuKuota(mode) {
         var data = ambilDataKuota();
         data.terpakai[mode] = Math.max(0, (data.terpakai[mode] || 0) - 1);
@@ -144,10 +142,9 @@ if (window.__kuotaPatchDimuat) {
     function analisisDenganRefund(mode, promiseFn) {
         return promiseFn().catch(function (err) {
             kembalikanSatuKuota(mode);
-            throw err; // tetap lempar error ke handler asli
+            throw err;
         });
     }
-    // Ekspor ke window agar bisa dipakai dari index.html jika diperlukan
     window.analisisDenganRefund = analisisDenganRefund;
 
     // ── MODAL PERINGATAN ──────────────────────────────────────────────────────
@@ -221,11 +218,10 @@ if (window.__kuotaPatchDimuat) {
     var _switchModeAsli = window.switchMode;
     window.switchMode = function (mode) {
         window._kuotaMode = mode;
-        // FIX 1: Cek dulu apakah fungsi asli ada sebelum dipanggil
         if (typeof _switchModeAsli === 'function') {
             _switchModeAsli.apply(this, arguments);
         } else {
-            console.warn('[Kuota] switchMode asli tidak ditemukan saat patch dimuat. Pastikan script ini diletakkan SETELAH script utama.');
+            console.warn('[Kuota] switchMode asli tidak ditemukan saat patch dimuat.');
         }
         renderIndikatorKuota(mode);
     };
@@ -273,49 +269,59 @@ if (window.__kuotaPatchDimuat) {
 
     }, true);
 
-    // ── Intercept tombol Harga Pestisida ──────────────────────────────────────
+    // ── FIX 5: Intercept pestisida & gabah via WRAP FUNGSI ───────────────────
+    // Dilakukan setelah window.load agar fungsi asli sudah terdefinisi di window.
+    // Cara ini lebih andal dari click listener karena:
+    //   1. Menangkap SEMUA jalur pemanggilan (tombol utama, shortcut, dan kode lain)
+    //   2. Tidak bergantung pada ID elemen atau selector CSS
+    //   3. Tidak terpengaruh oleh atribut onclick="" di HTML
 
-    document.addEventListener('click', function (e) {
-        var btn = e.target.closest(TOMBOL_MENU.pestisida);
-        if (!btn) return;
-
-        if (sisaKuotaMenu('pestisida') <= 0) {
-            e.stopImmediatePropagation();
-            e.preventDefault();
-            tampilkanModalKuotaHabis('pestisida');
-            return;
-        }
-
-        pakaiSatuKuota('pestisida');
-        renderIndikatorKuota('pestisida');
-
-    }, true);
-
-    // ── Intercept tombol Harga Gabah ──────────────────────────────────────────
-
-    document.addEventListener('click', function (e) {
-        var btn = e.target.closest(TOMBOL_MENU.gabah);
-        if (!btn) return;
-
-        if (sisaKuotaMenu('gabah') <= 0) {
-            e.stopImmediatePropagation();
-            e.preventDefault();
-            tampilkanModalKuotaHabis('gabah');
-            return;
-        }
-
-        pakaiSatuKuota('gabah');
-        renderIndikatorKuota('gabah');
-
-    }, true);
-
-    // ── Tampilkan indikator saat load ─────────────────────────────────────────
     window.addEventListener('load', function () {
+
+        // ── Wrap cariHargaPestisida ───────────────────────────────────────────
+        var _cariPestisidaAsli = window.cariHargaPestisida;
+        if (typeof _cariPestisidaAsli === 'function') {
+            window.cariHargaPestisida = function () {
+                // Cek kuota sebelum menjalankan fungsi asli
+                if (sisaKuotaMenu('pestisida') <= 0) {
+                    tampilkanModalKuotaHabis('pestisida');
+                    return; // Batalkan pemanggilan fungsi asli
+                }
+                // Kuota masih ada — kurangi 1 lalu jalankan
+                pakaiSatuKuota('pestisida');
+                renderIndikatorKuota('pestisida');
+                // Teruskan semua argumen asli ke fungsi original
+                return _cariPestisidaAsli.apply(this, arguments);
+            };
+            console.log('[Kuota] ✅ cariHargaPestisida berhasil di-wrap.');
+        } else {
+            console.warn('[Kuota] ⚠️ cariHargaPestisida tidak ditemukan di window. Pastikan script utama dimuat sebelum patch ini.');
+        }
+
+        // ── Wrap cariHargaGabah ───────────────────────────────────────────────
+        var _cariGabahAsli = window.cariHargaGabah;
+        if (typeof _cariGabahAsli === 'function') {
+            window.cariHargaGabah = function () {
+                if (sisaKuotaMenu('gabah') <= 0) {
+                    tampilkanModalKuotaHabis('gabah');
+                    return;
+                }
+                pakaiSatuKuota('gabah');
+                renderIndikatorKuota('gabah');
+                return _cariGabahAsli.apply(this, arguments);
+            };
+            console.log('[Kuota] ✅ cariHargaGabah berhasil di-wrap.');
+        } else {
+            console.warn('[Kuota] ⚠️ cariHargaGabah tidak ditemukan di window.');
+        }
+
+        // ── Tampilkan indikator kuota menu aktif saat load ────────────────────
         renderIndikatorKuota(getModeAktif());
+
     });
 
     console.log(
-        '%c✅ patch_kuota_harian.js v1.3 (semua bugfix) dimuat',
+        '%c✅ patch_kuota_harian.js v1.4 (fix pestisida & gabah via wrap fungsi) dimuat',
         'color: #10b981; font-weight: bold;'
     );
 
