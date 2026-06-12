@@ -453,8 +453,8 @@
             'margin-top:16px;text-align:center;animation:fadeInUpCuaca 0.5s ease;">' +
             '<div style="font-size:2rem;margin-bottom:10px;">🛰️</div>' +
             '<div style="font-size:0.9rem;font-weight:700;color:#3b82f6;margin-bottom:8px;">Analisis Risiko Penyakit & Hama Sawah</div>' +
-            '<div style="font-size:0.8rem;color:#64748b;line-height:1.8;margin-bottom:14px;">' +
-            'Tekan <b style="color:#3b82f6;">SINKRONKAN GPS/SATELIT UTK LOKASI AKURAT</b> di atas untuk mengaktifkan:<br>' +
+            '<div style="font-size:0.8rem;color:#64858b;line-height:1.8;margin-bottom:14px;">' +
+            'Tekan <b style="color:#3b82f6;">SINKRONKAN GPS/SATELIT UTK LOKASI AKURAT</b> di atas untuk melihat:<br>' +
             '<span style="color:#ef4444;">⚠️ Risiko Blast Padi</span> &nbsp;•&nbsp; <span style="color:#ef4444;">⚠️ Hawar Pelepah</span><br>' +
             '<span style="color:#f59e0b;">🐛 Penggerek Batang</span> &nbsp;•&nbsp; <span style="color:#f59e0b;">🪳 Wereng Batang Coklat</span><br>' +
             '<span style="color:#10b981;">🌾 Tungro (Virus)</span> &nbsp;•&nbsp; <span style="color:#10b981;">🐀 Tikus Sawah</span><br>' +
