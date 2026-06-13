@@ -35,15 +35,16 @@
 
     var style = document.createElement('style');
     style.textContent = `
-        #modalPetaKoordinat {
+       #modalPetaKoordinat {
             display: none;
             position: fixed; top: 0; left: 0;
             width: 100%; height: 100%;
             background: rgba(4, 8, 20, 0.88);
             backdrop-filter: blur(8px);
             z-index: 99998;
-            align-items: flex-end;
+            align-items: flex-start; /* Mencegah panel terdorong ke atas */
             justify-content: center;
+            overflow-y: auto; /* Memungkinkan scroll saat keyboard menutupi layar */
         }
         #modalPetaKoordinat.aktif { display: flex; }
 
@@ -55,6 +56,8 @@
             box-shadow: 0 -10px 40px rgba(0,0,0,0.6);
             animation: slideUpPeta 0.3s ease;
             overflow: hidden;
+            margin-top: auto; /* Mendorong panel ke bawah saat layar normal */
+            flex-shrink: 0; /* Mencegah panel dan frame peta menyusut atau gepeng */
         }
         @keyframes slideUpPeta {
             from { transform: translateY(100%); opacity: 0; }
