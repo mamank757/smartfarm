@@ -332,9 +332,9 @@
             '<div style="font-size:1.3rem;flex-shrink:0;">' + lvlObjek.ikon + '</div>' +
             '<div style="flex:1;">' +
                 '<div style="font-size:0.7rem;letter-spacing:1px;opacity:0.9;font-weight:700;">PERINGATAN CUACA EKSTREM — SMART ALERT</div>' +
-                '<div style="font-size:0.82rem;font-weight:800;letter-spacing:0.3px;">STATUS ' + lvlObjek.label + ' • ' + jmlPeringatan + ' PARAMETER TERDETEKSI</div>' +
+                '<div style="font-size:0.82rem;font-weight:800;letter-spacing:0.3px;">STATUS ' + lvlObjek.label + ' • ' + jmlPeringatan + ' PARAMETER</div>' +
             '</div>' +
-            '<div style="font-size:0.7rem;opacity:0.85;flex-shrink:0;">KETUK ▼</div>';
+            '<div style="font-size:0.7rem;opacity:0.85;flex-shrink:0;">LIHAT ▼</div>';
 
         banner.onclick = function() {
             // Scroll ke box peringatan
