@@ -1,43 +1,32 @@
 /**
  * ============================================================
- *  PATCH: patch_kalender_tanam_cerdas.js
- *  Versi: 1.0 — Rekomendasi Jadwal Kegiatan Berbasis Ilmiah
+ *  PATCH: patch_kalender_menu_mandiri.js
+ *  Versi: 2.1 — REKOMENDASI OTOMATIS PENUH — SKALA NASIONAL
  * ------------------------------------------------------------
- *  Menambahkan fitur BARU ke tab "RISIKO IKLIM":
- *    - Tombol baru "📅 JADWAL KEGIATAN TANI"
- *    - Rekomendasi tanggal spesifik untuk setiap kegiatan:
- *        • Pengolahan lahan
- *        • Pembibitan benih
- *        • Tanam pindah
- *        • Umpan racun tikus
- *        • Pemupukan (3 tahap)
- *        • Penyemprotan insektisida
- *        • Penyemprotan fungisida
- *        • Panen
- *    - Skor risiko per kegiatan berbasis:
- *        • ENSO / IOD (dari patch_enso_iod_noaa.js)
- *        • Fase bulan (siklus sinodis 29.53 hari)
- *        • Baseline ZOM lokal (dari URL_ZOM_LOKAL)
- *        • Analisis trend cuaca 7 hari ke depan
- *    - Output dapat dikirim ke WhatsApp
+ *  SISTEM BERLAKU UNTUK SELURUH INDONESIA:
+ *    Tidak ada batasan wilayah, radius, atau hardcode daerah.
+ *    Seluruh parameter diturunkan dari data aktual GPS pengguna.
+ *
+ *  Alur otomatis (tanpa input manual):
+ *    1. Ambil GPS pengguna
+ *    2. Fetch ENSO/IOD (NOAA) + ZOM BMKG (ambil kabupaten TERDEKAT
+ *       tanpa batas radius — selalu ada hasil terbaik yang tersedia)
+ *    3. Deteksi pola hujan wilayah GPS: Monsunal / Ekuatorial /
+ *       Anti-Monsunal / Lokal — berdasarkan posisi lintang & bujur
+ *    4. Bobot ENSO/IOD disesuaikan per pola iklim (bukan hardcode Sulsel)
+ *    5. Fetch cuaca real-time Open-Meteo (suhu, kelembapan, curah hujan)
+ *    6. Rekomendasi musim & varietas berbasis kondisi nyata di lokasi GPS
+ *    7. Hitung 12 jadwal kegiatan tani
+ *    8. Analisis risiko OPT (Hama & Penyakit) berbasis cuaca aktual
  *
  *  Cara pakai:
- *    Tambahkan di HTML tepat SETELAH semua patch lain:
- *    <script src="patch_kalender_tanam_cerdas.js"></script>
+ *    <script src="patch_kalender_menu_mandiri.js"></script>
+ *    (Dimuat SETELAH patch_kalender_tanam_cerdas.js jika ada)
  *
  *  Dependensi:
- *    - getENSOAnomaly()        (dari patch_enso_iod_noaa.js)
- *    - getIODAnomaly()         (dari patch_enso_iod_noaa.js)
- *    - normalisasiCurahHujan() (dari HTML / patch_perbaikan_ilmiah.js)
- *    - URL_ZOM_LOKAL           (dari HTML utama)
- *    - hitungJarakHaversine()  (dari HTML utama)
- *    - getFallbackSST()        (dari HTML utama, untuk baseline)
- *
- *  Referensi ilmiah:
- *    - Baehaki & Mejaya (2014): siklus hama WBC vs fase bulan
- *    - BB Padi (2019): periode kritis pemupukan
- *    - BMKG (2023): penentuan kalender tanam berbasis prakiraan
- *    - Untung (2006): prinsip PHT dalam kalender penyemprotan
+ *    - window.getENSOAnomaly()  — dari patch_enso_iod_noaa.js
+ *    - window.getIODAnomaly()   — dari patch_enso_iod_noaa.js
+ *    - window.URL_ZOM_LOKAL    — dari script utama HTML
  * ============================================================
  */
 
@@ -45,857 +34,1286 @@
     'use strict';
 
     // =========================================================================
-    //  KONSTANTA
+    //  KONSTANTA UI
     // =========================================================================
+    var WARNA  = '#06b6d4';
+    var WARNA2 = '#0891b2';
 
-    // Referensi bulan mati (new moon) terverifikasi
-    // Dipakai sebagai epoch untuk hitung siklus sinodis
     var EPOCH_BULAN_MATI = new Date('2026-01-29T12:36:00Z');
-    var SIKLUS_SINODIS   = 29.53059; // hari
+    var SIKLUS_SINODIS   = 29.53059;
 
-    // Nama hari dalam bahasa Indonesia
-    var NAMA_HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-    var NAMA_BULAN_ID = [
+    var NAMA_HARI  = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+    var NAMA_BULAN = [
         'Januari','Februari','Maret','April','Mei','Juni',
         'Juli','Agustus','September','Oktober','November','Desember'
     ];
 
-    // Cache hasil analisis agar tidak fetch ulang tiap render
-    var _cacheKalender = null;
-    var _cacheExpiry   = 0; // timestamp ms
+    // =========================================================================
+    //  DETEKSI POLA IKLIM BERDASARKAN POSISI GPS — SKALA NASIONAL
+    //
+    //  Referensi: Aldrian & Susanto (2003), "Identification of three dominant
+    //  rainfall regions within Indonesia and their relationship to sea surface
+    //  temperature", Int. J. Climatol.
+    //
+    //  Tiga pola utama + satu pola lokal:
+    //    A. MONSUNAL    — Jawa, Bali, Nusa Tenggara, Sulsel, Maluku Selatan
+    //    B. EKUATORIAL  — Sumatra tengah, Kalimantan, Papua tengah
+    //    C. LOKAL       — Sulawesi utara, Maluku Utara, sebagian NTT
+    //
+    //  Tambahan berdasarkan karakteristik bimodal/trimodal:
+    //    D. ANTI-MONSUNAL — pantai barat Sumatra (puncak hujan saat kemarau Jawa)
+    // =========================================================================
+    function deteksiPolaIklim(lat, lon) {
+        // Normalisasi: lat negatif = selatan khatulistiwa
+        var absLat = Math.abs(lat);
+
+        // ── Papua ──────────────────────────────────────────────────────────────
+        if (lon >= 131) {
+            if (absLat <= 4) {
+                return { pola: 'EKUATORIAL', label: 'Papua Tengah / Ekuatorial' };
+            }
+            return { pola: 'MONSUNAL', label: 'Papua Selatan / Monsunal' };
+        }
+
+        // ── Maluku ─────────────────────────────────────────────────────────────
+        if (lon >= 126 && lon < 131) {
+            if (lat >= 0) {
+                return { pola: 'LOKAL', label: 'Maluku Utara / Lokal' };
+            }
+            return { pola: 'MONSUNAL', label: 'Maluku Selatan / Monsunal' };
+        }
+
+        // ── Sulawesi ───────────────────────────────────────────────────────────
+        if (lon >= 119.5 && lon < 126) {
+            if (lat >= 0.5) {
+                // Sulawesi Utara & Gorontalo: pola lokal/ekuatorial
+                return { pola: 'LOKAL', label: 'Sulawesi Utara–Gorontalo / Lokal' };
+            }
+            // Sulawesi Tengah, Selatan, Tenggara: monsunal
+            return { pola: 'MONSUNAL', label: 'Sulawesi Selatan–Tengah / Monsunal' };
+        }
+
+        // ── Nusa Tenggara ──────────────────────────────────────────────────────
+        if (lon >= 115.5 && lon < 119.5 && lat < 0) {
+            return { pola: 'MONSUNAL', label: 'Nusa Tenggara / Monsunal Kuat' };
+        }
+
+        // ── Kalimantan ─────────────────────────────────────────────────────────
+        if (lon >= 108 && lon < 119.5 && lat >= -3) {
+            // Kalimantan hampir sepenuhnya ekuatorial
+            return { pola: 'EKUATORIAL', label: 'Kalimantan / Ekuatorial' };
+        }
+
+        // ── Jawa & Bali ────────────────────────────────────────────────────────
+        if (lon >= 105 && lon < 116 && lat < -5) {
+            return { pola: 'MONSUNAL', label: 'Jawa–Bali / Monsunal' };
+        }
+
+        // ── Sumatra ────────────────────────────────────────────────────────────
+        if (lon >= 95 && lon < 108) {
+            // Pantai barat Sumatra (Bengkulu, Padang, Tapanuli) = anti-monsunal
+            // Identifikasi kasar: bujur < 104 & lintang antara -5 s/d 4
+            if (lon < 104 && lat >= -5 && lat <= 4) {
+                return { pola: 'ANTI_MONSUNAL', label: 'Pantai Barat Sumatra / Anti-Monsunal' };
+            }
+            // Sumatra tengah-timur, Riau, Jambi = ekuatorial
+            if (absLat <= 3) {
+                return { pola: 'EKUATORIAL', label: 'Sumatra Tengah–Timur / Ekuatorial' };
+            }
+            // Sumatra utara (Aceh, Medan) & selatan (Lampung) = peralihan
+            return { pola: 'LOKAL', label: 'Sumatra Utara/Selatan / Peralihan' };
+        }
+
+        // Default fallback — tetap berdasarkan lintang jika di luar peta di atas
+        if (absLat <= 5) {
+            return { pola: 'EKUATORIAL', label: 'Ekuatorial (estimasi)' };
+        }
+        return { pola: 'MONSUNAL', label: 'Monsunal (estimasi)' };
+    }
 
     // =========================================================================
-    //  UTILITAS TANGGAL
+    //  BOBOT ENSO/IOD PER POLA IKLIM
+    //
+    //  Sumber: Nur'utami & Hidayat (2016) — IOD vs ENSO Influence on Rainfall;
+    //          Hidayat et al. (2016) — regional sensitivity analysis;
+    //          Aldrian & Susanto (2003)
+    //
+    //  Format: array 12 nilai (Jan–Des), [bobot_ENSO, bobot_IOD] per bulan
     // =========================================================================
+    var BOBOT = {
+        // Monsunal: ENSO dominan di musim kemarau (Jun–Sep),
+        //           IOD penting di Sep–Nov terutama untuk wilayah selatan
+        MONSUNAL: {
+            enso: [0.15,0.10,0.10,0.12,0.18,0.40,0.50,0.55,0.50,0.38,0.20,0.15],
+            iod:  [0.08,0.06,0.06,0.08,0.10,0.18,0.25,0.35,0.42,0.32,0.18,0.10]
+        },
+        // Ekuatorial: sensitif ENSO lebih merata, IOD lebih lemah
+        EKUATORIAL: {
+            enso: [0.20,0.18,0.16,0.15,0.15,0.18,0.22,0.28,0.30,0.25,0.20,0.18],
+            iod:  [0.06,0.05,0.05,0.06,0.08,0.10,0.12,0.18,0.22,0.18,0.10,0.07]
+        },
+        // Anti-monsunal (pantai barat Sumatra): terbalik — hujan saat kemarau Jawa
+        //   ENSO berpengaruh terbalik (La Nina = kering di musim barat lokal)
+        ANTI_MONSUNAL: {
+            enso: [0.10,0.08,0.08,0.10,0.15,0.20,0.25,0.28,0.25,0.18,0.12,0.10],
+            iod:  [0.05,0.04,0.04,0.06,0.08,0.12,0.14,0.18,0.20,0.15,0.08,0.06]
+        },
+        // Lokal/peralihan: campuran moderat
+        LOKAL: {
+            enso: [0.12,0.10,0.10,0.12,0.15,0.25,0.32,0.38,0.35,0.28,0.16,0.12],
+            iod:  [0.06,0.05,0.05,0.07,0.09,0.12,0.16,0.22,0.26,0.20,0.12,0.08]
+        }
+    };
 
-    function formatTglID(d) {
-        return NAMA_HARI[d.getDay()] + ', ' +
-               d.getDate() + ' ' + NAMA_BULAN_ID[d.getMonth()] + ' ' + d.getFullYear();
+    // =========================================================================
+    //  AMBIL DATA ZOM — SELALU KEMBALIKAN HASIL TERDEKAT (TANPA BATAS RADIUS)
+    //
+    //  Algoritma: cari kabupaten dengan jarak Haversine MINIMUM dari GPS.
+    //  Tidak ada cutoff radius. Jika ZOM tidak tersedia sama sekali (error
+    //  jaringan), fallback ke curah hujan dari Open-Meteo (ERA5 proxy)
+    //  atau estimasi berbasis pola iklim yang terdeteksi.
+    // =========================================================================
+    async function getZOM(lat, lon) {
+        var URL_ZOM = window.URL_ZOM_LOKAL || '';
+        try {
+            if (!URL_ZOM) throw new Error('URL_ZOM_LOKAL tidak terdefinisi');
+            var res  = await fetch(URL_ZOM);
+            var data = await res.json();
+            var arr  = Array.isArray(data.data) ? data.data
+                     : Array.isArray(data)       ? data
+                     : null;
+            if (!arr || arr.length === 0) throw new Error('Array ZOM kosong');
+
+            // Cari TERDEKAT tanpa batas radius
+            var jMin = Infinity, kabTerpilih = null;
+            arr.forEach(function (kab) {
+                var lk  = parseFloat(kab.lat);
+                var lnk = parseFloat(kab.lon);
+                if (!isNaN(lk) && !isNaN(lnk)) {
+                    var j = haversineKm(lat, lon, lk, lnk);
+                    if (j < jMin) { jMin = j; kabTerpilih = kab; }
+                }
+            });
+
+            if (!kabTerpilih) throw new Error('Tidak ada kabupaten valid di ZOM');
+
+            var ks = ['jan','feb','mar','apr','mei','jun','jul','agu','sep','okt','nov','des'];
+            var chData = ks.map(function (k) { return parseFloat(kabTerpilih[k]) || 0; });
+
+            return {
+                data:   chData,
+                nama:   kabTerpilih.kabupaten_kota || kabTerpilih.nama || 'Terdekat',
+                provinsi: kabTerpilih.provinsi || '',
+                jarak:  jMin.toFixed(1),
+                sumber: 'ZOM BMKG'
+            };
+
+        } catch (e) {
+            console.warn('[JadwalOto] ZOM gagal (' + e.message + '), beralih ke Open-Meteo ERA5');
+            return await getERA5FallbackCH(lat, lon);
+        }
     }
 
-    function formatTglPendek(d) {
-        return d.getDate() + ' ' + NAMA_BULAN_ID[d.getMonth()].substring(0,3) + ' ' + d.getFullYear();
+    // =========================================================================
+    //  FALLBACK: CURAH HUJAN DARI OPEN-METEO ERA5 JIKA ZOM TIDAK TERSEDIA
+    //  Mengambil data historis 12 bulan terakhir sebagai baseline
+    // =========================================================================
+    async function getERA5FallbackCH(lat, lon) {
+        try {
+            var sekarang = new Date();
+            var thnLalu  = new Date(sekarang.getFullYear() - 1, sekarang.getMonth(), 1);
+            var start    = thnLalu.toISOString().slice(0, 10);
+            var end      = new Date(sekarang.getFullYear(), sekarang.getMonth(), 0).toISOString().slice(0, 10);
+
+            var url = 'https://archive-api.open-meteo.com/v1/archive' +
+                '?latitude=' + lat + '&longitude=' + lon +
+                '&start_date=' + start + '&end_date=' + end +
+                '&daily=precipitation_sum&timezone=auto';
+
+            var res  = await fetch(url);
+            var data = await res.json();
+            var harian = (data.daily && data.daily.precipitation_sum) || [];
+
+            // Akumulasikan per bulan kalender
+            var chBulanan = [0,0,0,0,0,0,0,0,0,0,0,0];
+            var countBln  = [0,0,0,0,0,0,0,0,0,0,0,0];
+            var times     = (data.daily && data.daily.time) || [];
+            times.forEach(function (tgl, i) {
+                var bln = parseInt(tgl.slice(5, 7)) - 1; // 0-11
+                chBulanan[bln] += (harian[i] || 0);
+                countBln[bln]++;
+            });
+            // Normalisasi ke rata-rata bulanan (mm/bulan)
+            chBulanan = chBulanan.map(function (total, i) {
+                return countBln[i] > 0 ? Math.round(total) : 0;
+            });
+
+            return {
+                data:    chBulanan,
+                nama:    'ERA5 Archive (Open-Meteo)',
+                provinsi:'',
+                jarak:   null,
+                sumber:  'Open-Meteo ERA5'
+            };
+        } catch (e) {
+            console.warn('[JadwalOto] ERA5 fallback gagal:', e.message);
+            // Ultimate fallback: pola flat moderat — sistem tetap berjalan
+            return {
+                data:    [150,140,130,100,80,60,40,40,60,90,120,140],
+                nama:    'Estimasi Generik Nasional',
+                provinsi:'',
+                jarak:   null,
+                sumber:  'Estimasi'
+            };
+        }
     }
 
-    function tambahHari(d, n) {
-        var hasil = new Date(d);
-        hasil.setDate(hasil.getDate() + n);
-        return hasil;
+    // =========================================================================
+    //  NORMALISASI CURAH HUJAN → INDEKS KELEMBAPAN (-1.5 s/d +1.5)
+    //  Skala universal (bukan Sulsel-sentris)
+    // =========================================================================
+    function normCH(mm) {
+        // Coba pakai fungsi dari script utama jika tersedia
+        var fn = window.normalisasiCurahHujan;
+        if (typeof fn === 'function') return fn(mm);
+        // Implementasi universal: threshold disesuaikan rentang nasional
+        if (mm <  20)  return -1.5;   // Sangat kering
+        if (mm <  60)  return -0.8;   // Kering
+        if (mm < 160)  return  0.0;   // Normal
+        if (mm < 300)  return  0.8;   // Basah
+        return 1.5;                    // Sangat basah (hutan hujan tropis)
     }
 
-    // Hitung berapa hari dalam siklus bulan saat ini (0 = bulan mati)
-    function hariFaseBulan(tanggal) {
-        var selisih = (tanggal.getTime() - EPOCH_BULAN_MATI.getTime()) / (1000 * 60 * 60 * 24);
-        var hari    = selisih % SIKLUS_SINODIS;
-        return hari < 0 ? hari + SIKLUS_SINODIS : hari;
+    // =========================================================================
+    //  HITUNG SKOR KELEMBAPAN BULANAN (0–100)
+    //  Menggunakan bobot ENSO/IOD sesuai pola iklim setempat
+    // =========================================================================
+    function skorBulan(idx, zomData, ensoVal, iodVal, pola) {
+        var baseline = zomData[idx];
+        var indeks   = baseline > 10 ? normCH(baseline) : baseline;
+
+        var bobotSet = BOBOT[pola] || BOBOT.MONSUNAL;
+        var wE       = bobotSet.enso[idx];
+        var wI       = bobotSet.iod[idx];
+
+        // Pola anti-monsunal: tanda ENSO dibalik
+        // (El Niño di pola ini justru bisa menambah CH di musim lokalnya)
+        var signENSO = (pola === 'ANTI_MONSUNAL') ? -1 : 1;
+
+        var tot = 1 + wE + wI;
+        var sc  = (indeks / tot)
+                  - (signENSO * ensoVal * wE / tot)
+                  - (iodVal   * wI      / tot);
+
+        return Math.max(0, Math.min(100, Math.round(50 + sc * 25)));
     }
 
-    // Nama fase bulan dari hari siklus
-    function namaFaseBulan(hariBulan) {
-        if (hariBulan < 1.5)           return { nama: 'Bulan Mati',      ikon: '🌑' };
-        if (hariBulan < 7.4)           return { nama: 'Bulan Sabit Muda', ikon: '🌒' };
-        if (hariBulan < 8.4)           return { nama: 'Kuartal Pertama',  ikon: '🌓' };
-        if (hariBulan < 14.8)          return { nama: 'Bulan Cembung',    ikon: '🌔' };
-        if (hariBulan < 15.8)          return { nama: 'Bulan Penuh',      ikon: '🌕' };
-        if (hariBulan < 22.1)          return { nama: 'Bulan Cembung',    ikon: '🌖' };
-        if (hariBulan < 23.1)          return { nama: 'Kuartal Ketiga',   ikon: '🌗' };
-        if (hariBulan < 29.0)          return { nama: 'Bulan Sabit Tua',  ikon: '🌘' };
-        return                                 { nama: 'Bulan Mati',      ikon: '🌑' };
-    }
+    // =========================================================================
+    //  REKOMENDASI MUSIM, TANGGAL TANAM & VARIETAS — BERBASIS DATA AKTUAL
+    //
+    //  Logika utama:
+    //    1. Hitung skor kelembapan 9 bulan ke depan
+    //    2. Tentukan "window layak tanam": skor 30–72 = kondisi air ideal
+    //    3. Pilih bulan terbaik dalam window tersebut
+    //    4. Sesuaikan dengan pola iklim & kondisi ENSO/IOD aktual
+    // =========================================================================
+    function rekomendasiMusim(zomData, ensoVal, iodVal, pola, polaInfo, cuacaData, sekarang) {
+        var bln = sekarang.getMonth(); // 0-11
 
-    // Cari tanggal TERDEKAT di masa depan dari tanggal acuan
-    // yang memenuhi kondisi fase bulan tertentu
-    // targetHariMin/Max: rentang hari dalam siklus yang dikehendaki
-    function cariTanggalFaseBulan(acuan, targetHariMin, targetHariMax, offsetHariMulai) {
-        offsetHariMulai = offsetHariMulai || 0;
-        var mulai = tambahHari(acuan, offsetHariMulai);
-        // Cari dalam 45 hari ke depan (1.5 siklus)
-        for (var i = 0; i <= 45; i++) {
-            var tgl  = tambahHari(mulai, i);
-            var fase = hariFaseBulan(tgl);
-            if (fase >= targetHariMin && fase <= targetHariMax) {
-                return tgl;
+        // ── Hitung skor 9 bulan ke depan ────────────────────────────────────
+        var proyeksi = [];
+        for (var i = 0; i < 9; i++) {
+            var idx = (bln + i) % 12;
+            proyeksi.push({
+                offset:  i,
+                idx:     idx,
+                namaBln: NAMA_BULAN[idx],
+                skor:    skorBulan(idx, zomData, ensoVal, iodVal, pola)
+            });
+        }
+
+        // ── Tentukan nama musim berdasarkan pola iklim & bulan ───────────────
+        var musim, konteks;
+        switch (pola) {
+            case 'MONSUNAL':
+                // Musim hujan Nov–Apr, kemarau Mei–Okt (referensi Jawa/Sulsel)
+                if (bln >= 10 || bln <= 3) {
+                    musim   = 'Musim Hujan (MH) / Rendeng';
+                    konteks = 'Curah hujan cukup untuk tanam utama. Waspadai banjir dan ledakan hama.';
+                } else if (bln >= 4 && bln <= 6) {
+                    musim   = 'Awal Kemarau / Peralihan MH→MK';
+                    konteks = 'Musim tanam gadu. Ketersediaan irigasi menjadi kunci.';
+                } else {
+                    musim   = 'Musim Kemarau (MK) / Gadu';
+                    konteks = 'Kemarau berlangsung. Tanam padi memerlukan irigasi teknis penuh.';
+                }
+                break;
+
+            case 'EKUATORIAL':
+                // Dua puncak hujan (bimodal): Mar–Mei & Sep–Nov
+                if ((bln >= 2 && bln <= 4) || (bln >= 8 && bln <= 10)) {
+                    musim   = 'Puncak Hujan Bimodal';
+                    konteks = 'Curah hujan tinggi. Ideal untuk pengolahan lahan dan tanam segera.';
+                } else if (bln === 1 || bln === 5 || bln === 7 || bln === 11) {
+                    musim   = 'Peralihan Bimodal';
+                    konteks = 'Hujan moderat. Cocok untuk persiapan tanam atau panen.';
+                } else {
+                    musim   = 'Transisi Kering Relatif';
+                    konteks = 'Hujan berkurang. Pastikan ketersediaan air irigasi.';
+                }
+                break;
+
+            case 'ANTI_MONSUNAL':
+                // Puncak hujan Jun–Sep (kebalikan Jawa)
+                if (bln >= 5 && bln <= 8) {
+                    musim   = 'Musim Hujan Lokal (Jun–Sep)';
+                    konteks = 'Ini musim hujan utama di wilayah Anda. Ideal untuk tanam rendeng lokal.';
+                } else if (bln >= 9 && bln <= 11) {
+                    musim   = 'Peralihan Hujan→Kering Lokal';
+                    konteks = 'Hujan mulai berkurang. Persiapkan tanam gadu sebelum kemarau.';
+                } else {
+                    musim   = 'Musim Kering Lokal (Des–Mei)';
+                    konteks = 'Hujan minimal. Tanam bergantung pada irigasi dan embung.';
+                }
+                break;
+
+            default: // LOKAL / peralihan
+                musim   = 'Pola Hujan Lokal / Peralihan';
+                konteks = 'Pola hujan bervariasi. Sistem menganalisis ZOM aktual untuk penentuan waktu tanam.';
+        }
+
+        // ── Pengaruh ENSO/IOD pada konteks ──────────────────────────────────
+        var kondisiIklim = '';
+        var warningIklim = '';
+        if (ensoVal > 1.0) {
+            kondisiIklim = 'El Niño kuat';
+            warningIklim = '⚠️ El Niño aktif — curah hujan diprediksi di bawah normal. Prioritaskan varietas genjah dan tahan kering.';
+        } else if (ensoVal > 0.5) {
+            kondisiIklim = 'El Niño moderat';
+            warningIklim = '⚠️ El Niño moderat — persiapkan irigasi tambahan, pertimbangkan varietas genjah.';
+        } else if (ensoVal < -1.0) {
+            kondisiIklim = 'La Niña kuat';
+            warningIklim = '⚠️ La Niña kuat — curah hujan di atas normal. Waspadai banjir, pilih varietas tahan rendaman.';
+        } else if (ensoVal < -0.5) {
+            kondisiIklim = 'La Niña moderat';
+            warningIklim = '⚠️ La Niña moderat — potensi hujan lebih tinggi, siapkan saluran drainase.';
+        } else {
+            kondisiIklim = 'Netral';
+            warningIklim = '';
+        }
+
+        // ── Pilih bulan tanam terbaik ────────────────────────────────────────
+        // Skor ideal tanam padi: 28–72 (air tersedia, tidak genang ekstrem)
+        // Prioritas: bulan yang paling dekat dan skornya layak
+        var SKOR_MIN = 28, SKOR_MAX = 72;
+        var terbaik  = null;
+        // Cari dalam 6 bulan ke depan dulu
+        for (var j = 0; j < 6; j++) {
+            var p = proyeksi[j];
+            if (p.skor >= SKOR_MIN && p.skor <= SKOR_MAX) {
+                terbaik = p;
+                break;
             }
         }
-        // Fallback: kembalikan tanggal mulai + offset
+        // Jika tidak ada dalam 6 bulan, perluas ke 9 bulan
+        if (!terbaik) {
+            for (var k = 0; k < proyeksi.length; k++) {
+                var q = proyeksi[k];
+                if (q.skor >= SKOR_MIN && q.skor <= SKOR_MAX) {
+                    terbaik = q;
+                    break;
+                }
+            }
+        }
+        // Jika tetap tidak ada (sangat kering/basah ekstrem), ambil yang skornya paling mendekati ideal
+        if (!terbaik) {
+            var nilaiTerbaik = -Infinity;
+            proyeksi.slice(0, 6).forEach(function (p) {
+                var n = -Math.abs(p.skor - 50);
+                if (n > nilaiTerbaik) { nilaiTerbaik = n; terbaik = p; }
+            });
+        }
+
+        // ── Hitung tanggal tanam ─────────────────────────────────────────────
+        var tglTanam;
+        if (terbaik.offset === 0) {
+            // Bulan ini — beri 14 hari persiapan minimal
+            // Jika sudah lewat tgl 15, geser ke bulan depan
+            var tglRencana = tambahHari(sekarang, 14);
+            tglTanam = tglRencana.getDate() > 20
+                ? new Date(sekarang.getFullYear(), sekarang.getMonth() + 1, 5)
+                : tglRencana;
+        } else {
+            // Bulan mendatang — ambil tanggal 5 bulan tersebut (persiapan cukup)
+            tglTanam = new Date(sekarang.getFullYear(), sekarang.getMonth() + terbaik.offset, 5);
+        }
+
+        // ── Tentukan varietas ────────────────────────────────────────────────
+        var varietas, labelVarietas, alasanVarietas;
+
+        // Prioritas 1: Kondisi ENSO ekstrem
+        if (ensoVal > 0.8) {
+            varietas       = 'genjah';
+            labelVarietas  = 'Genjah < 95 HST (Inpari 42, Inpari 43, Cakrabuana, M70D)';
+            alasanVarietas = 'El Niño menekan curah hujan — varietas genjah mengurangi risiko kekeringan di fase generatif.';
+        } else if (ensoVal < -0.8) {
+            varietas       = 'sedang';
+            labelVarietas  = 'Sedang 95–115 HST, Tahan Rendaman (Inpari 30, Inpari 33, Inpari 38)';
+            alasanVarietas = 'La Niña meningkatkan risiko genangan — pilih varietas toleran banjir singkat.';
+        }
+        // Prioritas 2: Skor kelembapan bulan tanam
+        else if (terbaik.skor > 68) {
+            varietas       = 'sedang';
+            labelVarietas  = 'Sedang 95–115 HST, Tahan Basah (Inpari 30, Inpari 33, Mekongga)';
+            alasanVarietas = 'Curah hujan tinggi di bulan tanam — varietas sedang tahan rendaman lebih aman.';
+        } else if (terbaik.skor < 32) {
+            varietas       = 'genjah';
+            labelVarietas  = 'Genjah < 95 HST (Inpari 42, Inpari 43, Cakrabuana)';
+            alasanVarietas = 'Curah hujan rendah — varietas genjah meminimalisir risiko puso akibat kekurangan air.';
+        }
+        // Kondisi normal
+        else {
+            varietas       = 'sedang';
+            labelVarietas  = 'Sedang 95–115 HST (Ciherang, Mekongga, Inpari 32, Inpari 42)';
+            alasanVarietas = 'Kondisi curah hujan mendukung — varietas sedang unggul memberikan hasil optimal.';
+        }
+
+        return {
+            tglMulai:      tglTanam,
+            musim:         musim,
+            konteks:       konteks,
+            kondisiIklim:  kondisiIklim,
+            warningIklim:  warningIklim,
+            varietas:      varietas,
+            labelVarietas: labelVarietas,
+            alasanVarietas:alasanVarietas,
+            skorBulanTanam:terbaik.skor,
+            namaBulanTanam:terbaik.namaBln,
+            proyeksi:      proyeksi
+        };
+    }
+
+    // =========================================================================
+    //  ANALISIS RISIKO OPT — BERBASIS CUACA AKTUAL (UNIVERSAL)
+    // =========================================================================
+    function analisisOPT(suhu, kelembapan, curahHujanHarian) {
+        var risiko = [];
+        var fb     = hariFaseBulan(new Date());
+
+        // Wereng Batang Coklat
+        if (suhu >= 25 && suhu <= 30 && kelembapan >= 80) {
+            risiko.push({
+                nama:  'Wereng Batang Coklat (WBC)',
+                level: '⚠️ WASPADA',
+                warna: '#f59e0b',
+                tips:  'Pantau pangkal batang 2×/minggu. Semprot Imidakloprid/BPMC jika ≥10 ekor/rumpun.'
+            });
+        }
+
+        // Penggerek Batang Padi (siklus bulan)
+        if (kelembapan >= 78 && suhu >= 24) {
+            var levelPBP  = (fb < 4 || fb > 25) ? '🚨 TINGGI (Bulan Gelap)' : '⚠️ SEDANG';
+            var warnaPBP  = (fb < 4 || fb > 25) ? '#ef4444' : '#f59e0b';
+            risiko.push({
+                nama:  'Penggerek Batang Padi (PBP)',
+                level: levelPBP,
+                warna: warnaPBP,
+                tips:  'Pasang light trap malam hari. Kumpulkan kelompok telur di daun. Aplikasi insektisida sistemik saat ngengat aktif (bulan gelap).'
+            });
+        }
+
+        // Blast (suhu sejuk + lembap = ideal sporulasi Pyricularia)
+        if (kelembapan >= 85 && suhu >= 22 && suhu <= 28) {
+            risiko.push({
+                nama:  'Blast (Pyricularia oryzae)',
+                level: '⚠️ WASPADA',
+                warna: '#f59e0b',
+                tips:  'Semprot Tricyclazole preventif 7 hari sebelum bunting. Kurangi Urea jika daun terlalu hijau gelap.'
+            });
+        }
+
+        // Hawar Pelepah (suhu tinggi + lembap)
+        if (kelembapan >= 85 && suhu >= 28) {
+            risiko.push({
+                nama:  'Hawar Pelepah (Sheath Blight)',
+                level: '⚠️ SEDANG',
+                warna: '#f59e0b',
+                tips:  'Terapkan intermittent irrigation. Hindari Urea berlebih. Aplikasi Validamycin atau Hexaconazole.'
+            });
+        }
+
+        // Tungro via Wereng Hijau (suhu sejuk–sedang)
+        if (suhu >= 20 && suhu <= 27 && kelembapan >= 75) {
+            risiko.push({
+                nama:  'Tungro (Virus — via Wereng Hijau)',
+                level: '🟡 SIAGA',
+                warna: '#eab308',
+                tips:  'Bersihkan gulma inang di sekitar lahan. Monitor wereng hijau di pesemaian. Cabut dan bakar tanaman terinfeksi.'
+            });
+        }
+
+        // Tikus (curah hujan rendah = tikus aktif migrasi)
+        if (curahHujanHarian < 3) {
+            risiko.push({
+                nama:  'Tikus Sawah',
+                level: '⚠️ WASPADA',
+                warna: '#f59e0b',
+                tips:  'Gropyokan massal bersama petani sekitar. Pasang TBS di pojok petakan. Beri umpan rodentisida antikoagulan di liang aktif.'
+            });
+        }
+
+        // Kondisi aman
+        if (risiko.length === 0) {
+            risiko.push({
+                nama:  'Kondisi OPT Saat Ini Aman',
+                level: '✅ RENDAH',
+                warna: '#10b981',
+                tips:  'Pertahankan monitoring PHT mingguan dan sanitasi lahan antar musim tanam.'
+            });
+        }
+
+        return risiko;
+    }
+
+    // =========================================================================
+    //  UTILITAS: FORMAT TANGGAL
+    // =========================================================================
+    function fmtPanjang(d) {
+        return NAMA_HARI[d.getDay()] + ', ' + d.getDate() + ' ' +
+               NAMA_BULAN[d.getMonth()] + ' ' + d.getFullYear();
+    }
+    function fmtPendek(d) {
+        return d.getDate() + ' ' + NAMA_BULAN[d.getMonth()].substring(0, 3) + ' ' + d.getFullYear();
+    }
+    function tambahHari(d, n) {
+        var h = new Date(d); h.setDate(h.getDate() + n); return h;
+    }
+
+    // =========================================================================
+    //  UTILITAS: FASE BULAN
+    // =========================================================================
+    function hariFaseBulan(tgl) {
+        var s = (tgl.getTime() - EPOCH_BULAN_MATI.getTime()) / 86400000;
+        return ((s % SIKLUS_SINODIS) + SIKLUS_SINODIS) % SIKLUS_SINODIS;
+    }
+    function namaFaseBulan(h) {
+        if (h < 1.5)  return { nama:'Bulan Mati',        ikon:'🌑' };
+        if (h < 7.4)  return { nama:'Bulan Sabit Muda',  ikon:'🌒' };
+        if (h < 8.4)  return { nama:'Kuartal Pertama',   ikon:'🌓' };
+        if (h < 14.8) return { nama:'Bulan Cembung',     ikon:'🌔' };
+        if (h < 15.8) return { nama:'Bulan Penuh',       ikon:'🌕' };
+        if (h < 22.1) return { nama:'Bulan Cembung',     ikon:'🌖' };
+        if (h < 23.1) return { nama:'Kuartal Ketiga',    ikon:'🌗' };
+        if (h < 29.0) return { nama:'Bulan Sabit Tua',   ikon:'🌘' };
+        return               { nama:'Bulan Mati',        ikon:'🌑' };
+    }
+    function cariFaseBulanOpt(acuan, min, max, offsetMulai) {
+        var mulai = tambahHari(acuan, offsetMulai || 0);
+        for (var i = 0; i <= 45; i++) {
+            var t = tambahHari(mulai, i);
+            var f = hariFaseBulan(t);
+            if (f >= min && f <= max) return t;
+        }
         return mulai;
     }
 
     // =========================================================================
-    //  ANALISIS KONDISI IKLIM
+    //  UTILITAS: HAVERSINE
     // =========================================================================
-
-    // Ambil baseline curah hujan dari ZOM lokal atau fallback pola makro
-    async function getBaselineZOM(lat, lon) {
-        try {
-            var resZom = await fetch(window.URL_ZOM_LOKAL || '');
-            var dataZom = await resZom.json();
-
-            var arrayZom = Array.isArray(dataZom.data) ? dataZom.data
-                         : Array.isArray(dataZom)      ? dataZom
-                         : null;
-
-            if (!arrayZom) throw new Error('Format ZOM tidak dikenal');
-
-            var jarakTerdekat = Infinity;
-            var kabTerpilih   = null;
-            var _haversine = window.hitungJarakHaversine || function(a,b,c,d) { return 999; };
-
-            arrayZom.forEach(function(kab) {
-                var lk = parseFloat(kab.lat), lnk = parseFloat(kab.lon);
-                if (!isNaN(lk) && !isNaN(lnk)) {
-                    var j = _haversine(lat, lon, lk, lnk);
-                    if (j < jarakTerdekat) { jarakTerdekat = j; kabTerpilih = kab; }
-                }
-            });
-
-            if (kabTerpilih && jarakTerdekat <= 150) {
-                var keys = ['jan','feb','mar','apr','mei','jun','jul','agu','sep','okt','nov','des'];
-                return {
-                    data: keys.map(function(k) { return parseFloat(kabTerpilih[k]) || 0; }),
-                    nama: kabTerpilih.kabupaten_kota || 'Lokal',
-                    jarak: jarakTerdekat.toFixed(1)
-                };
-            }
-        } catch(e) {
-            console.warn('[KalenderTanam] ZOM gagal:', e.message);
+    function haversineKm(lat1, lon1, lat2, lon2) {
+        if (typeof window.hitungJarakHaversine === 'function') {
+            return window.hitungJarakHaversine(lat1, lon1, lat2, lon2);
         }
-
-        // Fallback: pola monsunal standar Sulsel (indeks)
-        return {
-            data: [0.9, 0.8, 0.6, 0.3, -0.1, -0.8, -1.2, -1.3, -0.9, -0.3, 0.4, 0.8],
-            nama: 'Pola Monsunal Sulsel (estimasi)',
-            jarak: null
-        };
-    }
-
-    // Hitung skor kondisi cuaca bulan tertentu (0-100, makin tinggi makin basah)
-    function skorKelembapanBulan(bulanIndex, baselineData, ensoVal, iodVal, lat, lon) {
-        var _normalisasi = window.normalisasiCurahHujan || function(v) {
-            if (v < 30)  return -1.5;
-            if (v < 75)  return -0.8;
-            if (v < 150) return  0.0;
-            if (v < 250) return  0.8;
-            return 1.5;
-        };
-
-        var baseline = baselineData[bulanIndex];
-        // Konversi mm → indeks jika perlu
-        var indeksBaseline = baseline > 10 ? _normalisasi(baseline, bulanIndex) : baseline;
-
-        // Bobot dinamis ENSO & IOD sederhana (zona monsunal default Sulsel)
-        var bobot = [
-            [0.15,0.10],[0.15,0.10],[0.12,0.08],[0.10,0.08],[0.18,0.12],[0.35,0.20],
-            [0.45,0.28],[0.50,0.38],[0.45,0.40],[0.35,0.30],[0.20,0.15],[0.15,0.10]
-        ];
-        var wEnso = bobot[bulanIndex][0];
-        var wIod  = bobot[bulanIndex][1];
-        var total = 1 + wEnso + wIod;
-
-        var wetnessScore = (indeksBaseline / total)
-                         - (ensoVal * wEnso / total)
-                         - (iodVal  * wIod  / total);
-
-        // Normalisasi ke 0-100 (50 = normal)
-        var skor = Math.round(50 + (wetnessScore * 25));
-        return Math.max(0, Math.min(100, skor));
-    }
-
-    // Label kondisi dari skor kelembapan
-    function labelKondisi(skor) {
-        if (skor >= 75) return { teks: 'Sangat Basah',  warna: '#3b82f6', ikon: '🌧️' };
-        if (skor >= 60) return { teks: 'Cenderung Basah', warna: '#0ea5e9', ikon: '🌦️' };
-        if (skor >= 40) return { teks: 'Normal',        warna: '#10b981', ikon: '⛅' };
-        if (skor >= 25) return { teks: 'Cenderung Kering', warna: '#f59e0b', ikon: '🌤️' };
-        return                 { teks: 'Sangat Kering', warna: '#ef4444', ikon: '☀️' };
+        var R   = 6371;
+        var dLa = (lat2 - lat1) * Math.PI / 180;
+        var dLo = (lon2 - lon1) * Math.PI / 180;
+        var a   = Math.sin(dLa/2)*Math.sin(dLa/2) +
+                  Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+                  Math.sin(dLo/2)*Math.sin(dLo/2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
     // =========================================================================
-    //  LOGIKA PENJADWALAN KEGIATAN
+    //  NORMALISASI CH (alias lokal)
     // =========================================================================
+    function normCH(mm) {
+        if (typeof window.normalisasiCurahHujan === 'function') return window.normalisasiCurahHujan(mm);
+        if (mm <  20)  return -1.5;
+        if (mm <  60)  return -0.8;
+        if (mm < 160)  return  0.0;
+        if (mm < 300)  return  0.8;
+        return 1.5;
+    }
 
-    /**
-     * Hasilkan jadwal kegiatan berdasarkan:
-     *   - tglTanam: tanggal awal tanam (Date)
-     *   - umurVarietas: 'genjah' | 'sedang' | 'dalam'
-     *   - skorBulan: array[12] skor kelembapan 0-100
-     *   - ensoVal, iodVal: anomali iklim terkini
-     */
-    function hitungJadwalKegiatan(tglTanam, umurVarietas, skorBulan, ensoVal, iodVal) {
-        // Offset fase berdasarkan varietas (HST = Hari Setelah Tanam)
-        var offset = {
-            genjah: { benih:14, tanam:0, pupuk1:7,  pupuk2:28, pupuk3:45, insektAwal:20, insektLanjut:45, fungisida:55, panen:90  },
-            sedang: { benih:21, tanam:0, pupuk1:7,  pupuk2:30, pupuk3:55, insektAwal:25, insektLanjut:55, fungisida:65, panen:110 },
-            dalam:  { benih:28, tanam:0, pupuk1:7,  pupuk2:35, pupuk3:65, insektAwal:30, insektLanjut:65, fungisida:75, panen:125 }
-        };
-        var of = offset[umurVarietas] || offset.sedang;
-
-        var today = new Date();
-
-        // Tanggal olah lahan = 14-21 hari sebelum tanam
-        var tglOlah   = tambahHari(tglTanam, -14);
-        // Tanggal buat persemaian
-        var tglBenih  = tambahHari(tglTanam, -of.benih);
-
-        // Umpan tikus: idealnya pada fase bulan sabit muda (hari 3-7 siklus)
-        // karena tikus lebih aktif malam hari saat gelap (bulan muda/tua)
-        // Mulai pasang umpan 7 hari sebelum tanam, pilih fase bulan mati/sabit muda
-        var tglTikusAwal   = cariTanggalFaseBulan(tglTanam, 26, 29.5, -10); // sabit tua / menjelang mati
-        var tglTikusLanjut = cariTanggalFaseBulan(tglBenih, 0,  3,   0);    // bulan mati (paling gelap)
-
-        // Pemupukan
-        var tglPupuk1 = tambahHari(tglTanam, of.pupuk1);  // 7-10 HST
-        var tglPupuk2 = tambahHari(tglTanam, of.pupuk2);  // 28-35 HST
-        var tglPupuk3 = tambahHari(tglTanam, of.pupuk3);  // 45-65 HST
-
-        // Insektisida: Hindari bulan penuh (hari 14-16) karena ngengat PBP
-        // paling aktif bertelur. Semprotkan 5-7 hari setelah puncak penerbangan.
-        var tglInsektAwal   = tambahHari(tglTanam, of.insektAwal);
-        var tglInsektLanjut = tambahHari(tglTanam, of.insektLanjut);
-
-        // Koreksi insektisida: jika jatuh saat bulan penuh, geser +5 hari
-        [tglInsektAwal, tglInsektLanjut].forEach(function(tgl, idx) {
-            var fase = hariFaseBulan(tgl);
-            if (fase >= 13.5 && fase <= 16.5) {
-                // Geser ke 5 hari setelah bulan penuh
-                if (idx === 0) tglInsektAwal   = tambahHari(tgl, 5);
-                else           tglInsektLanjut = tambahHari(tgl, 5);
-            }
-        });
-
-        // Fungisida Blast: pada fase bunting — sangat kritis
-        var tglFungisida = tambahHari(tglTanam, of.fungisida);
-
-        // Panen
-        var tglPanen = tambahHari(tglTanam, of.panen);
-
-        // ── HITUNG SKOR RISIKO PER KEGIATAN ──────────────────────────
-        function skorBulanTgl(tgl) {
-            return skorBulan[tgl.getMonth()];
-        }
-
-        // Skor risiko pengolahan lahan (terlalu kering = susah bajak)
-        var skorOlah = skorBulanTgl(tglOlah);
-        var risikoOlah;
-        if      (skorOlah < 25) risikoOlah = { level: 'Kering', catatan: 'Tambahkan irigasi awal sebelum bajak', warna: '#ef4444' };
-        else if (skorOlah > 80) risikoOlah = { level: 'Sangat Basah', catatan: 'Tunggu hingga lahan bisa diluku mesin', warna: '#3b82f6' };
-        else                     risikoOlah = { level: 'Baik', catatan: 'Kondisi optimal untuk bajak dan garu', warna: '#10b981' };
-
-        // Skor risiko persemaian (terlalu basah = rebah bibit)
-        var skorBenih = skorBulanTgl(tglBenih);
-        var risikoBenih;
-        if      (skorBenih > 75) risikoBenih = { level: 'Waspada', catatan: 'Buat drainase bedeng persemaian, cegah rebah semai', warna: '#f59e0b' };
-        else if (skorBenih < 25) risikoBenih = { level: 'Siram Rutin', catatan: 'Siram pagi & sore, jaga kelembapan media semai', warna: '#f59e0b' };
-        else                      risikoBenih = { level: 'Optimal', catatan: 'Cuaca mendukung perkecambahan benih', warna: '#10b981' };
-
-        // Skor risiko saat tanam
-        var skorTanam = skorBulanTgl(tglTanam);
-        var risikoTanam;
-        if      (skorTanam > 80) risikoTanam = { level: 'Genangan', catatan: 'Siapkan pompa, jaga kedalaman air 2-3 cm saja', warna: '#f59e0b' };
-        else if (skorTanam < 20) risikoTanam = { level: 'Kering Kritis', catatan: 'Tunda atau siapkan pompanisasi penuh', warna: '#ef4444' };
-        else                      risikoTanam = { level: 'Baik', catatan: 'Kondisi air mendukung penanaman', warna: '#10b981' };
-
-        // Skor risiko umpan tikus (selalu tinggi → rekomen agresif)
-        var faseTikusAwal = hariFaseBulan(tglTikusAwal);
-        var risikoTikus;
-        if (faseTikusAwal < 4 || faseTikusAwal > 25) {
-            risikoTikus = { level: 'Optimal', catatan: 'Malam gelap — tikus aktif, umpan beracun maksimal efektif', warna: '#10b981' };
+    // =========================================================================
+    //  FUNGSI RISIKO PER KEGIATAN
+    // =========================================================================
+    function risikoOlah(sk) {
+        if (sk < 25) return { level:'Kering',      catatan:'Tambahkan irigasi awal sebelum bajak', warna:'#ef4444' };
+        if (sk > 80) return { level:'Sangat Basah', catatan:'Tunggu hingga lahan bisa diluku mesin', warna:'#3b82f6' };
+        return             { level:'Baik',          catatan:'Kondisi optimal untuk bajak dan garu', warna:'#10b981' };
+    }
+    function risikoSemaian(sk) {
+        if (sk > 75) return { level:'Waspada',    catatan:'Buat drainase bedeng persemaian', warna:'#f59e0b' };
+        if (sk < 25) return { level:'Siram Rutin', catatan:'Siram pagi & sore, jaga kelembapan', warna:'#f59e0b' };
+        return             { level:'Optimal',      catatan:'Cuaca mendukung perkecambahan', warna:'#10b981' };
+    }
+    function risikoTanam(sk) {
+        if (sk > 80) return { level:'Genangan',      catatan:'Jaga kedalaman air 2–3 cm', warna:'#f59e0b' };
+        if (sk < 20) return { level:'Kering Kritis', catatan:'Siapkan pompanisasi penuh', warna:'#ef4444' };
+        return             { level:'Baik',            catatan:'Kondisi air mendukung penanaman', warna:'#10b981' };
+    }
+    function risikoTikus(fb) {
+        if (fb < 4 || fb > 25) return { level:'Optimal',      catatan:'Malam gelap — umpan racun maksimal efektif', warna:'#10b981' };
+        return                       { level:'Kurang Optimal', catatan:'Bulan cerah, tetap pasang TBS aktif',        warna:'#f59e0b' };
+    }
+    function risikoPupuk(sk) {
+        if (sk > 75) return { level:'Risiko Tercuci', catatan:'Hindari tabur pupuk sebelum hujan lebat', warna:'#f59e0b' };
+        if (sk < 20) return { level:'Tanah Kering',   catatan:'Pastikan ada air di petakan sebelum tabur', warna:'#ef4444' };
+        return             { level:'Optimal',          catatan:'Cuaca mendukung serapan pupuk', warna:'#10b981' };
+    }
+    function risikoInsektisida(sk, fb) {
+        var catatan = '', warna = '#10b981', level = 'Baik';
+        if (sk > 75) { catatan += 'Hindari semprot saat hujan. '; warna = '#f59e0b'; level = 'Hati-hati'; }
+        if (fb >= 13 && fb <= 17) {
+            catatan += 'Puncak ngengat PBP — pasang light trap. ';
+            warna = '#ef4444'; level = 'Waspada';
         } else {
-            risikoTikus = { level: 'Kurang Optimal', catatan: 'Bulan bercahaya — aktivitas tikus agak berkurang, tetap pasang TBS', warna: '#f59e0b' };
+            catatan += 'Waktu aplikasi aman dari puncak ngengat. ';
         }
-
-        // Skor risiko pemupukan
-        function risikoTingkatPupuk(tgl, tahap) {
-            var sk = skorBulanTgl(tgl);
-            if (sk > 75) return { level: 'Risiko Tercuci', catatan: 'Hindari hari hujan, pupuk 1-2 hari sebelum hujan ringan ideal', warna: '#f59e0b' };
-            if (sk < 20) return { level: 'Tanah Kering', catatan: 'Pastikan ada air di petakan sebelum tabur pupuk', warna: '#ef4444' };
-            return { level: 'Optimal', catatan: 'Cuaca mendukung serapan pupuk oleh tanaman', warna: '#10b981' };
-        }
-
-        // Skor risiko insektisida
-        function risikoInsektisida(tgl) {
-            var sk = skorBulanTgl(tgl);
-            var fb = hariFaseBulan(tgl);
-            var catatan = '';
-            var warna   = '#10b981';
-            var level   = 'Baik';
-
-            if (sk > 75) { catatan += 'Hindari semprot saat hujan. '; warna = '#f59e0b'; level = 'Hati-hati'; }
-            if (fb >= 13 && fb <= 17) { catatan += 'Puncak penerbangan ngengat PBP — larutan semprot + lampu perangkap. '; warna = '#ef4444'; level = 'Waspada'; }
-            else if (fb >= 12 && fb <= 18) { catatan += 'Mendekati bulan penuh — pantau kelompok telur PBP. '; if (warna !== '#ef4444') { warna = '#f59e0b'; level = 'Siaga'; } }
-            else { catatan += 'Waktu aplikasi aman dari puncak ngengat. '; }
-
-            catatan = catatan.trim();
-            return { level: level, catatan: catatan, warna: warna };
-        }
-
-        // Skor risiko fungisida blast
-        var skorFung = skorBulanTgl(tglFungisida);
-        var risikoFung;
-        if      (skorFung > 65) risikoFung = { level: 'Kritis Blast', catatan: 'Cuaca lembap — semprot Tricyclazole atau Isoprothiolane 7 hari sebelum bunting', warna: '#ef4444' };
-        else if (skorFung > 45) risikoFung = { level: 'Waspada', catatan: 'Pantau gejala bercak belah ketupat, semprot preventif', warna: '#f59e0b' };
-        else                     risikoFung = { level: 'Aman', catatan: 'Risiko blast rendah, cukup monitoring rutin', warna: '#10b981' };
-
-        // Skor risiko panen
-        var skorPanen = skorBulanTgl(tglPanen);
-        var risikoPanen;
-        if      (skorPanen > 75) risikoPanen = { level: 'Sulit Kering', catatan: 'Siapkan dryer/pengering — jangan tumpuk gabah lembap', warna: '#ef4444' };
-        else if (skorPanen > 55) risikoPanen = { level: 'Waspada Hujan', catatan: 'Panen pagi hari, hindari sore hujan; pastikan combine tidak amblas', warna: '#f59e0b' };
-        else if (skorPanen < 20) risikoPanen = { level: 'Kering Ideal', catatan: 'Panen dan jemur optimal, pantau kadar air gabah sebelum jual', warna: '#10b981' };
-        else                      risikoPanen = { level: 'Baik', catatan: 'Kondisi panen mendukung, koordinasikan combine harvester', warna: '#10b981' };
-
-        // ── PAKET PENGENDALIAN TIKUS ───────────────────────────────────
-        // Pasang TBS 14 hari sebelum tanam, umpan paralel selama 2 minggu
-        var tglTBSPasang = tambahHari(tglTanam, -14);
-
-        return {
-            varietas: umurVarietas,
-            tglTanam: tglTanam,
-            kegiatan: [
-                {
-                    id: 'olah',
-                    nama: 'Pengolahan Lahan',
-                    deskripsi: 'Bajak, garu, pemerataan petakan, dan pengapuran jika diperlukan',
-                    tglMulai: tglOlah,
-                    tglSelesai: tambahHari(tglOlah, 7),
-                    ikon: '🚜',
-                    risiko: risikoOlah,
-                    tips: [
-                        'Olah lahan 14 hari sebelum tanam agar gulma terbenam sempurna',
-                        'Jika pH < 5.5, tambahkan kapur dolomit 500-1000 kg/ha',
-                        'Cek saluran irigasi dan perbaiki pematang yang bocor'
-                    ]
-                },
-                {
-                    id: 'benih',
-                    nama: 'Pembibitan Benih',
-                    deskripsi: 'Seleksi benih, perendaman, perkecambahan, dan semai di bedeng',
-                    tglMulai: tglBenih,
-                    tglSelesai: tambahHari(tglBenih, 7),
-                    ikon: '🌱',
-                    risiko: risikoBenih,
-                    tips: [
-                        'Rendam benih 24 jam dalam air biasa, buang yang mengapung',
-                        'Inkubasi lembap 48 jam hingga keluar kecambah 2-3 mm',
-                        'Dosis semai: 25-35 kg/ha untuk tapin, 50-100 kg/ha untuk tabela'
-                    ]
-                },
-                {
-                    id: 'tikusTBS',
-                    nama: 'Pasang TBS & Gropyokan',
-                    deskripsi: 'Pasang Trap Barrier System & gropyokan massal di pematang',
-                    tglMulai: tglTBSPasang,
-                    tglSelesai: tambahHari(tglTBSPasang, 3),
-                    ikon: '🐀',
-                    risiko: risikoTikus,
-                    tips: [
-                        'Pasang TBS di sudut petakan dengan plastik setinggi 60 cm + perangkap snap trap',
-                        'Gropyokan bersama minimal 3 petani (efek pengusir massal)',
-                        'Bersihkan semak dan jerami sisa panen di sekitar pematang'
-                    ]
-                },
-                {
-                    id: 'tanam',
-                    nama: 'Tanam Pindah / Tabela',
-                    deskripsi: 'Penanaman bibit ke lahan utama dengan jarak tanam optimal',
-                    tglMulai: tglTanam,
-                    tglSelesai: tambahHari(tglTanam, 3),
-                    ikon: '🌾',
-                    risiko: risikoTanam,
-                    tips: [
-                        'Umur bibit optimal: 14-21 HSS untuk tapin (genjah lebih muda)',
-                        'Jarak tanam Legowo 2:1: (25×12.5)×50 cm atau Legowo 4:1: (25×12.5)×50 cm',
-                        'Tanam 2-3 bibit per lubang, kedalaman 2-3 cm'
-                    ]
-                },
-                {
-                    id: 'tikusUmpan',
-                    nama: 'Pemberian Umpan Racun Tikus',
-                    deskripsi: 'Aplikasi rodentisida antikoagulan di liang aktif pematang',
-                    tglMulai: tglTikusAwal,
-                    tglSelesai: tambahHari(tglTikusAwal, 5),
-                    ikon: '☠️',
-                    risiko: risikoTikus,
-                    tips: [
-                        'Gunakan rodentisida antikoagulan (Brodifacoum, Bromadiolon) bukan akut',
-                        'Tempatkan umpan dalam kotak umpan tertutup (bait station) di mulut liang',
-                        'Pasang malam hari, periksa dan ganti setiap 3-4 hari',
-                        'JANGAN gunakan di sekitar saluran air atau kolam ikan'
-                    ]
-                },
-                {
-                    id: 'pupuk1',
-                    nama: 'Pemupukan Tahap I (Dasar)',
-                    deskripsi: 'Pupuk NPK Phonska + Urea I — fase awal pertumbuhan anakan',
-                    tglMulai: tglPupuk1,
-                    tglSelesai: tambahHari(tglPupuk1, 2),
-                    ikon: '🧪',
-                    risiko: risikoTingkatPupuk(tglPupuk1, 1),
-                    tips: [
-                        'Dosis: Urea 1/3 total + Phonska/NPK 1/2 total dosis per ha',
-                        'Sebar rata saat air macak-macak (lumpuri tipis)',
-                        'Jangan pupuk saat angin kencang atau menjelang hujan lebat'
-                    ]
-                },
-                {
-                    id: 'insektAwal',
-                    nama: 'Penyemprotan Insektisida I',
-                    deskripsi: 'Pengendalian hama fase vegetatif (WBC, Penggerek, Sundep)',
-                    tglMulai: tglInsektAwal,
-                    tglSelesai: tambahHari(tglInsektAwal, 2),
-                    ikon: '💊',
-                    risiko: risikoInsektisida(tglInsektAwal),
-                    tips: [
-                        'Pantau populasi WBC: semprot hanya jika > 10 ekor/rumpun',
-                        'Gunakan insektisida sistemik: Imidakloprid, BPMC, atau Buprofezin',
-                        'Semprot pagi hari (07.00-10.00) saat udara tidak berangin',
-                        'Arahkan nozzle ke pangkal batang untuk WBC'
-                    ]
-                },
-                {
-                    id: 'pupuk2',
-                    nama: 'Pemupukan Tahap II (Susulan I)',
-                    deskripsi: 'Urea II + Phonska II — mendorong anakan produktif maksimal',
-                    tglMulai: tglPupuk2,
-                    tglSelesai: tambahHari(tglPupuk2, 2),
-                    ikon: '🧪',
-                    risiko: risikoTingkatPupuk(tglPupuk2, 2),
-                    tips: [
-                        'Dosis: Urea 2/3 sisa + Phonska 1/4 total dosis per ha',
-                        'Cek warna daun dengan BWD — jika skala 3+ tahan Urea',
-                        'Ini adalah pemupukan terpenting untuk jumlah anakan'
-                    ]
-                },
-                {
-                    id: 'pupuk3',
-                    nama: 'Pemupukan Tahap III (Susulan II)',
-                    deskripsi: 'Phonska III ± Urea III — menjelang fase bunting',
-                    tglMulai: tglPupuk3,
-                    tglSelesai: tambahHari(tglPupuk3, 2),
-                    ikon: '🧪',
-                    risiko: risikoTingkatPupuk(tglPupuk3, 3),
-                    tips: [
-                        'Dosis: Phonska 1/4 sisa ± Urea sesuai BWD (skala 1-2 saja)',
-                        'Jika BWD skala 4-5, SKIP Urea di tahap ini',
-                        'Tambahkan pupuk mikro (Silikat/ZnSO4) jika tersedia'
-                    ]
-                },
-                {
-                    id: 'insektLanjut',
-                    nama: 'Penyemprotan Insektisida II',
-                    deskripsi: 'Pengendalian hama fase generatif (Walang Sangit, Beluk)',
-                    tglMulai: tglInsektLanjut,
-                    tglSelesai: tambahHari(tglInsektLanjut, 2),
-                    ikon: '💊',
-                    risiko: risikoInsektisida(tglInsektLanjut),
-                    tips: [
-                        'Target utama: Walang Sangit (Leptocorisa) saat malai keluar',
-                        'Semprot pagi hari saat walang sangit masih di tanaman',
-                        'Gunakan insektisida kontak: Malathion, Deltametrin',
-                        'Tambahkan fungisida jika ada gejala Hawar Pelepah'
-                    ]
-                },
-                {
-                    id: 'fungisida',
-                    nama: 'Penyemprotan Fungisida (Blast)',
-                    deskripsi: 'Preventif Blast Leher Malai saat fase bunting kritis',
-                    tglMulai: tglFungisida,
-                    tglSelesai: tambahHari(tglFungisida, 2),
-                    ikon: '🍄',
-                    risiko: risikoFung,
-                    tips: [
-                        'Semprot 5-7 hari SEBELUM atau SAAT keluar malai (10-50% malai keluar)',
-                        'Bahan aktif: Tricyclazole (0.5 l/ha) atau Isoprothiolane (1-1.5 l/ha)',
-                        'Ulangi 14 hari kemudian jika cuaca masih lembap'
-                    ]
-                },
-                {
-                    id: 'panen',
-                    nama: 'Panen',
-                    deskripsi: 'Pemotongan padi saat kadar air gabah 20-25% (kuning merata)',
-                    tglMulai: tglPanen,
-                    tglSelesai: tambahHari(tglPanen, 5),
-                    ikon: '🌟',
-                    risiko: risikoPanen,
-                    tips: [
-                        'Panen saat 90-95% gabah berwarna kuning keemasan',
-                        'Kadar air ideal saat potong: 20-25%, segera keringkan ke 14%',
-                        'Pesan combine harvester 14 hari sebelum taksiran panen',
-                        'Jual ke penggilingan dengan timbangan bersetifikat'
-                    ]
-                }
-            ]
-        };
+        return { level:level, catatan:catatan.trim(), warna:warna };
+    }
+    function risikoFungisida(sk) {
+        if (sk > 65) return { level:'Kritis Blast', catatan:'Semprot Tricyclazole preventif', warna:'#ef4444' };
+        if (sk > 45) return { level:'Waspada',      catatan:'Pantau gejala bercak, semprot preventif', warna:'#f59e0b' };
+        return             { level:'Aman',           catatan:'Risiko blast rendah, monitoring rutin cukup', warna:'#10b981' };
+    }
+    function risikoPanen(sk) {
+        if (sk > 75) return { level:'Sulit Kering',   catatan:'Siapkan dryer — jangan tumpuk gabah lembap', warna:'#ef4444' };
+        if (sk > 55) return { level:'Waspada Hujan',  catatan:'Panen pagi hari, hindari sore hujan', warna:'#f59e0b' };
+        if (sk < 20) return { level:'Kering Ideal',   catatan:'Panen dan jemur optimal', warna:'#10b981' };
+        return             { level:'Baik',             catatan:'Kondisi panen mendukung', warna:'#10b981' };
     }
 
     // =========================================================================
-    //  RENDER HTML JADWAL
+    //  RENDER KARTU KEGIATAN
     // =========================================================================
-
-    function renderKartuKegiatan(k, nomor) {
-        var kondisi  = labelKondisi(50); // placeholder — warna dari risiko
-        var warna    = k.risiko.warna;
-        var hari     = hariFaseBulan(k.tglMulai);
-        var faseBln  = namaFaseBulan(hari);
-        var tglMulaiStr   = formatTglID(k.tglMulai);
-        var tglSelesaiStr = formatTglPendek(k.tglSelesai);
-
-        var tipsHTML = k.tips.map(function(t) {
-            return '<li style="margin-bottom:6px; color: var(--color-text-secondary); line-height:1.5;">' + t + '</li>';
+    function renderKartu(k, nomor) {
+        var warna  = k.risiko.warna;
+        var fb     = namaFaseBulan(hariFaseBulan(k.tglMulai));
+        var tips   = k.tips.map(function (t) {
+            return '<li style="margin-bottom:6px;color:#cbd5e1;line-height:1.5;">' + t + '</li>';
         }).join('');
-
-        return '<div style="' +
-            'background: var(--color-background-primary);' +
-            'border: 0.5px solid var(--color-border-tertiary);' +
-            'border-radius: var(--border-radius-lg);' +
-            'margin-bottom: 12px;' +
-            'overflow: hidden;' +
-        '">' +
-            '<div style="' +
-                'padding: 12px 14px;' +
-                'display: flex;' +
-                'align-items: flex-start;' +
-                'gap: 12px;' +
-                'cursor: pointer;' +
-                'border-left: 3px solid ' + warna + ';' +
-            '" onclick="window._ktToggle(this)">' +
-                '<div style="' +
-                    'width: 36px; height: 36px; border-radius: 50%;' +
-                    'background: var(--color-background-secondary);' +
-                    'display: flex; align-items: center; justify-content: center;' +
-                    'font-size: 18px; flex-shrink: 0;' +
-                '">' + k.ikon + '</div>' +
-                '<div style="flex: 1; min-width: 0;">' +
-                    '<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">' +
+        return (
+            '<div class="jmd-card">' +
+            '<div class="jmd-card-header" style="border-left:3px solid ' + warna + ';" onclick="window._jmdToggle(this)">' +
+                '<div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.05);' +
+                     'display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">' + k.ikon + '</div>' +
+                '<div style="flex:1;min-width:0;">' +
+                    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
                         '<div>' +
-                            '<div style="font-size: 11px; color: var(--color-text-tertiary); font-weight: 500; margin-bottom: 2px;">Kegiatan ' + nomor + '</div>' +
-                            '<div style="font-size: 15px; font-weight: 500; color: var(--color-text-primary);">' + k.nama + '</div>' +
+                            '<div style="font-size:11px;color:#64748b;font-weight:500;margin-bottom:2px;">Kegiatan ' + nomor + '</div>' +
+                            '<div style="font-size:15px;font-weight:600;color:#fff;">' + k.nama + '</div>' +
                         '</div>' +
-                        '<span style="' +
-                            'font-size: 11px; font-weight: 500; padding: 3px 8px;' +
-                            'border-radius: var(--border-radius-md);' +
-                            'background: ' + warna + '22;' +
-                            'color: ' + warna + ';' +
-                            'white-space: nowrap; flex-shrink: 0;' +
-                        '">' + k.risiko.level + '</span>' +
+                        '<span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:8px;' +
+                               'background:' + warna + '22;color:' + warna + ';white-space:nowrap;flex-shrink:0;">' +
+                            k.risiko.level + '</span>' +
                     '</div>' +
-                    '<div style="font-size: 13px; color: var(--color-text-secondary); margin-top: 4px;">' +
-                        '<span style="font-weight: 500; color: var(--color-text-primary);">' + tglMulaiStr + '</span>' +
-                        ' s/d ' + tglSelesaiStr +
+                    '<div style="font-size:13px;color:#94a3b8;margin-top:4px;">' +
+                        '<span style="font-weight:600;color:#fff;">' + fmtPanjang(k.tglMulai) + '</span>' +
+                        ' s/d ' + fmtPendek(k.tglSelesai) +
                     '</div>' +
-                    '<div style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 3px;">' +
-                        faseBln.ikon + ' ' + faseBln.nama + ' &nbsp;•&nbsp; ' + k.deskripsi +
+                    '<div style="font-size:12px;color:#64748b;margin-top:3px;">' +
+                        fb.ikon + ' ' + fb.nama + ' &nbsp;•&nbsp; ' + k.deskripsi +
                     '</div>' +
                 '</div>' +
-                '<i class="ti ti-chevron-down" style="font-size: 16px; color: var(--color-text-tertiary); flex-shrink: 0; margin-top: 8px; transition: transform 0.2s;" aria-hidden="true"></i>' +
+                '<span class="jmd-chevron" style="font-size:14px;color:#64748b;flex-shrink:0;margin-top:8px;transition:transform 0.2s;">▼</span>' +
             '</div>' +
-            '<div class="kt-detail" style="display: none; padding: 0 14px 14px 14px; border-top: 0.5px solid var(--color-border-tertiary);">' +
-                '<div style="' +
-                    'background: var(--color-background-secondary);' +
-                    'border-radius: var(--border-radius-md);' +
-                    'padding: 10px 12px;' +
-                    'margin-top: 12px; margin-bottom: 12px;' +
-                    'border-left: 3px solid ' + warna + ';' +
-                '">' +
-                    '<div style="font-size: 12px; font-weight: 500; color: ' + warna + '; margin-bottom: 3px;">Catatan Kondisi Iklim</div>' +
-                    '<div style="font-size: 13px; color: var(--color-text-secondary);">' + k.risiko.catatan + '</div>' +
+            '<div class="jmd-detail">' +
+                '<div style="background:rgba(0,0,0,0.2);border-radius:12px;padding:10px 12px;' +
+                     'margin-top:12px;margin-bottom:12px;border-left:3px solid ' + warna + ';">' +
+                    '<div style="font-size:12px;font-weight:600;color:' + warna + ';margin-bottom:3px;">Catatan Iklim</div>' +
+                    '<div style="font-size:13px;color:#cbd5e1;">' + k.risiko.catatan + '</div>' +
                 '</div>' +
-                '<div style="font-size: 12px; font-weight: 500; color: var(--color-text-tertiary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Tips Lapangan</div>' +
-                '<ul style="margin: 0; padding-left: 16px; font-size: 13px;">' + tipsHTML + '</ul>' +
+                '<div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Tips Lapangan</div>' +
+                '<ul style="margin:0;padding-left:16px;font-size:13px;">' + tips + '</ul>' +
             '</div>' +
-        '</div>';
+            '</div>'
+        );
     }
 
-    function renderJadwalLengkap(jadwal, namaZona, ensoStatus, iodStatus) {
-        var tglTanamStr = formatTglID(jadwal.tglTanam);
-        var totalKegiatan = jadwal.kegiatan.length;
-
-        var labelVarietas = {
-            genjah: 'Genjah (< 95 HST)',
-            sedang: 'Sedang (95-115 HST)',
-            dalam:  'Dalam (≥ 116 HST)'
-        }[jadwal.varietas] || jadwal.varietas;
-
-        var kartuHTML = jadwal.kegiatan.map(function(k, i) {
-            return renderKartuKegiatan(k, i + 1);
-        }).join('');
-
-        var html =
-        '<div style="padding: 0.5rem 0;">' +
-
-        '<h2 class="sr-only">Kalender kegiatan tani berdasarkan analisis iklim dan fase bulan</h2>' +
-
-        '<div style="' +
-            'background: var(--color-background-secondary);' +
-            'border-radius: var(--border-radius-lg);' +
-            'padding: 14px 16px;' +
-            'margin-bottom: 16px;' +
-        '">' +
-            '<div style="font-size: 12px; color: var(--color-text-tertiary); font-weight: 500; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Ringkasan Analisis</div>' +
-            '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">' +
-                '<div><span style="color:var(--color-text-tertiary);">Rencana tanam</span><br><span style="font-weight:500;">' + tglTanamStr + '</span></div>' +
-                '<div><span style="color:var(--color-text-tertiary);">Varietas</span><br><span style="font-weight:500;">' + labelVarietas + '</span></div>' +
-                '<div><span style="color:var(--color-text-tertiary);">Zona iklim</span><br><span style="font-weight:500;">' + (namaZona || 'Sulsel') + '</span></div>' +
-                '<div><span style="color:var(--color-text-tertiary);">ENSO / IOD</span><br><span style="font-weight:500;">' + (ensoStatus || '-') + ' / ' + (iodStatus || '-') + '</span></div>' +
-            '</div>' +
-        '</div>' +
-
-        '<div style="font-size: 13px; color: var(--color-text-tertiary); margin-bottom: 12px;">' +
-            totalKegiatan + ' kegiatan direkomendasikan — ketuk kartu untuk detail' +
-        '</div>' +
-
-        kartuHTML +
-
-        '<div style="' +
-            'margin-top: 16px;' +
-            'background: var(--color-background-secondary);' +
-            'border-radius: var(--border-radius-md);' +
-            'padding: 10px 12px;' +
-            'font-size: 11px;' +
-            'color: var(--color-text-tertiary);' +
-            'line-height: 1.6;' +
-        '">' +
-            '⚠️ Tanggal bersifat rekomendasi. Sesuaikan dengan kondisi lapangan aktual, ketersediaan air irigasi, dan hasil pengamatan PHT mingguan. ' +
-            'Sumber: NOAA ENSO/IOD, ZOM BMKG lokal, siklus sinodis bulan, BB Padi (2019).' +
-        '</div>' +
-
-        '<button onclick="window._ktKirimWA()" style="' +
-            'width: 100%; margin-top: 14px; padding: 12px;' +
-            'background: #25D366; color: #fff; border: none;' +
-            'border-radius: var(--border-radius-md);' +
-            'font-size: 14px; font-weight: 500; cursor: pointer;' +
-        '">Kirim jadwal ke WhatsApp ↗</button>' +
-
-        '</div>';
-
-        return html;
-    }
-
-    // =========================================================================
-    //  INTERAKSI TOGGLE DETAIL
-    // =========================================================================
-
-    window._ktToggle = function(headerEl) {
-        var detailEl = headerEl.parentElement.querySelector('.kt-detail');
-        var ikonEl   = headerEl.querySelector('.ti-chevron-down');
-        if (!detailEl) return;
-        var visible = detailEl.style.display !== 'none';
-        detailEl.style.display = visible ? 'none' : 'block';
-        if (ikonEl) ikonEl.style.transform = visible ? '' : 'rotate(180deg)';
+    window._jmdToggle = function (el) {
+        var d = el.parentElement.querySelector('.jmd-detail');
+        var c = el.querySelector('.jmd-chevron');
+        if (!d) return;
+        var vis = d.style.display !== 'none';
+        d.style.display = vis ? 'none' : 'block';
+        if (c) c.style.transform = vis ? '' : 'rotate(180deg)';
     };
 
     // =========================================================================
-    //  KIRIM KE WHATSAPP
+    //  FETCH CUACA LOKAL
     // =========================================================================
+    async function fetchCuacaLokal(lat, lon) {
+        var def = { suhu:28, kelembapan:78, angin:12, hujanHarian:2 };
+        try {
+            var url = 'https://api.open-meteo.com/v1/forecast' +
+                '?latitude=' + lat + '&longitude=' + lon +
+                '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,rain&timezone=auto';
+            var res  = await fetch(url);
+            var data = await res.json();
+            if (data && data.current) {
+                return {
+                    suhu:        Math.round(data.current.temperature_2m      || def.suhu),
+                    kelembapan:  Math.round(data.current.relative_humidity_2m || def.kelembapan),
+                    angin:       Math.round(data.current.wind_speed_10m       || def.angin),
+                    hujanHarian: parseFloat((data.current.rain || 0).toFixed(1))
+                };
+            }
+        } catch (e) { console.warn('[JadwalOto] Cuaca:', e.message); }
+        return def;
+    }
 
-    window._ktKirimWA = function() {
-        if (!window._ktDataJadwal) return;
-        var jadwal = window._ktDataJadwal;
-        var baris  = ['*KALENDER KEGIATAN TANI — PPL MILENIAL WAJO*\n'];
+    // =========================================================================
+    //  FUNGSI UTAMA: ANALISIS OTOMATIS PENUH
+    // =========================================================================
+    async function jalankanAnalisisOtomatis() {
+        var hasilEl = document.getElementById('hasilJadwalOtomatis');
+        var teksEl  = document.getElementById('teksJadwalOtomatis');
+        var btn     = document.getElementById('btnAnalisisOtomatis');
 
-        jadwal.kegiatan.forEach(function(k, i) {
+        hasilEl.style.display = 'block';
+        btn.disabled          = true;
+        btn.style.opacity     = '0.7';
+
+        function loading(teks) {
+            teksEl.innerHTML =
+                '<div style="text-align:center;padding:28px 0;color:' + WARNA + ';font-size:14px;">' +
+                    '<span class="jmd-spin" style="font-size:26px;display:block;margin-bottom:10px;">⏳</span>' +
+                    teks + '</div>';
+        }
+
+        try {
+            // ── 1. GPS ────────────────────────────────────────────────────────
+            loading('🛰️ Mengambil koordinat GPS...');
+            var lat = -6.2, lon = 106.8; // default Jakarta jika GPS gagal
+            try {
+                var pos = await new Promise(function (res, rej) {
+                    navigator.geolocation.getCurrentPosition(res, rej,
+                        { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
+                });
+                lat = pos.coords.latitude;
+                lon = pos.coords.longitude;
+                window._lokasiKalender = { lat: lat, lon: lon };
+            } catch (gpsErr) {
+                // Coba pakai posisi dari tab cuaca jika sudah sinkron
+                var lokasiUI = document.getElementById('lokasiSawah');
+                if (lokasiUI && lokasiUI.innerText && lokasiUI.innerText !== '-') {
+                    var pts = lokasiUI.innerText.split(',');
+                    if (pts.length === 2) {
+                        lat = parseFloat(pts[0].trim());
+                        lon = parseFloat(pts[1].trim());
+                    }
+                } else {
+                    console.warn('[JadwalOto] GPS gagal, gunakan koordinat terakhir tersedia.');
+                }
+            }
+
+            // ── 2. Deteksi pola iklim berdasarkan GPS ─────────────────────────
+            var polaInfo = deteksiPolaIklim(lat, lon);
+            var pola     = polaInfo.pola;
+
+            // ── 3. Fetch semua data paralel ───────────────────────────────────
+            loading('📡 Mengambil ENSO/IOD, ZOM BMKG, dan cuaca lokal...');
+            var getENSO = typeof window.getENSOAnomaly === 'function'
+                ? window.getENSOAnomaly()
+                : Promise.resolve({ latestAnomaly:0, status:'Netral' });
+            var getIOD = typeof window.getIODAnomaly === 'function'
+                ? window.getIODAnomaly()
+                : Promise.resolve({ latestAnomaly:0, status:'Netral' });
+
+            var hasil = await Promise.all([getENSO, getIOD, getZOM(lat, lon), fetchCuacaLokal(lat, lon)]);
+            var ensoData  = hasil[0];
+            var iodData   = hasil[1];
+            var zonaInfo  = hasil[2];
+            var cuacaData = hasil[3];
+
+            var ensoVal = parseFloat(ensoData.latestAnomaly) || 0;
+            var iodVal  = parseFloat(iodData.latestAnomaly)  || 0;
+
+            // ── 4. Hitung skor kelembapan 12 bulan ───────────────────────────
+            var skorBulanan = zonaInfo.data.map(function (_, idx) {
+                return skorBulan(idx, zonaInfo.data, ensoVal, iodVal, pola);
+            });
+
+            // ── 5. Rekomendasi musim, varietas, tanggal tanam ─────────────────
+            loading('🌾 Menentukan waktu tanam dan varietas optimal...');
+            var sekarang = new Date();
+            var rek      = rekomendasiMusim(
+                zonaInfo.data, ensoVal, iodVal, pola, polaInfo, cuacaData, sekarang
+            );
+            var tglTanam = rek.tglMulai;
+            var varietas = rek.varietas;
+
+            // ── 6. Bangun jadwal 12 kegiatan ─────────────────────────────────
+            loading('📅 Menghitung jadwal 12 kegiatan tani...');
+            var of = {
+                genjah: { benih:14, pupuk1:7,  pupuk2:28, pupuk3:45, insektA:20, insektL:45, fungis:55, panen:90  },
+                sedang: { benih:21, pupuk1:7,  pupuk2:30, pupuk3:55, insektA:25, insektL:55, fungis:65, panen:110 },
+                dalam:  { benih:28, pupuk1:7,  pupuk2:35, pupuk3:65, insektA:30, insektL:65, fungis:75, panen:125 }
+            }[varietas] || {benih:21,pupuk1:7,pupuk2:30,pupuk3:55,insektA:25,insektL:55,fungis:65,panen:110};
+
+            var tglOlah   = tambahHari(tglTanam, -14);
+            var tglBenih  = tambahHari(tglTanam, -of.benih);
+            var tglTBS    = tambahHari(tglTanam, -14);
+            var tglTikusA = cariFaseBulanOpt(tglTanam, 26, 29.5, -10);
+            var tglP1     = tambahHari(tglTanam, of.pupuk1);
+            var tglP2     = tambahHari(tglTanam, of.pupuk2);
+            var tglP3     = tambahHari(tglTanam, of.pupuk3);
+            var tglIA     = tambahHari(tglTanam, of.insektA);
+            var tglIL     = tambahHari(tglTanam, of.insektL);
+            var tglFung   = tambahHari(tglTanam, of.fungis);
+            var tglPanen  = tambahHari(tglTanam, of.panen);
+
+            [tglIA, tglIL].forEach(function (tgl, i) {
+                var f = hariFaseBulan(tgl);
+                if (f >= 13.5 && f <= 16.5) {
+                    if (i === 0) tglIA = tambahHari(tgl, 5);
+                    else         tglIL = tambahHari(tgl, 5);
+                }
+            });
+
+            function sk(tgl) { return skorBulanan[tgl.getMonth()]; }
+
+            var kegiatan = [
+                {
+                    id:'olah', nama:'Pengolahan Lahan', ikon:'🚜',
+                    deskripsi:'Bajak, garu, pemerataan petakan',
+                    tglMulai:tglOlah, tglSelesai:tambahHari(tglOlah,7),
+                    risiko:risikoOlah(sk(tglOlah)),
+                    tips:['Olah lahan 14 hari sebelum tanam agar gulma terbenam sempurna',
+                          'Jika pH < 5.5, tambahkan kapur dolomit 500–1000 kg/ha',
+                          'Cek saluran irigasi dan perbaiki pematang bocor']
+                },
+                {
+                    id:'benih', nama:'Pembibitan Benih', ikon:'🌱',
+                    deskripsi:'Seleksi, perendaman, perkecambahan, semai',
+                    tglMulai:tglBenih, tglSelesai:tambahHari(tglBenih,7),
+                    risiko:risikoSemaian(sk(tglBenih)),
+                    tips:['Rendam benih 24 jam, buang yang mengapung',
+                          'Inkubasi lembap 48 jam hingga kecambah 2–3 mm',
+                          'Dosis semai: 25–35 kg/ha (tapin), 50–100 kg/ha (tabela)']
+                },
+                {
+                    id:'tbs', nama:'Pasang TBS & Gropyokan', ikon:'🐀',
+                    deskripsi:'Trap Barrier System & gropyokan massal',
+                    tglMulai:tglTBS, tglSelesai:tambahHari(tglTBS,3),
+                    risiko:risikoTikus(hariFaseBulan(tglTikusA)),
+                    tips:['Pasang TBS plastik setinggi 60 cm di sudut petakan',
+                          'Gropyokan bersama minimal 3 petani (efek pengusir massal)',
+                          'Bersihkan semak dan jerami sisa panen di sekitar pematang']
+                },
+                {
+                    id:'tanam', nama:'Tanam Pindah / Tabela', ikon:'🌾',
+                    deskripsi:'Penanaman bibit ke lahan utama',
+                    tglMulai:tglTanam, tglSelesai:tambahHari(tglTanam,3),
+                    risiko:risikoTanam(sk(tglTanam)),
+                    tips:['Umur bibit optimal 14–21 HSS untuk tapin',
+                          'Jarak tanam Legowo 2:1: (25×12.5)×50 cm',
+                          'Tanam 2–3 bibit/lubang, kedalaman 2–3 cm']
+                },
+                {
+                    id:'umpan', nama:'Pemberian Umpan Racun Tikus', ikon:'☠️',
+                    deskripsi:'Rodentisida antikoagulan di liang aktif',
+                    tglMulai:tglTikusA, tglSelesai:tambahHari(tglTikusA,5),
+                    risiko:risikoTikus(hariFaseBulan(tglTikusA)),
+                    tips:['Gunakan rodentisida antikoagulan (Brodifacoum, Bromadiolon)',
+                          'Tempatkan dalam kotak umpan tertutup di mulut liang',
+                          'Pasang malam hari, ganti tiap 3–4 hari',
+                          'JANGAN diletakkan di sekitar saluran air atau kolam ikan']
+                },
+                {
+                    id:'p1', nama:'Pemupukan Tahap I (Dasar)', ikon:'🧪',
+                    deskripsi:'NPK Phonska + Urea I — fase awal anakan',
+                    tglMulai:tglP1, tglSelesai:tambahHari(tglP1,2),
+                    risiko:risikoPupuk(sk(tglP1)),
+                    tips:['Dosis: Urea ⅓ total + Phonska ½ total per ha',
+                          'Sebar rata saat air macak-macak',
+                          'Jangan pupuk saat angin kencang atau menjelang hujan lebat']
+                },
+                {
+                    id:'i1', nama:'Penyemprotan Insektisida I', ikon:'💊',
+                    deskripsi:'Pengendalian WBC & Sundep fase vegetatif',
+                    tglMulai:tglIA, tglSelesai:tambahHari(tglIA,2),
+                    risiko:risikoInsektisida(sk(tglIA), hariFaseBulan(tglIA)),
+                    tips:['Semprot hanya jika WBC > 10 ekor/rumpun',
+                          'Gunakan Imidakloprid, BPMC, atau Buprofezin',
+                          'Semprot pagi hari (07.00–10.00)',
+                          'Arahkan nozzle ke pangkal batang untuk WBC']
+                },
+                {
+                    id:'p2', nama:'Pemupukan Tahap II (Susulan I)', ikon:'🧪',
+                    deskripsi:'Urea II + Phonska II — anakan produktif',
+                    tglMulai:tglP2, tglSelesai:tambahHari(tglP2,2),
+                    risiko:risikoPupuk(sk(tglP2)),
+                    tips:['Dosis: Urea ⅔ sisa + Phonska ¼ total per ha',
+                          'Cek BWD — jika skala 3+ tahan tambah Urea',
+                          'Pemupukan terpenting untuk jumlah anakan produktif']
+                },
+                {
+                    id:'p3', nama:'Pemupukan Tahap III (Susulan II)', ikon:'🧪',
+                    deskripsi:'Phonska III ± Urea III — menjelang bunting',
+                    tglMulai:tglP3, tglSelesai:tambahHari(tglP3,2),
+                    risiko:risikoPupuk(sk(tglP3)),
+                    tips:['Dosis: Phonska ¼ sisa ± Urea sesuai BWD skala 1–2',
+                          'BWD skala 4–5 → SKIP Urea tahap ini',
+                          'Tambahkan pupuk mikro (Silikat/ZnSO₄) jika tersedia']
+                },
+                {
+                    id:'i2', nama:'Penyemprotan Insektisida II', ikon:'💊',
+                    deskripsi:'Walang Sangit & Beluk fase generatif',
+                    tglMulai:tglIL, tglSelesai:tambahHari(tglIL,2),
+                    risiko:risikoInsektisida(sk(tglIL), hariFaseBulan(tglIL)),
+                    tips:['Target utama: Walang Sangit saat malai keluar',
+                          'Semprot pagi hari saat serangga masih di tanaman',
+                          'Gunakan Malathion atau Deltametrin',
+                          'Tambahkan fungisida jika ada gejala Hawar Pelepah']
+                },
+                {
+                    id:'fung', nama:'Penyemprotan Fungisida (Blast)', ikon:'🍄',
+                    deskripsi:'Preventif Blast Leher Malai saat bunting kritis',
+                    tglMulai:tglFung, tglSelesai:tambahHari(tglFung,2),
+                    risiko:risikoFungisida(sk(tglFung)),
+                    tips:['Semprot 5–7 hari SEBELUM atau SAAT keluar malai',
+                          'Bahan aktif: Tricyclazole (0.5 l/ha) atau Isoprothiolane (1–1.5 l/ha)',
+                          'Ulangi 14 hari kemudian jika cuaca masih lembap']
+                },
+                {
+                    id:'panen', nama:'Panen', ikon:'🌟',
+                    deskripsi:'Pemotongan saat kadar air gabah 20–25%',
+                    tglMulai:tglPanen, tglSelesai:tambahHari(tglPanen,5),
+                    risiko:risikoPanen(sk(tglPanen)),
+                    tips:['Panen saat 90–95% gabah kuning keemasan',
+                          'Kadar air ideal saat potong: 20–25%, keringkan ke 14%',
+                          'Pesan combine harvester 14 hari sebelum taksiran panen',
+                          'Jual ke penggilingan dengan timbangan bersertifikat']
+                }
+            ];
+
+            window._jmdDataKegiatan = { tglTanam:tglTanam, varietas:varietas, kegiatan:kegiatan };
+
+            // ── 7. Analisis OPT ───────────────────────────────────────────────
+            var risikoOPTList = analisisOPT(cuacaData.suhu, cuacaData.kelembapan, cuacaData.hujanHarian);
+
+            // ── 8. Render HTML output ──────────────────────────────────────────
+            var kartuHTML = kegiatan.map(function (k, i) { return renderKartu(k, i + 1); }).join('');
+
+            var optHTML = risikoOPTList.map(function (r) {
+                var ikon = r.warna === '#ef4444' ? '🚨' : r.warna === '#f59e0b' ? '⚠️' : '✅';
+                return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;' +
+                       'border-bottom:0.5px solid rgba(255,255,255,0.06);">' +
+                    '<div style="font-size:18px;padding-top:1px;">' + ikon + '</div>' +
+                    '<div>' +
+                        '<div style="font-size:13px;font-weight:600;color:#fff;">' + r.nama + '</div>' +
+                        '<div style="font-size:11px;font-weight:700;color:' + r.warna + ';margin:2px 0;">' + r.level + '</div>' +
+                        '<div style="font-size:12px;color:#94a3b8;">' + r.tips + '</div>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+
+            // Proyeksi skor 9 bulan
+            var proyHTML = rek.proyeksi.map(function (p) {
+                var barW  = p.skor + '%';
+                var warna = p.skor > 68 ? '#3b82f6' : p.skor < 32 ? '#ef4444' : '#10b981';
+                var label = p.skor > 68 ? 'Basah' : p.skor < 32 ? 'Kering' : 'Normal';
+                return '<div style="margin-bottom:7px;">' +
+                    '<div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;margin-bottom:3px;">' +
+                        '<span>' + p.namaBln + '</span>' +
+                        '<span style="color:' + warna + ';font-weight:600;">' + label + ' (' + p.skor + ')</span>' +
+                    '</div>' +
+                    '<div style="background:rgba(255,255,255,0.06);height:6px;border-radius:3px;overflow:hidden;">' +
+                        '<div style="width:' + barW + ';height:100%;background:' + warna + ';transition:width 0.5s;"></div>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+
+            teksEl.innerHTML =
+                // ── Ringkasan analisis ───────────────────────────────────────
+                '<div style="background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);' +
+                'border-radius:14px;padding:14px 16px;margin-bottom:16px;">' +
+                    '<div style="font-size:11px;color:' + WARNA + ';font-weight:700;letter-spacing:0.5px;' +
+                    'text-transform:uppercase;margin-bottom:10px;">✅ Analisis Otomatis Selesai</div>' +
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
+                        '<div><span style="color:#64748b;">Koordinat GPS</span><br>' +
+                            '<span style="font-weight:600;color:#fff;">' + lat.toFixed(4) + ', ' + lon.toFixed(4) + '</span></div>' +
+                        '<div><span style="color:#64748b;">Pola Iklim</span><br>' +
+                            '<span style="font-weight:600;color:#fff;">' + polaInfo.label + '</span></div>' +
+                        '<div><span style="color:#64748b;">ZOM/Data CH</span><br>' +
+                            '<span style="font-weight:600;color:#fff;">' + zonaInfo.nama +
+                            (zonaInfo.jarak ? ' (' + zonaInfo.jarak + ' km)' : '') + '</span></div>' +
+                        '<div><span style="color:#64748b;">Sumber Data CH</span><br>' +
+                            '<span style="font-weight:600;color:#fff;">' + (zonaInfo.sumber || 'ZOM BMKG') + '</span></div>' +
+                        '<div><span style="color:#64748b;">ENSO / IOD</span><br>' +
+                            '<span style="font-weight:600;color:#fff;">' +
+                            (ensoData.status || 'Netral') + ' / ' + (iodData.status || 'Netral') + '</span></div>' +
+                        '<div><span style="color:#64748b;">Musim</span><br>' +
+                            '<span style="font-weight:600;color:#fff;">' + rek.musim + '</span></div>' +
+                        '<div style="grid-column:1/-1;">' +
+                            '<span style="color:#64748b;">Rekomendasi Tanam</span><br>' +
+                            '<span style="font-weight:700;font-size:15px;color:#10b981;">' + fmtPanjang(tglTanam) + '</span>' +
+                        '</div>' +
+                        '<div style="grid-column:1/-1;">' +
+                            '<span style="color:#64748b;">Rekomendasi Varietas</span><br>' +
+                            '<span style="font-weight:600;color:#10b981;">' + rek.labelVarietas + '</span>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+
+                // ── Dasar keputusan ──────────────────────────────────────────
+                '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);' +
+                'border-radius:12px;padding:12px 14px;margin-bottom:16px;">' +
+                    '<div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;' +
+                    'letter-spacing:0.5px;margin-bottom:8px;">📋 Dasar Keputusan Sistem</div>' +
+                    '<div style="font-size:13px;color:#cbd5e1;line-height:1.75;">' +
+                        '• ' + rek.konteks + '<br>' +
+                        (rek.warningIklim ? '• ' + rek.warningIklim + '<br>' : '') +
+                        '• ' + rek.alasanVarietas + '<br>' +
+                        '• Cuaca lokal: 🌡️ ' + cuacaData.suhu + '°C | 💧 ' + cuacaData.kelembapan +
+                            '% | 💨 ' + cuacaData.angin + ' km/jam | 🌧️ ' + cuacaData.hujanHarian + ' mm/jam<br>' +
+                        '• Skor kelembapan bulan tanam: <strong style="color:#10b981;">' +
+                            rek.skorBulanTanam + '/100</strong> (' + rek.namaBulanTanam + ')' +
+                    '</div>' +
+                '</div>' +
+
+                // ── Proyeksi kelembapan 9 bulan ──────────────────────────────
+                '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);' +
+                'border-radius:12px;padding:12px 14px;margin-bottom:16px;">' +
+                    '<div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;' +
+                    'letter-spacing:0.5px;margin-bottom:10px;">📊 Proyeksi Kelembapan 9 Bulan ke Depan</div>' +
+                    proyHTML +
+                    '<div style="font-size:10px;color:#475569;margin-top:6px;">' +
+                        'Normal=30–72 | Basah>72 | Kering&lt;30 — dihitung dari ZOM+ENSO+IOD+bobot pola ' + pola +
+                    '</div>' +
+                '</div>' +
+
+                // ── Peringatan OPT ───────────────────────────────────────────
+                '<div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.18);' +
+                'border-radius:14px;padding:14px;margin-bottom:16px;">' +
+                    '<div style="font-size:11px;color:#ef4444;font-weight:700;text-transform:uppercase;' +
+                    'letter-spacing:0.5px;margin-bottom:10px;">🦟 Peringatan Dini Hama & Penyakit (Kondisi Saat Ini)</div>' +
+                    optHTML +
+                '</div>' +
+
+                // ── Jadwal 12 kegiatan ───────────────────────────────────────
+                '<div style="font-size:12px;color:#64748b;margin-bottom:12px;">' +
+                    '12 kegiatan direkomendasikan — ketuk kartu untuk detail & tips lapangan.' +
+                '</div>' +
+                kartuHTML +
+
+                // ── Disclaimer ───────────────────────────────────────────────
+                '<div style="margin-top:14px;background:rgba(100,116,139,0.1);border-radius:12px;' +
+                'padding:10px 12px;font-size:11px;color:#64748b;line-height:1.6;' +
+                'border:1px solid rgba(255,255,255,0.04);">' +
+                    '⚠️ Rekomendasi dihasilkan otomatis berbasis data digital. Sesuaikan dengan kondisi ' +
+                    'lapangan, ketersediaan air irigasi, dan hasil pengamatan PHT mingguan. ' +
+                    'Sumber: NOAA ENSO/IOD · ZOM BMKG Nasional · Open-Meteo ERA5 · Siklus Sinodis Bulan · BB Padi (2019).' +
+                '</div>' +
+
+                // ── Tombol aksi ──────────────────────────────────────────────
+                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;">' +
+                    '<button onclick="window._jmdRefresh()" style="padding:13px;background:rgba(6,182,212,0.15);' +
+                        'color:' + WARNA + ';border:1px solid ' + WARNA + ';border-radius:14px;' +
+                        'font-size:13px;font-weight:600;cursor:pointer;">🔄 Perbarui Data</button>' +
+                    '<button onclick="window._jmdKirimWA()" style="padding:13px;background:#25D366;' +
+                        'color:#fff;border:none;border-radius:14px;font-size:13px;font-weight:600;cursor:pointer;">' +
+                        '📲 Kirim ke WA</button>' +
+                '</div>';
+
+        } catch (err) {
+            console.error('[JadwalOto]', err);
+            teksEl.innerHTML =
+                '<div style="padding:12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);' +
+                'border-radius:12px;color:#fca5a5;font-size:13px;">' +
+                    '❌ Gagal menganalisis: ' + (err.message || 'Error tidak diketahui') + '<br><br>' +
+                    '<small style="color:#64748b;">Pastikan GPS aktif dan koneksi internet tersedia. ' +
+                    'Coba tekan "Perbarui Data" beberapa saat lagi.</small>' +
+                '</div>';
+        } finally {
+            btn.disabled      = false;
+            btn.style.opacity = '1';
+        }
+    }
+
+    // =========================================================================
+    //  EXPORT WHATSAPP
+    // =========================================================================
+    window._jmdKirimWA = function () {
+        var d = window._jmdDataKegiatan;
+        if (!d) return;
+        var baris = ['*KALENDER KEGIATAN TANI OTOMATIS — PPL MILENIAL*\n'];
+        d.kegiatan.forEach(function (k, i) {
             baris.push((i+1) + '. *' + k.ikon + ' ' + k.nama.toUpperCase() + '*');
-            baris.push('   Mulai : ' + formatTglID(k.tglMulai));
-            baris.push('   Selesai: ' + formatTglPendek(k.tglSelesai));
+            baris.push('   Mulai  : ' + fmtPanjang(k.tglMulai));
+            baris.push('   Selesai: ' + fmtPendek(k.tglSelesai));
             baris.push('   Status : ' + k.risiko.level);
             baris.push('   Catatan: ' + k.risiko.catatan);
             baris.push('');
         });
+        baris.push('_Dihasilkan otomatis via GPS + ENSO/IOD + ZOM BMKG Nasional + Open-Meteo_');
+        window.open('https://wa.me/?text=' + encodeURIComponent(baris.join('\n')), '_blank');
+    };
 
-        baris.push('_Dibuat oleh Smart Farming PPL Milenial Wajo_');
-        baris.push('_Sumber: NOAA ENSO/IOD + ZOM BMKG + Siklus Bulan_');
-
-        var teks = baris.join('\n');
-        window.open('https://wa.me/?text=' + encodeURIComponent(teks), '_blank');
+    window._jmdRefresh = function () {
+        var el = document.getElementById('hasilJadwalOtomatis');
+        if (el) el.style.display = 'none';
+        jalankanAnalisisOtomatis();
     };
 
     // =========================================================================
-    //  FUNGSI UTAMA: BUAT JADWAL
+    //  INJECT TAB
     // =========================================================================
-
-    async function buatJadwalTanam() {
-        var kontainerTeks = document.getElementById('teksAnalisisFase');
-        var hasilEl       = document.getElementById('hasilProyeksiIklim');
-        if (!kontainerTeks || !hasilEl) return;
-
-        // Baca input dari tab kalender
-        var tglInput = document.getElementById('inputTglTanam');
-        var varInput = document.getElementById('umurVarietasKalender');
-
-        if (!tglInput || !tglInput.value) {
-            var msgDiv = document.createElement('div');
-            msgDiv.style.cssText = 'padding: 12px; background: var(--color-background-danger); border-radius: var(--border-radius-md); color: var(--color-text-danger); font-size: 13px; margin-bottom: 12px;';
-            msgDiv.textContent = 'Silakan isi tanggal rencana tanam terlebih dahulu.';
-            kontainerTeks.innerHTML = '';
-            kontainerTeks.appendChild(msgDiv);
-            return;
-        }
-
-        var tglTanam     = new Date(tglInput.value);
-        var umurVarietas = (varInput && varInput.value) || 'sedang';
-
-        // Tampilkan loading
-        hasilEl.style.display = 'block';
-        kontainerTeks.innerHTML =
-            '<div style="text-align:center; padding: 24px 0; color: var(--color-text-secondary); font-size: 14px;">' +
-            '<i class="ti ti-loader" style="font-size:24px; display:block; margin-bottom:8px; animation: spin 1s linear infinite;"></i>' +
-            'Mengambil data iklim & menghitung jadwal optimal...' +
-            '</div>';
-
-        try {
-            // Ambil data iklim
-            var lat = -4.0, lon = 120.0;
-
-            // Coba baca koordinat dari cache aplikasi
-            if (window._lokasiKalender) {
-                lat = window._lokasiKalender.lat;
-                lon = window._lokasiKalender.lon;
-            } else if (window._koordinatTerakhir) {
-                lat = window._koordinatTerakhir.coords.latitude;
-                lon = window._koordinatTerakhir.coords.longitude;
-            } else {
-                // Coba GPS cepat (non-blocking)
-                try {
-                    var pos = await new Promise(function(res, rej) {
-                        navigator.geolocation.getCurrentPosition(res, rej, {
-                            enableHighAccuracy: false, timeout: 5000, maximumAge: 300000
-                        });
-                    });
-                    lat = pos.coords.latitude;
-                    lon = pos.coords.longitude;
-                    window._lokasiKalender = { lat: lat, lon: lon };
-                } catch(gpsErr) {
-                    console.warn('[KalenderTanam] GPS gagal, pakai koordinat default Wajo');
-                }
-            }
-
-            // Paket fetch paralel
-            var [ensoData, iodData, zonaInfo] = await Promise.all([
-                (typeof window.getENSOAnomaly === 'function')
-                    ? window.getENSOAnomaly()
-                    : Promise.resolve({ latestAnomaly: 0, status: 'Netral' }),
-                (typeof window.getIODAnomaly === 'function')
-                    ? window.getIODAnomaly()
-                    : Promise.resolve({ latestAnomaly: 0, status: 'Netral' }),
-                getBaselineZOM(lat, lon)
-            ]);
-
-            var ensoVal = ensoData.latestAnomaly || 0;
-            var iodVal  = iodData.latestAnomaly  || 0;
-
-            // Hitung skor kelembapan tiap bulan
-            var skorBulan = zonaInfo.data.map(function(baseline, idx) {
-                return skorKelembapanBulan(idx, zonaInfo.data, ensoVal, iodVal, lat, lon);
-            });
-
-            // Hitung jadwal
-            var jadwal = hitungJadwalKegiatan(tglTanam, umurVarietas, skorBulan, ensoVal, iodVal);
-            window._ktDataJadwal = jadwal;
-
-            // Render
-            var html = renderJadwalLengkap(
-                jadwal,
-                zonaInfo.nama,
-                ensoData.status || 'Netral',
-                iodData.status  || 'Netral'
-            );
-
-            kontainerTeks.innerHTML = html;
-            hasilEl.style.display   = 'block';
-
-            // Sembunyikan grafik risiko agar tidak menumpuk
-            var grafik = hasilEl.querySelector('div[style*="height: 260px"]');
-            if (grafik) grafik.style.display = 'none';
-
-        } catch (err) {
-            console.error('[KalenderTanam]', err);
-            kontainerTeks.innerHTML =
-                '<div style="padding: 12px; background: var(--color-background-danger); border-radius: var(--border-radius-md); color: var(--color-text-danger); font-size: 13px;">' +
-                'Gagal membuat jadwal: ' + (err.message || 'Error tidak diketahui') +
-                '</div>';
-        }
-    }
-
-    // =========================================================================
-    //  INJEKSI TOMBOL KE TAB KALENDER
-    // =========================================================================
-
-    function injeksiTombolKalender() {
-        var boxKalender = document.getElementById('boxKalender');
-        if (!boxKalender) return;
-
-        // Cek apakah tombol sudah ada
-        if (document.getElementById('btnJadwalTanam')) return;
-
-        // Sisipkan tombol setelah tombol analisis iklim yang sudah ada
-        var tombolAnalisis = boxKalender.querySelector('button[onclick*="prosesAnalisisKalender"]');
-        if (!tombolAnalisis) {
-            // Fallback: append ke akhir boxKalender
-            var btn = document.createElement('button');
-            btn.id        = 'btnJadwalTanam';
-            btn.className = 'btn-main';
-            btn.style.cssText = 'margin-top: 10px; background: #10b981; color: #fff;';
-            btn.textContent = '📅 BUAT JADWAL KEGIATAN TANI';
-            btn.onclick     = buatJadwalTanam;
-            boxKalender.appendChild(btn);
+    function injeksiTab() {
+        if (document.getElementById('tabJadwalTanam')) return;
+        var cont = document.querySelector('.tab-container');
+        if (!cont) return;
+        var btn       = document.createElement('button');
+        btn.className = 'tab-btn';
+        btn.id        = 'tabJadwalTanam';
+        btn.textContent = 'JADWAL TANAM';
+        btn.onclick   = function () { window.switchMode('jadwaltanam'); };
+        var tabKal = document.getElementById('tabKalender');
+        if (tabKal && tabKal.parentNode) {
+            tabKal.parentNode.insertBefore(btn, tabKal.nextSibling);
         } else {
-            var divTombolBaru = document.createElement('div');
-            divTombolBaru.style.marginTop = '10px';
-
-            var btnJadwal = document.createElement('button');
-            btnJadwal.id        = 'btnJadwalTanam';
-            btnJadwal.className = 'btn-main';
-            btnJadwal.style.cssText = 'background: #10b981; color: #fff;';
-            btnJadwal.textContent   = '📅 BUAT JADWAL KEGIATAN TANI';
-            btnJadwal.onclick       = buatJadwalTanam;
-
-            divTombolBaru.appendChild(btnJadwal);
-            tombolAnalisis.parentNode.insertBefore(divTombolBaru, tombolAnalisis.nextSibling);
-        }
-
-        // Injeksi CSS animasi spin jika belum ada
-        if (!document.getElementById('ktAnimStyle')) {
-            var style = document.createElement('style');
-            style.id   = 'ktAnimStyle';
-            style.textContent =
-                '@keyframes spin { 100% { transform: rotate(360deg); } }' +
-                '#btnJadwalTanam:hover { opacity: 0.9; }' +
-                '#btnJadwalTanam:active { transform: scale(0.99); }';
-            document.head.appendChild(style);
+            cont.appendChild(btn);
         }
     }
 
     // =========================================================================
-    //  OVERRIDE switchMode UNTUK INJEKSI TOMBOL SAAT MASUK TAB KALENDER
+    //  INJECT BOX KONTEN
     // =========================================================================
-
-    var _switchModeAsliKT = window.switchMode;
-
-    window.switchMode = function(mode) {
-        if (typeof _switchModeAsliKT === 'function') {
-            _switchModeAsliKT.apply(this, arguments);
+    function injeksiBox() {
+        if (document.getElementById('boxJadwalTanam')) return;
+        var card = document.querySelector('.card');
+        if (!card) return;
+        var box        = document.createElement('div');
+        box.id         = 'boxJadwalTanam';
+        box.style.display = 'none';
+        box.innerHTML =
+            '<div style="background:rgba(6,182,212,0.07);border:1px solid rgba(6,182,212,0.25);' +
+            'border-left:4px solid ' + WARNA + ';border-radius:16px;padding:14px 16px;margin-bottom:18px;">' +
+                '<strong style="color:' + WARNA + ';display:block;margin-bottom:6px;">' +
+                    '📅 Kalender Kegiatan Tani — Rekomendasi Otomatis Nasional</strong>' +
+                '<span style="font-size:0.8rem;color:#cbd5e1;line-height:1.6;">' +
+                    'Sistem mendeteksi GPS, pola iklim wilayah, ENSO/IOD, ZOM BMKG, dan cuaca real-time ' +
+                    'untuk merekomendasikan waktu tanam terbaik dan jadwal 12 kegiatan tani. ' +
+                    '<strong style="color:' + WARNA + ';">Tidak diperlukan input manual.</strong>' +
+                '</span>' +
+            '</div>' +
+            '<button id="btnAnalisisOtomatis" class="btn-main" style="' +
+                'background:linear-gradient(135deg,' + WARNA + ',' + WARNA2 + ');' +
+                'color:#fff;font-weight:700;letter-spacing:0.5px;margin-bottom:0;">' +
+                '🛰️ ANALISIS OTOMATIS — GPS + IKLIM + CUACA' +
+            '</button>' +
+            '<div id="hasilJadwalOtomatis" style="margin-top:16px;display:none;">' +
+                '<div id="teksJadwalOtomatis"></div>' +
+            '</div>';
+        var boxKal = document.getElementById('boxKalender');
+        if (boxKal && boxKal.parentNode) {
+            boxKal.parentNode.insertBefore(box, boxKal.nextSibling);
+        } else {
+            card.appendChild(box);
         }
-        if (mode === 'kalender') {
-            // Tunda sedikit agar DOM tabkalender sudah tampil
-            setTimeout(injeksiTombolKalender, 150);
-        }
-    };
-
-    // Juga coba injeksi segera jika pengguna sudah di tab kalender
-    setTimeout(function() {
-        var boxKalender = document.getElementById('boxKalender');
-        if (boxKalender && boxKalender.style.display !== 'none') {
-            injeksiTombolKalender();
-        }
-    }, 500);
+        document.getElementById('btnAnalisisOtomatis')
+            .addEventListener('click', jalankanAnalisisOtomatis);
+    }
 
     // =========================================================================
-    //  LOG
+    //  PATCH switchMode
     // =========================================================================
+    function patchSwitchMode() {
+        var _asli = window.switchMode;
+        window.switchMode = function (mode) {
+            var boxJadwal = document.getElementById('boxJadwalTanam');
+            if (mode === 'jadwaltanam') {
+                document.querySelectorAll('.card > div[id^="box"]').forEach(function (b) {
+                    b.style.display = 'none';
+                });
+                ['btnCamera','scanWindow','btnAnalisis','result'].forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                });
+                if (boxJadwal) boxJadwal.style.display = 'block';
+                var mt = document.getElementById('modeTitle');
+                if (mt) { mt.innerText = '📅 Jadwal Kegiatan Tani'; mt.style.color = WARNA; }
+                var sub = document.getElementById('tabSubtitleDisplay');
+                if (sub) sub.style.display = 'none';
+                document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+                var tj = document.getElementById('tabJadwalTanam');
+                if (tj) tj.classList.add('active');
+                return;
+            }
+            if (boxJadwal) boxJadwal.style.display = 'none';
+            if (typeof _asli === 'function') _asli.apply(this, arguments);
+        };
+    }
 
-    console.log(
-        '%c✅ patch_kalender_tanam_cerdas.js aktif — Jadwal Kegiatan Berbasis Iklim & Fase Bulan',
-        'color: #10b981; font-weight: bold;'
-    );
+    // =========================================================================
+    //  CSS
+    // =========================================================================
+    function injeksiCSS() {
+        if (document.getElementById('jmdCSS')) return;
+        var s = document.createElement('style');
+        s.id = 'jmdCSS';
+        s.textContent =
+            '#tabJadwalTanam.active{background:' + WARNA + '!important;color:#fff!important;}' +
+            '#tabJadwalTanam:not(.active){color:#708099;}' +
+            '#btnAnalisisOtomatis:hover{opacity:0.9;}' +
+            '#btnAnalisisOtomatis:active{transform:scale(0.99);}' +
+            '@keyframes jmdSpin{to{transform:rotate(360deg)}}' +
+            '.jmd-spin{animation:jmdSpin 1s linear infinite;display:inline-block;}' +
+            '.jmd-card{background:var(--color-background-primary,#1b273a);' +
+                'border:0.5px solid rgba(255,255,255,0.08);border-radius:16px;' +
+                'margin-bottom:10px;overflow:hidden;}' +
+            '.jmd-card-header{padding:12px 14px;display:flex;align-items:flex-start;gap:12px;cursor:pointer;}' +
+            '.jmd-detail{display:none;padding:0 14px 14px 14px;border-top:0.5px solid rgba(255,255,255,0.06);}' +
+            'body.light-mode #boxJadwalTanam{background:#fff;color:#0f172a;}' +
+            'body.light-mode .jmd-card{background:#f8fafc;border-color:#e2e8f0;}' +
+            'body.light-mode .jmd-detail{background:#fff;}';
+        document.head.appendChild(s);
+    }
+
+    // =========================================================================
+    //  HAPUS TOMBOL LAMA
+    // =========================================================================
+    function hapusTombolLama() {
+        var btn = document.getElementById('btnJadwalTanam');
+        if (!btn) return;
+        var w = btn.closest('div[style*="margin-top"]') || btn;
+        if (w && w !== btn && w.parentNode) w.parentNode.removeChild(w);
+        else if (btn.parentNode) btn.parentNode.removeChild(btn);
+    }
+
+    // =========================================================================
+    //  INIT
+    // =========================================================================
+    function init() {
+        injeksiCSS();
+        injeksiTab();
+        injeksiBox();
+        patchSwitchMode();
+        setTimeout(hapusTombolLama, 300);
+        setTimeout(hapusTombolLama, 800);
+        console.log(
+            '%c✅ patch_kalender_menu_mandiri.js v2.1 — Nasional, Zero Input, Pola Iklim Adaptif',
+            'color:#06b6d4;font-weight:bold;'
+        );
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 
 })();
