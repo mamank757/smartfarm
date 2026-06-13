@@ -1,7 +1,7 @@
 /**
  * ============================================================
  * PATCH: patch_jadwal_tanam_otomatis.js
- * Versi: 4.0 — Rekomendasi Otomatis (FIX KEBOCORAN KAMERA)
+ * Versi: 5.0 — Karantina CSS Mutlak (BEBAS KAMERA 100%)
  * ============================================================
  */
 (function () {
@@ -16,8 +16,34 @@
         'Juli','Agustus','September','Oktober','November','Desember'
     ];
 
-    // --- 1. INISIALISASI TAMPILAN ---
+    // =========================================================================
+    //  0. INJEKSI CSS KARANTINA (PEMBUNUH KAMERA MUTLAK)
+    // =========================================================================
+    function pasangCSSKarantina() {
+        if (!document.getElementById('cssKarantinaJadwal')) {
+            var style = document.createElement('style');
+            style.id = 'cssKarantinaJadwal';
+            style.innerHTML = `
+                /* Saat mode jadwal aktif, SEMUA isi dari kotak utama disembunyikan paksa */
+                body.mode-jadwal .card > * {
+                    display: none !important;
+                }
+                /* HANYA judul dan kotak jadwal yang diizinkan tampil */
+                body.mode-jadwal .card > #modeTitle,
+                body.mode-jadwal .card > #boxJadwalOtomatis {
+                    display: block !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+
+    // =========================================================================
+    //  1. INISIALISASI TAMPILAN
+    // =========================================================================
     function inisialisasiUI() {
+        pasangCSSKarantina();
+
         var tabContainer = document.querySelector('.tab-container');
         if (tabContainer && !document.getElementById('tabJadwalOtomatis')) {
             var btnTab = document.createElement('button');
@@ -32,7 +58,7 @@
         if (card && !document.getElementById('boxJadwalOtomatis')) {
             var box = document.createElement('div');
             box.id = 'boxJadwalOtomatis';
-            box.style.display = 'none';
+            box.style.display = 'none'; // Disembunyikan secara default
             box.innerHTML = `
                 <div class="info-box" style="border-left: 4px solid ${WARNA_TEMA}; background: rgba(14,165,233,0.06); padding: 14px; margin-bottom: 16px; border-radius: 8px;">
                     <strong style="color: ${WARNA_TEMA}; display: block; margin-bottom: 4px; font-size: 15px;">🤖 Sistem Rekomendasi Pintar Petani</strong>
@@ -49,49 +75,38 @@
         }
     }
 
-    // --- 2. OVERRIDE SWITCHMODE (DENGAN PEMBUNUH KAMERA GLOBAL) ---
+    // =========================================================================
+    //  2. OVERRIDE SWITCHMODE (KONTROL CSS BODY)
+    // =========================================================================
     var switchModeAsli = window.switchMode;
     window.switchMode = function(mode) {
+        // Biarkan sistem bawaan berjalan terlebih dahulu
         if (typeof switchModeAsli === 'function') {
             switchModeAsli.apply(this, arguments);
         }
 
-        var box = document.getElementById('boxJadwalOtomatis');
         var tab = document.getElementById('tabJadwalOtomatis');
         var modeTitle = document.getElementById('modeTitle');
 
-        if (box && tab) {
-            if (mode === 'jadwalotomatis') {
-                // Sembunyikan semua box tab standar
-                Array.from(document.querySelector('.card').children).forEach(function(el) {
-                    if (el.id && el.id.startsWith('box')) el.style.display = 'none';
-                });
-                
-                // FIX UTAMA: Sembunyikan paksa elemen kamera dan fitur global dari index.html
-                var elemenBocor = [
-                    'btnCamera', 'scanWindow', 'cameraWarning', 
-                    'btnAnalisis', 'result', 'loader', 'formParameterLahan',
-                    'tabSubtitleDisplay'
-                ];
-                elemenBocor.forEach(function(id) {
-                    var el = document.getElementById(id);
-                    if (el) el.style.display = 'none';
-                });
-
-                box.style.display = 'block';
-                tab.classList.add('active');
-                if (modeTitle) modeTitle.innerText = "Rekomendasi Jadwal Kegiatan Tani";
-                
-                // Langsung jalan tanpa input manual
-                prosesKalkulasiOtomatis();
-            } else {
-                box.style.display = 'none';
-                tab.classList.remove('active');
-            }
+        if (mode === 'jadwalotomatis') {
+            // AKTIFKAN KARANTINA: Kamera akan mati seutuhnya!
+            document.body.classList.add('mode-jadwal');
+            
+            if (tab) tab.classList.add('active');
+            if (modeTitle) modeTitle.innerText = "Rekomendasi Jadwal Kegiatan Tani";
+            
+            // Langsung eksekusi pencarian rute tanam otomatis
+            prosesKalkulasiOtomatis();
+        } else {
+            // MATIKAN KARANTINA: Jika pindah ke tab Daun/Hama, kamera bisa menyala lagi
+            document.body.classList.remove('mode-jadwal');
+            if (tab) tab.classList.remove('active');
         }
     };
 
-    // --- 3. PROSES REKOMENDASI OTOMATIS GPS & IKLIM ---
+    // =========================================================================
+    //  3. PROSES REKOMENDASI OTOMATIS (GPS & IKLIM)
+    // =========================================================================
     async function prosesKalkulasiOtomatis() {
         var loading = document.getElementById('loadingJadwalOtomatis');
         var konten = document.getElementById('kontenJadwalOtomatis');
@@ -101,19 +116,20 @@
         konten.innerHTML = '';
 
         try {
-            var lat = -4.0, lon = 120.0;
+            var lat = -4.0, lon = 120.0; // Default fallback
             if (window._koordinatTerakhir) {
                 lat = window._koordinatTerakhir.coords.latitude;
                 lon = window._koordinatTerakhir.coords.longitude;
             } else {
                 try {
+                    // Murni menarik data LOKASI, BUKAN KAMERA
                     var pos = await new Promise(function(res, rej) {
                         navigator.geolocation.getCurrentPosition(res, rej, { timeout: 4000 });
                     });
                     lat = pos.coords.latitude;
                     lon = pos.coords.longitude;
                 } catch (e) {
-                    console.warn('GPS delayed.');
+                    console.warn('GPS delay.');
                 }
             }
 
@@ -125,14 +141,14 @@
             skorIklim = Math.max(0, Math.min(100, skorIklim));
 
             var varietasTerpilih = 'sedang';
-            var narasiVarietas = 'Kondisi curah hujan terpantau normal. Sistem merekomendasikan penggunaan *Varietas Sedang* (95-115 HST) seperti Ciherang atau Inpari.';
+            var narasiVarietas = 'Kondisi curah hujan normal. Sistem merekomendasikan penggunaan *Varietas Sedang* (95-115 HST) seperti Ciherang atau Inpari.';
 
             if (skorIklim < 40) {
                 varietasTerpilih = 'genjah';
                 narasiVarietas = '⚠️ **PERINGATAN KERING:** Parameter cuaca menunjukkan kecenderungan minim air/kemarau. Sistem otomatis memilih **Varietas Genjah (< 95 HST)** seperti Cakrabuana atau M70D untuk menghemat fase pengairan.';
             } else if (skorIklim > 78) {
                 varietasTerpilih = 'dalam';
-                narasiVarietas = '🌧️ **PERINGATAN GENANGAN:** Curah hujan terdeteksi tinggi. Sistem otomatis merekomendasikan **Varietas Tahan Genangan / Umur Dalam** guna meminimalkan kerusakan tanaman akibat luapan air sawah.';
+                narasiVarietas = '🌧️ **PERINGATAN GENANGAN:** Curah hujan terdeteksi tinggi. Sistem merekomendasikan **Varietas Tahan Genangan / Umur Dalam** guna meminimalkan kerusakan tanaman akibat luapan air sawah.';
             }
 
             var htmlHasil = produksiHTMLJadwal(tglHariIni, varietasTerpilih, narasiVarietas, skorIklim, lat, lon);
@@ -146,7 +162,9 @@
         }
     }
 
-    // --- 4. ALGORITMA SIKLUS HAMA & TIMING ---
+    // =========================================================================
+    //  4. ALGORITMA SIKLUS HAMA & TIMING
+    // =========================================================================
     function hariFaseBulan(tanggal) {
         var selisih = (tanggal.getTime() - EPOCH_BULAN_MATI.getTime()) / (1000 * 60 * 60 * 24);
         var hari = selisih % SIKLUS_SINODIS;
@@ -169,39 +187,39 @@
         var tglInsektisida = tambahHari(tglTanam, konfigHST.insektisida);
         var faseBulanInsekt = hariFaseBulan(tglInsektisida);
         var tipsPHT = (faseBulanInsekt > 12.5 && faseBulanInsekt < 16.5) ?
-            "🛑 **Waspada Ledakan Hama:** Jatuh pada fase Bulan Purnama. Ngengat Penggerek Batang sangat aktif bertelur malam hari. Gunakan insektisida sistemik dan pasang lampu perangkap massal!" :
-            "✅ **Fase Aman Hama Terbang:** Kondisi bulan gelap, aktivitas penerbangan imago malam hari rendah. Fokus pemantauan bawah batang rumpun.";
+            "🛑 **Waspada Ledakan Hama:** Fase Bulan Purnama! Ngengat Penggerek Batang sangat aktif bertelur malam hari. Gunakan insektisida sistemik dan pasang lampu perangkap massal!" :
+            "✅ **Fase Aman Hama Terbang:** Kondisi bulan redup/gelap, aktivitas ngengat malam hari terpantau rendah. Fokus pantau bagian bawah rumpun padi.";
 
         var susunanLangkah = [
-            { ikon: '🚜', nama: 'Pengolahan Tanah Maksimal', tgl: tambahHari(tglTanam, -14), detail: 'Lakukan pembajakan untuk mengubur singgang, memutus siklus hidup wereng.' },
-            { ikon: '🐀', nama: 'Gropyokan & Umpan Tikus', tgl: tambahHari(tglTanam, -7), detail: 'Bersihkan semak pematang. Pasang sistem bubu perangkap sebelum penanaman.' },
-            { ikon: '🌾', nama: 'Hari Penanaman Padi', tgl: tglTanam, detail: 'Lakukan penanaman bibit secara serempak. Gunakan jarak tanam teratur (Jajar Legowo).' },
-            { ikon: '🧪', nama: 'Pemupukan Tahap I (Dasar)', tgl: tambahHari(tglTanam, konfigHST.pupuk1), detail: 'Taburkan pupuk Nitrogen (Urea) dan NPK saat kondisi air macak-macak.' },
-            { ikon: '💊', nama: 'Penyemprotan Insektisida (PHT)', tgl: tglInsektisida, detail: tipsPHT },
-            { ikon: '🧪', nama: 'Pemupukan Tahap II (Susulan)', tgl: tambahHari(tglTanam, konfigHST.pupuk2), detail: 'Gunakan alat Bagan Warna Daun (BWD) sebagai indikator dosis untuk anakan.' },
-            { ikon: '🍄', nama: 'Aplikasi Fungisida Preventif', tgl: tambahHari(tglTanam, konfigHST.fungisida), detail: 'Penyemprotan pelindung jamur sebelum padi bunting untuk mencegah potong leher.' },
-            { ikon: '🌟', nama: 'Estimasi Pemanenan Raya', tgl: tambahHari(tglTanam, konfigHST.panen), detail: 'Panen siap dilakukan ketika 90% gabah menguning. Keringkan petakan 7 hari sebelum panen.' }
+            { ikon: '🚜', nama: 'Pengolahan Tanah Maksimal', tgl: tambahHari(tglTanam, -14), detail: 'Lakukan pembajakan untuk mengubur singgang dan memutus siklus hidup hama wereng.' },
+            { ikon: '🐀', nama: 'Gropyokan & Umpan Tikus', tgl: tambahHari(tglTanam, -7), detail: 'Bersihkan semak pematang. Pasang sistem bubu perangkap sebelum air lahan diisi.' },
+            { ikon: '🌾', nama: 'Hari Penanaman Padi', tgl: tglTanam, detail: 'Lakukan penanaman bibit secara serempak dengan jarak tanam Jajar Legowo yang presisi.' },
+            { ikon: '🧪', nama: 'Pemupukan Tahap I (Dasar)', tgl: tambahHari(tglTanam, konfigHST.pupuk1), detail: 'Taburkan pupuk Nitrogen dan NPK saat kondisi air sawah macak-macak/kering tipis.' },
+            { ikon: '💊', nama: 'Penyemprotan Insektisida', tgl: tglInsektisida, detail: tipsPHT },
+            { ikon: '🧪', nama: 'Pemupukan Tahap II', tgl: tambahHari(tglTanam, konfigHST.pupuk2), detail: 'Pemupukan susulan. Gunakan alat Bagan Warna Daun (BWD) untuk menakar dosis pupuk daun.' },
+            { ikon: '🍄', nama: 'Aplikasi Fungisida Preventif', tgl: tambahHari(tglTanam, konfigHST.fungisida), detail: 'Penyemprotan anti-jamur tepat sebelum padi memasuki fase bunting untuk cegah potong leher.' },
+            { ikon: '🌟', nama: 'Estimasi Pemanenan Raya', tgl: tambahHari(tglTanam, konfigHST.panen), detail: 'Panen ketika gabah 90% menguning. Buang air petakan sawah 7 hari sebelum alat panen masuk.' }
         ];
 
         var html = `
             <div style="background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.12); padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; line-height: 1.5;">
-                📌 <strong>Lokasi Koordinat Lahan:</strong> ${lat.toFixed(4)}°, ${lon.toFixed(4)}°<br>
+                📌 <strong>Lokasi Sawah:</strong> ${lat.toFixed(4)}°, ${lon.toFixed(4)}°<br>
                 📊 <strong>Indeks Basah Iklim:</strong> ${skorIklim} / 100<br>
-                💡 <strong>Keputusan Sistem Cerdas:</strong> ${deskripsiSistem}
+                💡 <strong>Sistem Rekomendasi:</strong> ${deskripsiSistem}
             </div>
             <div style="display: flex; flex-direction: column; gap: 12px;">
         `;
 
         susunanLangkah.forEach(function(item, indeks) {
-            var stringTanggal = item.tgl.getDate() + ' ' + NAMA_BULAN[item.tgl.getMonth()] + ' ' + item.tgl.getFullYear();
+            var strTgl = item.tgl.getDate() + ' ' + NAMA_BULAN[item.tgl.getMonth()] + ' ' + item.tgl.getFullYear();
             html += `
                 <div style="background: var(--color-background-secondary, #1e293b); padding: 14px; border-radius: 10px; border-left: 4px solid ${WARNA_TEMA}; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                     <div style="display: flex; gap: 12px; align-items: flex-start;">
                         <div style="font-size: 24px; padding-top: 2px;">${item.ikon}</div>
                         <div style="flex: 1;">
-                            <div style="font-size: 11px; color: ${WARNA_TEMA}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">LANGKAH ${indeks + 1}</div>
+                            <div style="font-size: 11px; color: ${WARNA_TEMA}; font-weight: 700; letter-spacing: 0.5px;">LANGKAH ${indeks + 1}</div>
                             <div style="font-size: 15px; font-weight: 600; color: var(--color-text-primary, #fff); margin: 2px 0;">${item.nama}</div>
-                            <div style="font-size: 13px; color: #10b981; font-weight: 600; margin-bottom: 6px;">📅 ${stringTanggal}</div>
+                            <div style="font-size: 13px; color: #10b981; font-weight: 600; margin-bottom: 6px;">📅 ${strTgl}</div>
                             <div style="font-size: 12.5px; color: var(--color-text-secondary, #94a3b8); line-height: 1.5;">${item.detail}</div>
                         </div>
                     </div>
