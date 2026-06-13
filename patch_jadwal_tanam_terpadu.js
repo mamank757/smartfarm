@@ -1,7 +1,7 @@
 /**
  * ============================================================
  * PATCH: patch_jadwal_tanam_otomatis.js
- * Versi: 7.0 — PURE AGRONOMIC LOGIC (Alam Mendikte Petani)
+ * Versi: 7.1 — PURE AGRONOMIC LOGIC (Revisi Akurasi Jendela Waktu)
  * ============================================================
  */
 (function () {
@@ -111,20 +111,26 @@
 
     function cariTanggalTanamOptimalMurni(varietasTerpilih) {
         var hariIni = new Date();
+        hariIni.setHours(0,0,0,0); // Normalisasi waktu untuk akurasi hitungan hari
         var offsetInsek = { genjah: 20, sedang: 25, dalam: 30 }[varietasTerpilih];
-        var tglTanamSistem = hariIni; // Fallback awal
         
-        // Scan maksimal 1 siklus bulan (30 hari) ke depan dari hari ini.
-        // Cari titik di mana fase penyemprotan insektisida BUKAN jatuh di bulan purnama.
-        for(var i = 0; i <= 30; i++) {
+        var tglTanamSistem = hariIni;
+        var jarakTerdekat = 999;
+        
+        // Memindai 15 hari KEBELAKANG sampai 15 hari KEDEPAN 
+        // untuk mendeteksi apakah masa ideal sebenarnya sudah lewat atau belum.
+        for(var i = -15; i <= 15; i++) {
             var ujiTglTanam = tambahHari(hariIni, i);
             var ujiTglInsek = tambahHari(ujiTglTanam, offsetInsek);
             var faseBulanSaatInsek = hariFaseBulan(ujiTglInsek);
             
             // Bulan gelap / aman adalah fase sebelum 11 atau sesudah 18.
             if (faseBulanSaatInsek <= 11 || faseBulanSaatInsek >= 18) {
-                tglTanamSistem = ujiTglTanam; // Ketemu tanggal paling aman menurut iklim/hama
-                break;
+                // Mencari jadwal yang paling absolut dekat dengan 'hari ini'
+                if (Math.abs(i) < Math.abs(jarakTerdekat)) {
+                    jarakTerdekat = i;
+                    tglTanamSistem = ujiTglTanam;
+                }
             }
         }
         return tglTanamSistem;
@@ -194,20 +200,28 @@
         var tglInsektisida = tambahHari(tglTanam, konfigHST.insektisida);
         var tglOlahLahan = tambahHari(tglTanam, -14);
         var tglGropyokan = tambahHari(tglTanam, -7);
+        
         var hariIni = new Date();
         hariIni.setHours(0,0,0,0);
 
-        // Evaluasi keterlambatan petani
+        // Evaluasi keterlambatan pengolahan lahan
         var peringatanLahan = 'Lakukan pembajakan sedalam 15-20cm untuk memutus siklus wereng.';
         if (tglOlahLahan < hariIni) {
-            var telatHari = Math.round((hariIni - tglOlahLahan) / (1000 * 60 * 60 * 24));
-            peringatanLahan = `🚨 <strong>ANDA TERLAMBAT ${telatHari} HARI!</strong> Segera percepat pengolahan lahan dengan traktor roda empat untuk mengejar ketetapan jadwal tanam dari sistem!`;
+            var telatLahanHari = Math.round((hariIni - tglOlahLahan) / (1000 * 60 * 60 * 24));
+            peringatanLahan = `🚨 <strong>ANDA TERLAMBAT ${telatLahanHari} HARI!</strong> Segera percepat pengolahan lahan dengan traktor untuk mengejar jadwal sistem!`;
+        }
+
+        // Evaluasi keterlambatan TANAM (Fix untuk komplain logika)
+        var peringatanTanam = 'Ketetapan mutlak sistem berdasar fase bulan & iklim. Patuhi tanggal ini.';
+        if (tglTanam < hariIni) {
+            var telatTanamHari = Math.round((hariIni - tglTanam) / (1000 * 60 * 60 * 24));
+            peringatanTanam = `⚠️ <strong>TERLAMBAT TANAM ${telatTanamHari} HARI!</strong> Jendela ideal alam sebenarnya sudah lewat. Percepat penanaman atau risiko hama terbang meningkat.`;
         }
 
         var susunanLangkah = [
             { ikon: '🚜', nama: 'Pengolahan Lahan', tgl: tglOlahLahan, detail: peringatanLahan },
             { ikon: '🐀', nama: 'Gropyokan Tikus Massal', tgl: tglGropyokan, detail: 'Bersihkan semak pematang dan pasang Trap Barrier System (TBS).' },
-            { ikon: '🌾', nama: 'Penanaman Serempak', tgl: tglTanam, detail: 'Ketetapan mutlak sistem berdasar fase bulan & iklim. Patuhi tanggal ini.' },
+            { ikon: '🌾', nama: 'Penanaman Serempak', tgl: tglTanam, detail: peringatanTanam },
             { ikon: '🧪', nama: 'Pemupukan Tahap I (Dasar)', tgl: tambahHari(tglTanam, konfigHST.pupuk1), detail: 'Berikan pupuk Urea + NPK saat kondisi petakan macak-macak.' },
             { ikon: '💊', nama: 'Fase Kritis & Insektisida', tgl: tglInsektisida, detail: '✅ Berkat sinkronisasi sistem, tanggal penyemprotan jatuh di luar masa purnama. Risiko hama terbang rendah.' },
             { ikon: '🧪', nama: 'Pemupukan Tahap II (Susulan)', tgl: tambahHari(tglTanam, konfigHST.pupuk2), detail: 'Gunakan Bagan Warna Daun (BWD) untuk menakar dosis.' },
@@ -230,8 +244,8 @@
             var isTerlambat = (item.tgl < hariIni) ? 'border-left: 4px solid #ef4444; opacity: 0.85;' : `border-left: 4px solid ${WARNA_TEMA};`;
             var isTanam = (indeks === 2) ? 'border-left: 6px solid #f59e0b; background: rgba(245, 158, 11, 0.08);' : `${isTerlambat} background: var(--color-background-secondary, #1e293b);`;
 
-            var labelLangkah = (item.tgl < hariIni && indeks < 2) ? '⚠️ TERLEWAT' : `LANGKAH ${indeks + 1}`;
-            var warnaLabel = (item.tgl < hariIni && indeks < 2) ? '#ef4444' : ((indeks===2) ? '#f59e0b' : WARNA_TEMA);
+            var labelLangkah = (item.tgl < hariIni && indeks <= 2) ? '⚠️ TERLEWAT' : `LANGKAH ${indeks + 1}`;
+            var warnaLabel = (item.tgl < hariIni && indeks <= 2) ? '#ef4444' : ((indeks===2) ? '#f59e0b' : WARNA_TEMA);
 
             html += `
                 <div style="padding: 14px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); ${isTanam}">
