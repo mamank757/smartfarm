@@ -287,8 +287,7 @@
         }
 
         // Render semua peringatan ke UI
-        renderBannerEkstrem();
-        renderBoxPeringatan();
+             renderBoxPeringatan();
 
         // Notifikasi push jika level SIAGA ke atas
         if (stateEkstrem.levelTertinggi >= 2 && !stateEkstrem.sudahNotif) {
