@@ -1,97 +1,164 @@
 /**
  * ============================================================
- * PATCH: patch_jadwal_tanam_terpadu.js
- * Versi: 2.0 — Menu Jadwal Tanam Mandiri & Terpadu
+ * PATCH: patch_jadwal_tanam_otomatis.js
+ * Versi: 3.0 — Rekomendasi Otomatis Tanpa Input Manual & Kamera
  * ============================================================
  */
 (function () {
     'use strict';
 
-    var WARNA_JADWAL = '#06b6d4'; // Tema warna Cyan
+    var WARNA_TEMA = '#0ea5e9'; // Tema Biru Langit Cerdas
     var EPOCH_BULAN_MATI = new Date('2026-01-29T12:36:00Z');
     var SIKLUS_SINODIS   = 29.53059;
 
-    var NAMA_HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-    var NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    var NAMA_BULAN = [
+        'Januari','Februari','Maret','April','Mei','Juni',
+        'Juli','Agustus','September','Oktober','November','Desember'
+    ];
 
-    // --- 1. INISIALISASI UI (TAB & BOX) ---
-    function initUI() {
+    // =========================================================================
+    //  1. INISIALISASI TAMPILAN (TANPA FORM INPUT)
+    // =========================================================================
+    function inisialisasiUI() {
         var tabContainer = document.querySelector('.tab-container');
-        if (tabContainer && !document.getElementById('tabJadwalTanam')) {
+        if (tabContainer && !document.getElementById('tabJadwalOtomatis')) {
             var btnTab = document.createElement('button');
             btnTab.className = 'tab-btn';
-            btnTab.id = 'tabJadwalTanam';
-            btnTab.textContent = 'JADWAL TANAM';
-            btnTab.onclick = function () { window.switchMode('jadwaltanam'); };
+            btnTab.id = 'tabJadwalOtomatis';
+            btnTab.textContent = '📅 JADWAL TANAM';
+            btnTab.onclick = function () { window.switchMode('jadwalotomatis'); };
             tabContainer.appendChild(btnTab);
         }
 
         var card = document.querySelector('.card');
-        if (card && !document.getElementById('boxJadwalTanam')) {
-            var boxJadwal = document.createElement('div');
-            boxJadwal.id = 'boxJadwalTanam';
-            boxJadwal.style.display = 'none';
-            boxJadwal.innerHTML = `
-                <div class="info-box" style="border-left-color: ${WARNA_JADWAL}; background: rgba(6,182,212,0.07); margin-bottom: 20px;">
-                    <strong style="color:${WARNA_JADWAL};">📅 Kalender Tanam Berbasis Iklim</strong><br>
-                    <span style="font-size: 0.8rem; color: var(--text-muted);">Menghitung jadwal kegiatan tani terintegrasi dengan fase bulan, ENSO/IOD, dan data koordinat cuaca lokal.</span>
+        if (card && !document.getElementById('boxJadwalOtomatis')) {
+            var box = document.createElement('div');
+            box.id = 'boxJadwalOtomatis';
+            box.style.display = 'none';
+            box.innerHTML = `
+                <div class="info-box" style="border-left: 4px solid ${WARNA_TEMA}; background: rgba(14,165,233,0.06); padding: 14px; margin-bottom: 16px; border-radius: 8px;">
+                    <strong style="color: ${WARNA_TEMA}; display: block; margin-bottom: 4px; font-size: 15px;">🤖 Sistem Rekomendasi Pintar Petani</strong>
+                    <span style="font-size: 13px; color: var(--color-text-secondary, #64748b); line-height: 1.4; display: block;">
+                        Sistem mendeteksi koordinat lokasi sawah, tanggal hari ini, serta parameter iklim makro secara otomatis untuk menyusun kalender pengerjaan lahan dan antisipasi hama.
+                    </span>
                 </div>
-                <div class="form-group">
-                    <label>📅 TANGGAL RENCANA TANAM</label>
-                    <input type="date" id="inputTglTanamJadwal" class="form-input">
+                <div id="loadingJadwalOtomatis" style="text-align: center; padding: 40px var(--card-padding); display: none;">
+                    <span style="color: ${WARNA_TEMA}; font-weight: 600; font-size: 14px;">⏳ Membaca koordinat satelit & memproses rekomendasi...</span>
                 </div>
-                <div class="form-group">
-                    <label>🌱 UMUR VARIETAS PADI</label>
-                    <select id="umurVarietasJadwal" class="form-select">
-                        <option value="genjah">Genjah (< 95 Hari) — Cakrabuana, M70D</option>
-                        <option value="sedang" selected>Sedang (95–115 Hari) — Ciherang, Inpari</option>
-                        <option value="dalam">Dalam (≥ 116 Hari) — Varietas Lokal</option>
-                    </select>
-                </div>
-                <button id="btnEksekusiJadwal" class="btn-main" style="background: ${WARNA_JADWAL}; color: #fff; font-weight: 700;">
-                    BUAT JADWAL TANAM
-                </button>
-                <div id="hasilJadwalTanam" style="margin-top: 24px; display: none;"></div>
+                <div id="kontenJadwalOtomatis"></div>
             `;
-            card.appendChild(boxJadwal);
-
-            document.getElementById('btnEksekusiJadwal').addEventListener('click', prosesJadwalMandiri);
+            card.appendChild(box);
         }
     }
 
-    // --- 2. OVERRIDE SWITCHMODE AMAN ---
-    var originalSwitchMode = window.switchMode;
+    // =========================================================================
+    //  2. INTEGRASI SWITCHMODE (LANGSUNG PROSES SAAT DIKLIK)
+    // =========================================================================
+    var switchModeAsli = window.switchMode;
     window.switchMode = function(mode) {
-        if (typeof originalSwitchMode === 'function') {
-            originalSwitchMode.apply(this, arguments);
+        if (typeof switchModeAsli === 'function') {
+            switchModeAsli.apply(this, arguments);
         }
-        
-        var boxJadwal = document.getElementById('boxJadwalTanam');
-        var tabJadwal = document.getElementById('tabJadwalTanam');
-        var modeTitle = document.getElementById('modeTitle');
-        var subtitleDisplay = document.getElementById('tabSubtitleDisplay');
 
-        if (boxJadwal && tabJadwal) {
-            if (mode === 'jadwaltanam') {
-                // Sembunyikan semua box anak dari .card secara manual jika perlu
-                Array.from(document.querySelector('.card').children).forEach(el => {
+        var box = document.getElementById('boxJadwalOtomatis');
+        var tab = document.getElementById('tabJadwalOtomatis');
+        var modeTitle = document.getElementById('modeTitle');
+
+        if (box && tab) {
+            if (mode === 'jadwalotomatis') {
+                // Sembunyikan kontainer tab lain
+                Array.from(document.querySelector('.card').children).forEach(function(el) {
                     if (el.id && el.id.startsWith('box')) el.style.display = 'none';
                 });
+                box.style.display = 'block';
+                tab.classList.add('active');
+                if (modeTitle) modeTitle.innerText = "Rekomendasi Jadwal Kegiatan Tani";
                 
-                boxJadwal.style.display = 'block';
-                tabJadwal.classList.add('active');
-                if (modeTitle) modeTitle.innerText = "Jadwal Tanam Cerdas";
-                if (subtitleDisplay) subtitleDisplay.style.display = 'none';
+                // Eksekusi otomatis tanpa menunggu klik tombol lagi
+                prosesKalkulasiOtomatis();
             } else {
-                boxJadwal.style.display = 'none';
-                tabJadwal.classList.remove('active');
+                box.style.display = 'none';
+                tab.classList.remove('active');
             }
         }
     };
 
-    // --- 3. UTILITAS LOGIKA IKLIM & FASE BULAN ---
-    function hitungFaseBulan(tgl) {
-        var selisih = (tgl.getTime() - EPOCH_BULAN_MATI.getTime()) / (1000 * 60 * 60 * 24);
+    // =========================================================================
+    //  3. PROSES REKOMENDASI OTOMATIS BERBASIS DATA IKLIM & KOORDINAT
+    // =========================================================================
+    async function prosesKalkulasiOtomatis() {
+        var loading = document.getElementById('loadingJadwalOtomatis');
+        var konten = document.getElementById('kontenJadwalOtomatis');
+        if (!loading || !konten) return;
+
+        loading.style.display = 'block';
+        konten.innerHTML = '';
+
+        try {
+            // Ambil titik koordinat otomatis
+            var lat = -4.0, lon = 120.0;
+            if (window._koordinatTerakhir) {
+                lat = window._koordinatTerakhir.coords.latitude;
+                lon = window._koordinatTerakhir.coords.longitude;
+            } else {
+                try {
+                    var pos = await new Promise(function(res, rej) {
+                        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 4000 });
+                    });
+                    lat = pos.coords.latitude;
+                    lon = pos.coords.longitude;
+                } catch (e) {
+                    console.warn('[SmartJadwal] GPS delayed, menggunakan default koordinat regional.');
+                }
+            }
+
+            // Tarik parameter anomali iklim global (ENSO / IOD)
+            var ensoVal = 0, iodVal = 0;
+            if (typeof window.getENSOAnomaly === 'function') {
+                var enso = await window.getENSOAnomaly();
+                ensoVal = enso.latestAnomaly || 0;
+            }
+            if (typeof window.getIODAnomaly === 'function') {
+                var iod = await window.getIODAnomaly();
+                iodVal = iod.latestAnomaly || 0;
+            }
+
+            // Ambil tanggal hari ini secara otomatis sebagai referensi acuan tanam
+            var tglHariIni = new Date();
+            
+            // Hitung kalkulasi perkiraan kelembapan (Skor 0 - 100)
+            var skorIklim = Math.round(50 - ((ensoVal + iodVal) * 22));
+            skorIklim = Math.max(0, Math.min(100, skorIklim));
+
+            // KEPUTUSAN VARIETAS OTOMATIS BERDASARKAN KONDISI NYATA
+            var varietasTerpilih = 'sedang';
+            var narasiVarietas = 'Kondisi curah hujan terpantau normal. Sistem merekomendasikan penggunaan *Varietas Sedang* (95-115 HST) seperti Ciherang atau Inpari untuk hasil produksi optimal.';
+
+            if (skorIklim < 40) {
+                varietasTerpilih = 'genjah';
+                narasiVarietas = '⚠️ **PERINGATAN KERING:** Parameter cuaca menunjukkan kecenderungan minim air/kemarau. Sistem otomatis memilih **Varietas Genjah (< 95 HST)** seperti Cakrabuana atau M70D untuk menghemat fase pengairan dan menghindari risiko puso.';
+            } else if (skorIklim > 78) {
+                varietasTerpilih = 'dalam';
+                narasiVarietas = '🌧️ **PERINGATAN GENANGAN:** Curah hujan terdeteksi sangat tinggi. Sistem otomatis merekomendasikan **Varietas Tahan Genangan / Umur Dalam** guna meminimalkan kerusakan tanaman akibat luapan air sawah.';
+            }
+
+            // Olah urutan kalender tani
+            var htmlHasil = produksiHTMLJadwal(tglHariIni, varietasTerpilih, narasiVarietas, skorIklim, lat, lon);
+            
+            loading.style.display = 'none';
+            konten.innerHTML = htmlHasil;
+
+        } catch (err) {
+            loading.style.display = 'none';
+            konten.innerHTML = `<div style="color: #ef4444; padding: 12px; font-size: 13px; background: rgba(239,68,68,0.08); border-radius: 6px;">Gagal memetakan jadwal: ${err.message}</div>`;
+        }
+    }
+
+    // =========================================================================
+    //  4. ALGORITMA SIKLUS HAMA & TIMING KEGIATAN
+    // =========================================================================
+    function hariFaseBulan(tanggal) {
+        var selisih = (tanggal.getTime() - EPOCH_BULAN_MATI.getTime()) / (1000 * 60 * 60 * 24);
         var hari = selisih % SIKLUS_SINODIS;
         return hari < 0 ? hari + SIKLUS_SINODIS : hari;
     }
@@ -102,117 +169,65 @@
         return hasil;
     }
 
-    async function prosesJadwalMandiri() {
-        var tglInput = document.getElementById('inputTglTanamJadwal').value;
-        var varInput = document.getElementById('umurVarietasJadwal').value;
-        var hasilContainer = document.getElementById('hasilJadwalTanam');
-
-        if (!tglInput) {
-            alert('Silakan isi tanggal rencana tanam terlebih dahulu.');
-            return;
-        }
-
-        hasilContainer.style.display = 'block';
-        hasilContainer.innerHTML = `<div style="text-align:center; padding: 20px; color: ${WARNA_JADWAL}; font-weight: bold;">⏳ Mengambil data koordinat & satelit cuaca...</div>`;
-
-        try {
-            var lat = -4.0, lon = 120.0; // Default jika gagal baca GPS
-            if (window._koordinatTerakhir) {
-                lat = window._koordinatTerakhir.coords.latitude;
-                lon = window._koordinatTerakhir.coords.longitude;
-            } else {
-                try {
-                    var pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {timeout: 5000}));
-                    lat = pos.coords.latitude; lon = pos.coords.longitude;
-                } catch(e) { console.warn('GPS tidak aktif, menggunakan koordinat fallback.'); }
-            }
-
-            var ensoVal = typeof window.getENSOAnomaly === 'function' ? (await window.getENSOAnomaly()).latestAnomaly : 0;
-            var iodVal = typeof window.getIODAnomaly === 'function' ? (await window.getIODAnomaly()).latestAnomaly : 0;
-
-            var jadwalHTML = bangunHTMLJadwal(new Date(tglInput), varInput, ensoVal, iodVal);
-            hasilContainer.innerHTML = jadwalHTML;
-
-        } catch (err) {
-            hasilContainer.innerHTML = `<div style="color: #ef4444; padding: 15px; background: rgba(239,68,68,0.1); border-radius: 8px;">Gagal memproses data: ${err.message}</div>`;
-        }
-    }
-
-    // --- 4. PEMBENTUKAN JADWAL (Logika Hama & Fase) ---
-    function bangunHTMLJadwal(tglTanam, varietas, ensoVal, iodVal) {
-        var offset = {
-            genjah: { pupuk1:7, pupuk2:28, pupuk3:45, insekt:20, fungisida:55, panen:90 },
-            sedang: { pupuk1:7, pupuk2:30, pupuk3:55, insekt:25, fungisida:65, panen:110 },
-            dalam:  { pupuk1:7, pupuk2:35, pupuk3:65, insekt:30, fungisida:75, panen:125 }
+    function produksiHTMLJadwal(tglTanam, varietas, deskripsiSistem, skorIklim, lat, lon) {
+        var konfigHST = {
+            genjah: { pupuk1: 7, pupuk2: 28, pupuk3: 45, insektisida: 20, fungisida: 55, panen: 90 },
+            sedang: { pupuk1: 7, pupuk2: 30, pupuk3: 55, insektisida: 25, fungisida: 65, panen: 110 },
+            dalam:  { pupuk1: 7, pupuk2: 35, pupuk3: 65, insektisida: 30, fungisida: 75, panen: 125 }
         }[varietas];
 
-        var tglTikus = tambahHari(tglTanam, -10);
-        var faseTikus = hitungFaseBulan(tglTikus);
-        var peringatanTikus = (faseTikus > 13 && faseTikus < 18) ? 
-            "Bulan terang, aktivitas tikus di luar liang menurun. Fokus umpan di mulut liang." : 
-            "Bulan gelap, tikus sangat aktif. Efektivitas gropyokan & umpan racun maksimal.";
+        // Analisis Fase Bulan untuk Penggerek Batang Padi (PBP) saat penyemprotan
+        var tglInsektisida = tambahHari(tglTanam, konfigHST.insektisida);
+        var faseBulanInsekt = hariFaseBulan(tglInsektisida);
+        var tipsPHT = (faseBulanInsekt > 12.5 && faseBulanInsekt < 16.5) ?
+            "🛑 **Waspada Ledakan Hama:** Jatuh pada fase Bulan Purnama. Ngengat Penggerek Batang sangat aktif bertelur malam hari. Gunakan insektisida sistemik dan pasang lampu perangkap (light trap) massal!" :
+            "✅ **Fase Aman Hama Terbang:** Kondisi bulan gelap/redup, aktivitas penerbangan imago malam hari rendah. Fokus pemantauan bawah batang rumpun.";
 
-        var tglInsekt = tambahHari(tglTanam, offset.insekt);
-        var faseInsekt = hitungFaseBulan(tglInsekt);
-        var peringatanInsekt = (faseInsekt > 12 && faseInsekt < 17) ?
-            "Puncak penerbangan ngengat Penggerek Batang Padi (PBP) karena bulan penuh. Waspada & tambah perangkap lampu!" :
-            "Fase aman dari puncak migrasi ngengat PBP malam hari.";
-
-        var daftarKegiatan = [
-            { ikon: '🚜', nama: 'Pengolahan Lahan', tgl: tambahHari(tglTanam, -14), tips: 'Pastikan drainase dan luku siap.' },
-            { ikon: '🐀', nama: 'Pengendalian Tikus Dasar', tgl: tglTikus, tips: peringatanTikus },
-            { ikon: '🌾', nama: 'Tanam / Hambur', tgl: tglTanam, tips: 'Perhatikan ketersediaan air makro.' },
-            { ikon: '🧪', nama: 'Pemupukan Tahap I', tgl: tambahHari(tglTanam, offset.pupuk1), tips: 'Kombinasi Urea & Phonska.' },
-            { ikon: '💊', nama: 'Penyemprotan Insektisida', tgl: tglInsekt, tips: peringatanInsekt },
-            { ikon: '🧪', nama: 'Pemupukan Tahap II', tgl: tambahHari(tglTanam, offset.pupuk2), tips: 'Pacu anakan maksimal, gunakan BWD.' },
-            { ikon: '🍄', nama: 'Penyemprotan Fungisida', tgl: tambahHari(tglTanam, offset.fungisida), tips: 'Pencegahan Blast menjelang masa bunting.' },
-            { ikon: '🌟', nama: 'Estimasi Panen', tgl: tambahHari(tglTanam, offset.panen), tips: 'Keringkan petakan seminggu sebelum taksiran.' }
+        var susunanLangkah = [
+            { ikon: '🚜', nama: 'Pengolahan Tanah Maksimal', tgl: tambahHari(tglTanam, -14), detail: 'Lakukan pembajakan sedalam 15-20 cm untuk mengubur singgang, memutus siklus hidup wereng, dan membenamkan gulma secara sempurna.' },
+            { ikon: '🐀', nama: 'Gropyokan & Umpan Tikus Massal', tgl: tambahHari(tglTanam, -7), detail: 'Bersihkan semak pematang. Pasang sistem bubu perangkap TBS (Trap Barrier System) di wilayah perimeter sebelum penanaman serempak.' },
+            { ikon: '🌾', nama: 'Hari Penanaman Padi (Acuan Hari Ini)', tgl: tglTanam, detail: 'Lakukan penanaman bibit secara serempak. Gunakan jarak tanam teratur seperti sistem Jajar Legowo untuk mengoptimalkan paparan sinar matahari.' },
+            { ikon: '🧪', nama: 'Pemupukan Tahap I (Dasar)', tgl: tambahHari(tglTanam, konfigHST.pupuk1), detail: 'Taburkan pupuk Nitrogen (Urea) dan NPK saat kondisi air macak-macak di petakan sawah agar unsur hara melekat sempurna ke dalam tanah lumpur.' },
+            { ikon: '💊', nama: 'Penyemprotan Insektisida Berkala (PHT)', tgl: tglInsektisida, detail: tipsPHT },
+            { ikon: '🧪', nama: 'Pemupukan Tahap II (Susulan)', tgl: tambahHari(tglTanam, konfigHST.pupuk2), detail: 'Pemberian pupuk susulan demi memicu pembentukan anakan produktif yang maksimal. Gunakan alat Bagan Warna Daun (BWD) sebagai indikator dosis.' },
+            { ikon: '🍄', nama: 'Aplikasi Fungisida Preventif (Blast)', tgl: tambahHari(tglTanam, konfigHST.fungisida), detail: 'Lakukan penyemprotan pelindung jamur sebelum padi memasuki fase bunting penuh guna mencegah serangan penyakit potong leher malai.' },
+            { ikon: '🌟', nama: 'Estimasi Pemanenan Raya', tgl: tambahHari(tglTanam, konfigHST.panen), detail: 'Panen siap dilakukan ketika 90-95% gabah pada malai telah menguning merata. Buang air petakan sawah 7 hari sebelum panen agar tanah mengeras.' }
         ];
 
-        window._dataExportJadwal = daftarKegiatan;
+        var html = `
+            <div style="background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.12); padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; line-height: 1.5;">
+                📌 <strong>Lokasi Koordinat Lahan:</strong> ${lat.toFixed(4)}°, ${lon.toFixed(4)}°<br>
+                📊 <strong>Indeks Basah Iklim:</strong> ${skorIklim} / 100<br>
+                💡 <strong>Keputusan Sistem Cerdas:</strong> ${deskripsiSistem}
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+        `;
 
-        var html = '<div style="display:flex; flex-direction:column; gap:12px;">';
-        daftarKegiatan.forEach((k, i) => {
+        susunanLangkah.forEach(function(item, indeks) {
+            var stringTanggal = item.tgl.getDate() + ' ' + NAMA_BULAN[item.tgl.getMonth()] + ' ' + item.tgl.getFullYear();
             html += `
-                <div style="background: var(--card-bg); border: 1px solid rgba(255,255,255,0.05); padding: 14px; border-radius: 12px; border-left: 4px solid ${WARNA_JADWAL};">
+                <div style="background: var(--color-background-secondary, #1e293b); padding: 14px; border-radius: 10px; border-left: 4px solid ${WARNA_TEMA}; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                     <div style="display: flex; gap: 12px; align-items: flex-start;">
-                        <div style="font-size: 22px;">${k.ikon}</div>
-                        <div>
-                            <div style="font-size: 0.75rem; color: ${WARNA_JADWAL}; font-weight: 700;">KEGIATAN ${i+1}</div>
-                            <div style="font-size: 1rem; color: #fff; font-weight: 600; margin: 4px 0;">${k.nama}</div>
-                            <div style="font-size: 0.85rem; color: #10b981; margin-bottom: 6px;">📅 ${k.tgl.getDate()} ${NAMA_BULAN[k.tgl.getMonth()]} ${k.tgl.getFullYear()}</div>
-                            <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5;">${k.tips}</div>
+                        <div style="font-size: 24px; padding-top: 2px;">${item.ikon}</div>
+                        <div style="flex: 1;">
+                            <div style="font-size: 11px; color: ${WARNA_TEMA}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">LANGKAH ${indeks + 1}</div>
+                            <div style="font-size: 15px; font-weight: 600; color: var(--color-text-primary, #fff); margin: 2px 0;">${item.nama}</div>
+                            <div style="font-size: 13px; color: #10b981; font-weight: 600; margin-bottom: 6px;">📅 ${stringTanggal}</div>
+                            <div style="font-size: 12.5px; color: var(--color-text-secondary, #94a3b8); line-height: 1.5;">${item.detail}</div>
                         </div>
                     </div>
                 </div>
             `;
         });
-        
-        html += `<button onclick="window._salinJadwalTanam()" class="btn-main" style="background: transparent; color: ${WARNA_JADWAL}; border: 1px solid ${WARNA_JADWAL}; margin-top: 10px;">SALIN JADWAL KE TEKS</button>`;
+
         html += '</div>';
         return html;
     }
 
-    window._salinJadwalTanam = function() {
-        if (!window._dataExportJadwal) return;
-        var teks = "*JADWAL KEGIATAN TANI DIGITAL*\n\n";
-        window._dataExportJadwal.forEach(function(k, i) {
-            teks += (i+1) + ". " + k.nama + "\n";
-            teks += "   Tanggal: " + k.tgl.getDate() + " " + NAMA_BULAN[k.tgl.getMonth()] + " " + k.tgl.getFullYear() + "\n";
-            teks += "   Catatan: " + k.tips + "\n\n";
-        });
-        navigator.clipboard.writeText(teks).then(() => {
-            alert("Jadwal berhasil disalin!");
-        }).catch(() => {
-            alert("Gagal menyalin jadwal.");
-        });
-    };
-
-    // --- JALANKAN INISIALISASI SETELAH DOM SIAP ---
+    // Jalankan inisialisasi awal saat siap
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initUI);
+        document.addEventListener('DOMContentLoaded', inisialisasiUI);
     } else {
-        initUI();
+        inisialisasiUI();
     }
-
 })();
