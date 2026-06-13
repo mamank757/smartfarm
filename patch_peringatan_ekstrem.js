@@ -264,7 +264,7 @@
                     level: lvl,
                     dampak: lvl.kode >= 3
                         ? 'Indikasi gangguan siklon tropis di sekitar wilayah. Siaga cuaca ekstrem hingga 72 jam ke depan.'
-                        : 'Potensi cuaca buruk meningkat. Monitor update BMKG setiap 6 jam.'
+                        : 'Potensi cuaca buruk meningkat. Monitor update cuaca setiap 6 jam.'
                 });
                 if (lvl.kode > stateEkstrem.levelTertinggi) stateEkstrem.levelTertinggi = lvl.kode;
             }
@@ -331,7 +331,7 @@
         banner.innerHTML =
             '<div style="font-size:1.3rem;flex-shrink:0;">' + lvlObjek.ikon + '</div>' +
             '<div style="flex:1;">' +
-                '<div style="font-size:0.7rem;letter-spacing:1px;opacity:0.9;font-weight:700;">PERINGATAN CUACA EKSTREM — BMKG SMART ALERT</div>' +
+                '<div style="font-size:0.7rem;letter-spacing:1px;opacity:0.9;font-weight:700;">PERINGATAN CUACA EKSTREM — SMART ALERT</div>' +
                 '<div style="font-size:0.82rem;font-weight:800;letter-spacing:0.3px;">STATUS ' + lvlObjek.label + ' • ' + jmlPeringatan + ' PARAMETER TERDETEKSI</div>' +
             '</div>' +
             '<div style="font-size:0.7rem;opacity:0.85;flex-shrink:0;">KETUK ▼</div>';
@@ -436,7 +436,7 @@
         // Panduan Level Warna BMKG
         detailHTML +=
             '<div style="margin-top:10px;padding:10px;background:rgba(255,255,255,0.03);border-radius:10px;">' +
-                '<div style="font-size:0.7rem;color:#64748b;font-weight:700;margin-bottom:8px;letter-spacing:0.5px;">PANDUAN KODE WARNA BMKG:</div>' +
+                '<div style="font-size:0.7rem;color:#64748b;font-weight:700;margin-bottom:8px;letter-spacing:0.5px;">PANDUAN KODE WARNA:</div>' +
                 '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.72rem;">' +
                     '<div style="display:flex;align-items:center;gap:6px;"><div style="width:10px;height:10px;border-radius:2px;background:#10b981;flex-shrink:0;"></div><span style="color:#94a3b8;">Hijau = Normal</span></div>' +
                     '<div style="display:flex;align-items:center;gap:6px;"><div style="width:10px;height:10px;border-radius:2px;background:#f59e0b;flex-shrink:0;"></div><span style="color:#94a3b8;">Kuning = Waspada</span></div>' +
