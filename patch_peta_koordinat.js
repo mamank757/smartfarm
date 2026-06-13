@@ -4,14 +4,11 @@
  *  Fitur: Geser Titik Koordinat di Peta (Drag Marker)
  *         + Cari Lokasi by Nama (Geocoding Nominatim)
  *  PPL Milenial Wajo — Smart Farming
- *  Versi: 2.0
+ *  Versi: 2.1 (Modal dikunci — hanya tombol TUTUP yg menutup)
  * ------------------------------------------------------------
- *  Perubahan v2.0:
- *  - Tambah kotak pencarian nama wilayah (kota/kecamatan/desa)
- *  - Pencarian via Nominatim geocoding (OpenStreetMap)
- *  - Hasil pencarian muncul sebagai dropdown, klik untuk pindah marker
- *  - Koordinat bertahan (tidak kembali ke GPS HP) via override
- *    getCurrentPosition sementara saat loadWeather() dipanggil
+ *  Perubahan v2.1:
+ *  - Modal HANYA bisa ditutup via tombol "✕ TUTUP"
+ *  - Klik overlay, swipe bawah, back button Android = tidak menutup
  * ============================================================
  */
 
@@ -42,9 +39,9 @@
             background: rgba(4, 8, 20, 0.88);
             backdrop-filter: blur(8px);
             z-index: 99998;
-            align-items: flex-start; /* Mencegah panel terdorong ke atas */
+            align-items: flex-start;
             justify-content: center;
-            overflow-y: auto; /* Memungkinkan scroll saat keyboard menutupi layar */
+            overflow-y: auto;
         }
         #modalPetaKoordinat.aktif { display: flex; }
 
@@ -56,8 +53,8 @@
             box-shadow: 0 -10px 40px rgba(0,0,0,0.6);
             animation: slideUpPeta 0.3s ease;
             overflow: hidden;
-            margin-top: auto; /* Mendorong panel ke bawah saat layar normal */
-            flex-shrink: 0; /* Mencegah panel dan frame peta menyusut atau gepeng */
+            margin-top: auto;
+            flex-shrink: 0;
         }
         @keyframes slideUpPeta {
             from { transform: translateY(100%); opacity: 0; }
@@ -278,9 +275,11 @@
 
             </div>`;
 
-        modal.addEventListener('click', function (e) {
-            if (e.target === modal) window.tutupPetaKoordinat();
-        });
+        // ─────────────────────────────────────────────────────────────────────
+        //  MODAL DIKUNCI: klik overlay TIDAK menutup modal.
+        //  Hapus listener klik overlay — tutup hanya via tombol ✕ TUTUP
+        // ─────────────────────────────────────────────────────────────────────
+
         document.body.appendChild(modal);
 
         // Enter di input langsung cari
@@ -304,8 +303,6 @@
     //  GEOCODING — CARI LOKASI BERDASARKAN NAMA
     // =========================================================================
 
-    var _cariTimer = null;
-
     window.cariLokasiPeta = async function () {
         var input = document.getElementById('inputCariLokasi');
         var dropdown = document.getElementById('dropdownCariLokasi');
@@ -315,7 +312,6 @@
         var query = input.value.trim();
         if (!query) return;
 
-        // Loading state
         btnCari.disabled = true;
         btnCari.textContent = '⏳';
         dropdown.innerHTML = '<div id="pesanCariLokasi">Mencari lokasi...</div>';
@@ -328,7 +324,7 @@
                 '&q=' + encodeURIComponent(query) +
                 '&limit=6' +
                 '&addressdetails=1' +
-                '&countrycodes=id';   // Batasi ke Indonesia saja
+                '&countrycodes=id';
 
             var res = await fetch(url, {
                 headers: { 'User-Agent': 'SmartFarming-PPLWajo/2.0' }
@@ -341,14 +337,12 @@
                 return;
             }
 
-            // Render daftar hasil
             dropdown.innerHTML = '';
             hasil.forEach(function (item) {
                 var lat = parseFloat(item.lat);
                 var lon = parseFloat(item.lon);
                 var addr = item.address || {};
 
-                // Susun nama tampilan: nama utama + konteks wilayah
                 var namaTampil = item.display_name.split(',')[0].trim();
                 var konteks = [
                     addr.village || addr.suburb || addr.hamlet || '',
@@ -356,7 +350,6 @@
                     addr.state   || ''
                 ].filter(Boolean).join(', ');
 
-                // Jika namaTampil sama dengan konteks pertama, hapus duplikat
                 if (konteks.startsWith(namaTampil)) konteks = konteks.substring(namaTampil.length).replace(/^,\s*/, '');
 
                 var el = document.createElement('div');
@@ -366,7 +359,6 @@
                     (konteks ? '<small>' + _escapeHtml(konteks) + '</small>' : '');
 
                 el.addEventListener('click', function () {
-                    // Pindahkan marker ke lokasi yang dipilih
                     _pindahMarker(lat, lon);
                     input.value = namaTampil;
                     dropdown.classList.remove('tampil');
@@ -390,7 +382,6 @@
             .replace(/"/g, '&quot;');
     }
 
-    // Pindah marker + fly peta ke koordinat baru
     function _pindahMarker(lat, lon) {
         if (!petaModal.instance || !petaModal.marker) return;
         var latlng = L.latLng(lat, lon);
@@ -513,7 +504,6 @@
         modal.classList.add('aktif');
         petaModal.aktif = true;
 
-        // Bersihkan input pencarian
         var inputEl = document.getElementById('inputCariLokasi');
         if (inputEl) inputEl.value = '';
         var dropdown = document.getElementById('dropdownCariLokasi');
@@ -521,18 +511,13 @@
 
         var lat = -4.0, lon = 120.0;
 
-        // Prioritas 1: koordinat yang sudah pernah dipilih dari peta
         if (window._koordinatDariPeta) {
             lat = window._koordinatDariPeta.lat;
             lon = window._koordinatDariPeta.lon;
-        }
-        // Prioritas 2: koordinat GPS terakhir dari sinkronisasi cuaca
-        else if (window._koordinatTerakhir) {
+        } else if (window._koordinatTerakhir) {
             lat = window._koordinatTerakhir.coords.latitude;
             lon = window._koordinatTerakhir.coords.longitude;
-        }
-        // Prioritas 3: baca dari teks UI
-        else {
+        } else {
             var lokasiEl = document.getElementById('lokasiSawah');
             if (lokasiEl && lokasiEl.innerText && lokasiEl.innerText !== '-') {
                 var parts = lokasiEl.innerText.split(',');
@@ -554,6 +539,7 @@
 
     // =========================================================================
     //  TUTUP MODAL PETA
+    //  Satu-satunya cara menutup adalah via tombol "✕ TUTUP"
     // =========================================================================
 
     window.tutupPetaKoordinat = function () {
@@ -569,8 +555,6 @@
 
     // =========================================================================
     //  GUNAKAN LOKASI DARI PETA
-    //  FIX: Override getCurrentPosition sementara agar koordinat tidak
-    //       kembali ke GPS HP saat loadWeather() dipanggil.
     // =========================================================================
 
     window.gunakanLokasiPeta = async function () {
@@ -586,12 +570,8 @@
         var namaEl = document.getElementById('namaLokasiPeta');
         var label  = namaEl ? namaEl.textContent : (lat.toFixed(5) + ', ' + lon.toFixed(5));
 
-        // Simpan agar sesi berikutnya modal buka di posisi yang sama
         window._koordinatDariPeta = { lat: lat, lon: lon, label: label };
 
-        // ── Override getCurrentPosition SEMENTARA ──────────────────────────
-        // Mencegah loadWeather() meminta GPS HP baru.
-        // Fungsi asli dikembalikan di blok finally setelah loadWeather selesai.
         var _geolocationAsli = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
         navigator.geolocation.getCurrentPosition = function (sukses) {
             sukses({
@@ -600,15 +580,11 @@
             });
         };
 
-        // Update window._koordinatTerakhir untuk kompatibilitas patch lain
         window._koordinatTerakhir = {
             coords: { latitude: lat, longitude: lon, accuracy: 0 }
         };
 
-        // Tutup modal lebih dulu agar UX terasa responsif
         window.tutupPetaKoordinat();
-
-        // Update label UI langsung tanpa menunggu cuaca
         _updateLabelUI(lat, lon, label);
 
         try {
@@ -620,7 +596,6 @@
         } catch (e) {
             console.warn('[patch_peta] Gagal load cuaca:', e);
         } finally {
-            // ── Kembalikan getCurrentPosition ke fungsi asli browser ──────
             navigator.geolocation.getCurrentPosition = _geolocationAsli;
         }
 
@@ -699,12 +674,16 @@
     }
 
     // =========================================================================
-    //  TOMBOL BACK ANDROID & SWIPE KE BAWAH
+    //  TOMBOL BACK ANDROID — DIKUNCI (tidak menutup modal)
     // =========================================================================
 
     window.addEventListener('popstate', function () {
-        if (petaModal.aktif) window.tutupPetaKoordinat();
+        // Modal dikunci — back button tidak menutup peta
     });
+
+    // =========================================================================
+    //  SWIPE KE BAWAH — DIKUNCI (tidak menutup modal)
+    // =========================================================================
 
     var _swipeStartY = 0;
     document.addEventListener('touchstart', function (e) {
@@ -713,9 +692,9 @@
     }, { passive: true });
     document.addEventListener('touchend', function (e) {
         if (!petaModal.aktif) return;
-        if (e.changedTouches[0].clientY - _swipeStartY > 80) window.tutupPetaKoordinat();
+        // Modal dikunci — swipe tidak menutup peta
     }, { passive: true });
 
-    console.log('%c📍 patch_peta_koordinat.js v2.0 aktif — Search Lokasi + Koordinat Bertahan', 'color:#22d3ee; font-weight:bold;');
+    console.log('%c📍 patch_peta_koordinat.js v2.1 aktif — Modal Dikunci (hanya tombol TUTUP)', 'color:#22d3ee; font-weight:bold;');
 
 })();
