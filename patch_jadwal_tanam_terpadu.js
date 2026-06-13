@@ -1,13 +1,13 @@
 /**
  * ============================================================
  * PATCH: patch_jadwal_tanam_otomatis.js
- * Versi: 3.0 — Rekomendasi Otomatis Tanpa Input Manual & Kamera
+ * Versi: 4.0 — Rekomendasi Otomatis (FIX KEBOCORAN KAMERA)
  * ============================================================
  */
 (function () {
     'use strict';
 
-    var WARNA_TEMA = '#0ea5e9'; // Tema Biru Langit Cerdas
+    var WARNA_TEMA = '#0ea5e9'; 
     var EPOCH_BULAN_MATI = new Date('2026-01-29T12:36:00Z');
     var SIKLUS_SINODIS   = 29.53059;
 
@@ -16,9 +16,7 @@
         'Juli','Agustus','September','Oktober','November','Desember'
     ];
 
-    // =========================================================================
-    //  1. INISIALISASI TAMPILAN (TANPA FORM INPUT)
-    // =========================================================================
+    // --- 1. INISIALISASI TAMPILAN ---
     function inisialisasiUI() {
         var tabContainer = document.querySelector('.tab-container');
         if (tabContainer && !document.getElementById('tabJadwalOtomatis')) {
@@ -39,7 +37,7 @@
                 <div class="info-box" style="border-left: 4px solid ${WARNA_TEMA}; background: rgba(14,165,233,0.06); padding: 14px; margin-bottom: 16px; border-radius: 8px;">
                     <strong style="color: ${WARNA_TEMA}; display: block; margin-bottom: 4px; font-size: 15px;">🤖 Sistem Rekomendasi Pintar Petani</strong>
                     <span style="font-size: 13px; color: var(--color-text-secondary, #64748b); line-height: 1.4; display: block;">
-                        Sistem mendeteksi koordinat lokasi sawah, tanggal hari ini, serta parameter iklim makro secara otomatis untuk menyusun kalender pengerjaan lahan dan antisipasi hama.
+                        Sistem mendeteksi koordinat lokasi sawah, tanggal hari ini, serta parameter iklim makro secara otomatis untuk menyusun kalender pengerjaan lahan.
                     </span>
                 </div>
                 <div id="loadingJadwalOtomatis" style="text-align: center; padding: 40px var(--card-padding); display: none;">
@@ -51,9 +49,7 @@
         }
     }
 
-    // =========================================================================
-    //  2. INTEGRASI SWITCHMODE (LANGSUNG PROSES SAAT DIKLIK)
-    // =========================================================================
+    // --- 2. OVERRIDE SWITCHMODE (DENGAN PEMBUNUH KAMERA GLOBAL) ---
     var switchModeAsli = window.switchMode;
     window.switchMode = function(mode) {
         if (typeof switchModeAsli === 'function') {
@@ -66,15 +62,27 @@
 
         if (box && tab) {
             if (mode === 'jadwalotomatis') {
-                // Sembunyikan kontainer tab lain
+                // Sembunyikan semua box tab standar
                 Array.from(document.querySelector('.card').children).forEach(function(el) {
                     if (el.id && el.id.startsWith('box')) el.style.display = 'none';
                 });
+                
+                // FIX UTAMA: Sembunyikan paksa elemen kamera dan fitur global dari index.html
+                var elemenBocor = [
+                    'btnCamera', 'scanWindow', 'cameraWarning', 
+                    'btnAnalisis', 'result', 'loader', 'formParameterLahan',
+                    'tabSubtitleDisplay'
+                ];
+                elemenBocor.forEach(function(id) {
+                    var el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                });
+
                 box.style.display = 'block';
                 tab.classList.add('active');
                 if (modeTitle) modeTitle.innerText = "Rekomendasi Jadwal Kegiatan Tani";
                 
-                // Eksekusi otomatis tanpa menunggu klik tombol lagi
+                // Langsung jalan tanpa input manual
                 prosesKalkulasiOtomatis();
             } else {
                 box.style.display = 'none';
@@ -83,9 +91,7 @@
         }
     };
 
-    // =========================================================================
-    //  3. PROSES REKOMENDASI OTOMATIS BERBASIS DATA IKLIM & KOORDINAT
-    // =========================================================================
+    // --- 3. PROSES REKOMENDASI OTOMATIS GPS & IKLIM ---
     async function prosesKalkulasiOtomatis() {
         var loading = document.getElementById('loadingJadwalOtomatis');
         var konten = document.getElementById('kontenJadwalOtomatis');
@@ -95,7 +101,6 @@
         konten.innerHTML = '';
 
         try {
-            // Ambil titik koordinat otomatis
             var lat = -4.0, lon = 120.0;
             if (window._koordinatTerakhir) {
                 lat = window._koordinatTerakhir.coords.latitude;
@@ -108,41 +113,28 @@
                     lat = pos.coords.latitude;
                     lon = pos.coords.longitude;
                 } catch (e) {
-                    console.warn('[SmartJadwal] GPS delayed, menggunakan default koordinat regional.');
+                    console.warn('GPS delayed.');
                 }
             }
 
-            // Tarik parameter anomali iklim global (ENSO / IOD)
-            var ensoVal = 0, iodVal = 0;
-            if (typeof window.getENSOAnomaly === 'function') {
-                var enso = await window.getENSOAnomaly();
-                ensoVal = enso.latestAnomaly || 0;
-            }
-            if (typeof window.getIODAnomaly === 'function') {
-                var iod = await window.getIODAnomaly();
-                iodVal = iod.latestAnomaly || 0;
-            }
-
-            // Ambil tanggal hari ini secara otomatis sebagai referensi acuan tanam
+            var ensoVal = typeof window.getENSOAnomaly === 'function' ? (await window.getENSOAnomaly()).latestAnomaly : 0;
+            var iodVal = typeof window.getIODAnomaly === 'function' ? (await window.getIODAnomaly()).latestAnomaly : 0;
             var tglHariIni = new Date();
             
-            // Hitung kalkulasi perkiraan kelembapan (Skor 0 - 100)
             var skorIklim = Math.round(50 - ((ensoVal + iodVal) * 22));
             skorIklim = Math.max(0, Math.min(100, skorIklim));
 
-            // KEPUTUSAN VARIETAS OTOMATIS BERDASARKAN KONDISI NYATA
             var varietasTerpilih = 'sedang';
-            var narasiVarietas = 'Kondisi curah hujan terpantau normal. Sistem merekomendasikan penggunaan *Varietas Sedang* (95-115 HST) seperti Ciherang atau Inpari untuk hasil produksi optimal.';
+            var narasiVarietas = 'Kondisi curah hujan terpantau normal. Sistem merekomendasikan penggunaan *Varietas Sedang* (95-115 HST) seperti Ciherang atau Inpari.';
 
             if (skorIklim < 40) {
                 varietasTerpilih = 'genjah';
-                narasiVarietas = '⚠️ **PERINGATAN KERING:** Parameter cuaca menunjukkan kecenderungan minim air/kemarau. Sistem otomatis memilih **Varietas Genjah (< 95 HST)** seperti Cakrabuana atau M70D untuk menghemat fase pengairan dan menghindari risiko puso.';
+                narasiVarietas = '⚠️ **PERINGATAN KERING:** Parameter cuaca menunjukkan kecenderungan minim air/kemarau. Sistem otomatis memilih **Varietas Genjah (< 95 HST)** seperti Cakrabuana atau M70D untuk menghemat fase pengairan.';
             } else if (skorIklim > 78) {
                 varietasTerpilih = 'dalam';
-                narasiVarietas = '🌧️ **PERINGATAN GENANGAN:** Curah hujan terdeteksi sangat tinggi. Sistem otomatis merekomendasikan **Varietas Tahan Genangan / Umur Dalam** guna meminimalkan kerusakan tanaman akibat luapan air sawah.';
+                narasiVarietas = '🌧️ **PERINGATAN GENANGAN:** Curah hujan terdeteksi tinggi. Sistem otomatis merekomendasikan **Varietas Tahan Genangan / Umur Dalam** guna meminimalkan kerusakan tanaman akibat luapan air sawah.';
             }
 
-            // Olah urutan kalender tani
             var htmlHasil = produksiHTMLJadwal(tglHariIni, varietasTerpilih, narasiVarietas, skorIklim, lat, lon);
             
             loading.style.display = 'none';
@@ -150,13 +142,11 @@
 
         } catch (err) {
             loading.style.display = 'none';
-            konten.innerHTML = `<div style="color: #ef4444; padding: 12px; font-size: 13px; background: rgba(239,68,68,0.08); border-radius: 6px;">Gagal memetakan jadwal: ${err.message}</div>`;
+            konten.innerHTML = `<div style="color: #ef4444; padding: 12px; background: rgba(239,68,68,0.08);">Gagal memetakan jadwal: ${err.message}</div>`;
         }
     }
 
-    // =========================================================================
-    //  4. ALGORITMA SIKLUS HAMA & TIMING KEGIATAN
-    // =========================================================================
+    // --- 4. ALGORITMA SIKLUS HAMA & TIMING ---
     function hariFaseBulan(tanggal) {
         var selisih = (tanggal.getTime() - EPOCH_BULAN_MATI.getTime()) / (1000 * 60 * 60 * 24);
         var hari = selisih % SIKLUS_SINODIS;
@@ -176,22 +166,21 @@
             dalam:  { pupuk1: 7, pupuk2: 35, pupuk3: 65, insektisida: 30, fungisida: 75, panen: 125 }
         }[varietas];
 
-        // Analisis Fase Bulan untuk Penggerek Batang Padi (PBP) saat penyemprotan
         var tglInsektisida = tambahHari(tglTanam, konfigHST.insektisida);
         var faseBulanInsekt = hariFaseBulan(tglInsektisida);
         var tipsPHT = (faseBulanInsekt > 12.5 && faseBulanInsekt < 16.5) ?
-            "🛑 **Waspada Ledakan Hama:** Jatuh pada fase Bulan Purnama. Ngengat Penggerek Batang sangat aktif bertelur malam hari. Gunakan insektisida sistemik dan pasang lampu perangkap (light trap) massal!" :
-            "✅ **Fase Aman Hama Terbang:** Kondisi bulan gelap/redup, aktivitas penerbangan imago malam hari rendah. Fokus pemantauan bawah batang rumpun.";
+            "🛑 **Waspada Ledakan Hama:** Jatuh pada fase Bulan Purnama. Ngengat Penggerek Batang sangat aktif bertelur malam hari. Gunakan insektisida sistemik dan pasang lampu perangkap massal!" :
+            "✅ **Fase Aman Hama Terbang:** Kondisi bulan gelap, aktivitas penerbangan imago malam hari rendah. Fokus pemantauan bawah batang rumpun.";
 
         var susunanLangkah = [
-            { ikon: '🚜', nama: 'Pengolahan Tanah Maksimal', tgl: tambahHari(tglTanam, -14), detail: 'Lakukan pembajakan sedalam 15-20 cm untuk mengubur singgang, memutus siklus hidup wereng, dan membenamkan gulma secara sempurna.' },
-            { ikon: '🐀', nama: 'Gropyokan & Umpan Tikus Massal', tgl: tambahHari(tglTanam, -7), detail: 'Bersihkan semak pematang. Pasang sistem bubu perangkap TBS (Trap Barrier System) di wilayah perimeter sebelum penanaman serempak.' },
-            { ikon: '🌾', nama: 'Hari Penanaman Padi (Acuan Hari Ini)', tgl: tglTanam, detail: 'Lakukan penanaman bibit secara serempak. Gunakan jarak tanam teratur seperti sistem Jajar Legowo untuk mengoptimalkan paparan sinar matahari.' },
-            { ikon: '🧪', nama: 'Pemupukan Tahap I (Dasar)', tgl: tambahHari(tglTanam, konfigHST.pupuk1), detail: 'Taburkan pupuk Nitrogen (Urea) dan NPK saat kondisi air macak-macak di petakan sawah agar unsur hara melekat sempurna ke dalam tanah lumpur.' },
-            { ikon: '💊', nama: 'Penyemprotan Insektisida Berkala (PHT)', tgl: tglInsektisida, detail: tipsPHT },
-            { ikon: '🧪', nama: 'Pemupukan Tahap II (Susulan)', tgl: tambahHari(tglTanam, konfigHST.pupuk2), detail: 'Pemberian pupuk susulan demi memicu pembentukan anakan produktif yang maksimal. Gunakan alat Bagan Warna Daun (BWD) sebagai indikator dosis.' },
-            { ikon: '🍄', nama: 'Aplikasi Fungisida Preventif (Blast)', tgl: tambahHari(tglTanam, konfigHST.fungisida), detail: 'Lakukan penyemprotan pelindung jamur sebelum padi memasuki fase bunting penuh guna mencegah serangan penyakit potong leher malai.' },
-            { ikon: '🌟', nama: 'Estimasi Pemanenan Raya', tgl: tambahHari(tglTanam, konfigHST.panen), detail: 'Panen siap dilakukan ketika 90-95% gabah pada malai telah menguning merata. Buang air petakan sawah 7 hari sebelum panen agar tanah mengeras.' }
+            { ikon: '🚜', nama: 'Pengolahan Tanah Maksimal', tgl: tambahHari(tglTanam, -14), detail: 'Lakukan pembajakan untuk mengubur singgang, memutus siklus hidup wereng.' },
+            { ikon: '🐀', nama: 'Gropyokan & Umpan Tikus', tgl: tambahHari(tglTanam, -7), detail: 'Bersihkan semak pematang. Pasang sistem bubu perangkap sebelum penanaman.' },
+            { ikon: '🌾', nama: 'Hari Penanaman Padi', tgl: tglTanam, detail: 'Lakukan penanaman bibit secara serempak. Gunakan jarak tanam teratur (Jajar Legowo).' },
+            { ikon: '🧪', nama: 'Pemupukan Tahap I (Dasar)', tgl: tambahHari(tglTanam, konfigHST.pupuk1), detail: 'Taburkan pupuk Nitrogen (Urea) dan NPK saat kondisi air macak-macak.' },
+            { ikon: '💊', nama: 'Penyemprotan Insektisida (PHT)', tgl: tglInsektisida, detail: tipsPHT },
+            { ikon: '🧪', nama: 'Pemupukan Tahap II (Susulan)', tgl: tambahHari(tglTanam, konfigHST.pupuk2), detail: 'Gunakan alat Bagan Warna Daun (BWD) sebagai indikator dosis untuk anakan.' },
+            { ikon: '🍄', nama: 'Aplikasi Fungisida Preventif', tgl: tambahHari(tglTanam, konfigHST.fungisida), detail: 'Penyemprotan pelindung jamur sebelum padi bunting untuk mencegah potong leher.' },
+            { ikon: '🌟', nama: 'Estimasi Pemanenan Raya', tgl: tambahHari(tglTanam, konfigHST.panen), detail: 'Panen siap dilakukan ketika 90% gabah menguning. Keringkan petakan 7 hari sebelum panen.' }
         ];
 
         var html = `
@@ -224,7 +213,6 @@
         return html;
     }
 
-    // Jalankan inisialisasi awal saat siap
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', inisialisasiUI);
     } else {
