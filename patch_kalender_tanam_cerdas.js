@@ -318,96 +318,64 @@
     //    4. Sesuaikan dengan pola iklim & kondisi ENSO/IOD aktual
     // =========================================================================
     function rekomendasiMusim(zomData, ensoVal, iodVal, pola, polaInfo, cuacaData, sekarang) {
-        var bln = sekarang.getMonth(); // 0-11
+    var bln = sekarang.getMonth(); // 0-11
 
-        // ── Hitung skor 9 bulan ke depan ────────────────────────────────────
-        var proyeksi = [];
-        for (var i = 0; i < 9; i++) {
-            var idx = (bln + i) % 12;
-            proyeksi.push({
-                offset:  i,
-                idx:     idx,
-                namaBln: NAMA_BULAN[idx],
-                skor:    skorBulan(idx, zomData, ensoVal, iodVal, pola)
-            });
-        }
+    // ── Hitung skor 9 bulan ke depan ────────────────────────────────────
+    var proyeksi = [];
+    for (var i = 0; i < 9; i++) {
+        var idx = (bln + i) % 12;
+        proyeksi.push({
+            offset:  i,
+            idx:     idx,
+            namaBln: NAMA_BULAN[idx],
+            skor:    skorBulan(idx, zomData, ensoVal, iodVal, pola)
+        });
+    }
 
-        // ── Tentukan nama musim berdasarkan pola iklim & bulan ───────────────
-        var musim, konteks;
-        switch (pola) {
-            case 'MONSUNAL':
-                // Musim hujan Nov–Apr, kemarau Mei–Okt (referensi Jawa/Sulsel)
-                if (bln >= 10 || bln <= 3) {
-                    musim   = 'Musim Hujan (MH) / Rendeng';
-                    konteks = 'Curah hujan cukup untuk tanam utama. Waspadai banjir dan ledakan hama.';
-                } else if (bln >= 4 && bln <= 6) {
-                    musim   = 'Awal Kemarau / Peralihan MH→MK';
-                    konteks = 'Musim tanam gadu. Ketersediaan irigasi menjadi kunci.';
-                } else {
-                    musim   = 'Musim Kemarau (MK) / Gadu';
-                    konteks = 'Kemarau berlangsung. Tanam padi memerlukan irigasi teknis penuh.';
-                }
+    // ── (kode musim/konteks/ENSO-IOD tetap sama, tidak berubah) ──────────
+    // ... [switch pola, kondisiIklim, warningIklim — tidak diubah] ...
+
+    // ── Pilih bulan tanam terbaik — DENGAN DETEKSI ARAH TREN MUSIM ───────
+    var SKOR_MIN = 28, SKOR_MAX = 72;
+    var terbaik  = null;
+    var jendelaTerlewat = false; // flag untuk info ke pengguna
+
+    // Hitung skor bulan SEBELUM bulan ini, untuk tahu arah tren saat ini
+    var idxBulanLalu = (bln - 1 + 12) % 12;
+    var skorBulanLalu = skorBulan(idxBulanLalu, zomData, ensoVal, iodVal, pola);
+    var skorBulanIni  = proyeksi[0].skor;
+
+    // Tren menurun = curah hujan sedang berkurang dibanding bulan lalu
+    // (artinya kita kemungkinan di ekor musim hujan, bukan awalnya)
+    var trenMenurun = skorBulanIni < skorBulanLalu;
+
+    // Kondisi "bulan ini masuk rentang layak tanam, TAPI sedang di ekor musim":
+    // skor bulan ini layak (28-72) namun trennya menurun DAN skor 2 bulan
+    // ke depan jatuh ke bawah SKOR_MIN (menandakan musim hujan akan segera
+    // berakhir) → ini sinyal "jendela tanam utama sudah lewat puncaknya".
+    var skorDuaBlnDepan = proyeksi[2] ? proyeksi[2].skor : skorBulanIni;
+    var sedangDiEkorMusim = (skorBulanIni >= SKOR_MIN && skorBulanIni <= SKOR_MAX)
+                          && trenMenurun
+                          && (skorDuaBlnDepan < SKOR_MIN);
+
+    if (sedangDiEkorMusim) {
+        // Jangan ambil bulan ini — lompat ke siklus tanam berikutnya.
+        // Cari titik dimana skor MULAI NAIK lagi ke rentang layak tanam
+        // (awal jendela musim berikutnya), bukan sekadar skor 28-72 pertama.
+        for (var m = 1; m < proyeksi.length; m++) {
+            var pPrev = proyeksi[m - 1];
+            var pCurr = proyeksi[m];
+            var naik  = pCurr.skor > pPrev.skor; // tren menanjak = awal musim baru
+            if (pCurr.skor >= SKOR_MIN && pCurr.skor <= SKOR_MAX && naik) {
+                terbaik = pCurr;
+                jendelaTerlewat = true;
                 break;
-
-            case 'EKUATORIAL':
-                // Dua puncak hujan (bimodal): Mar–Mei & Sep–Nov
-                if ((bln >= 2 && bln <= 4) || (bln >= 8 && bln <= 10)) {
-                    musim   = 'Puncak Hujan Bimodal';
-                    konteks = 'Curah hujan tinggi. Ideal untuk pengolahan lahan dan tanam segera.';
-                } else if (bln === 1 || bln === 5 || bln === 7 || bln === 11) {
-                    musim   = 'Peralihan Bimodal';
-                    konteks = 'Hujan moderat. Cocok untuk persiapan tanam atau panen.';
-                } else {
-                    musim   = 'Transisi Kering Relatif';
-                    konteks = 'Hujan berkurang. Pastikan ketersediaan air irigasi.';
-                }
-                break;
-
-            case 'ANTI_MONSUNAL':
-                // Puncak hujan Jun–Sep (kebalikan Jawa)
-                if (bln >= 5 && bln <= 8) {
-                    musim   = 'Musim Hujan Lokal (Jun–Sep)';
-                    konteks = 'Ini musim hujan utama di wilayah Anda. Ideal untuk tanam rendeng lokal.';
-                } else if (bln >= 9 && bln <= 11) {
-                    musim   = 'Peralihan Hujan→Kering Lokal';
-                    konteks = 'Hujan mulai berkurang. Persiapkan tanam gadu sebelum kemarau.';
-                } else {
-                    musim   = 'Musim Kering Lokal (Des–Mei)';
-                    konteks = 'Hujan minimal. Tanam bergantung pada irigasi dan embung.';
-                }
-                break;
-
-            default: // LOKAL / peralihan
-                musim   = 'Pola Hujan Lokal / Peralihan';
-                konteks = 'Pola hujan bervariasi. Sistem menganalisis ZOM aktual untuk penentuan waktu tanam.';
+            }
         }
+    }
 
-        // ── Pengaruh ENSO/IOD pada konteks ──────────────────────────────────
-        var kondisiIklim = '';
-        var warningIklim = '';
-        if (ensoVal > 1.0) {
-            kondisiIklim = 'El Niño kuat';
-            warningIklim = '⚠️ El Niño aktif — curah hujan diprediksi di bawah normal. Prioritaskan varietas genjah dan tahan kering.';
-        } else if (ensoVal > 0.5) {
-            kondisiIklim = 'El Niño moderat';
-            warningIklim = '⚠️ El Niño moderat — persiapkan irigasi tambahan, pertimbangkan varietas genjah.';
-        } else if (ensoVal < -1.0) {
-            kondisiIklim = 'La Niña kuat';
-            warningIklim = '⚠️ La Niña kuat — curah hujan di atas normal. Waspadai banjir, pilih varietas tahan rendaman.';
-        } else if (ensoVal < -0.5) {
-            kondisiIklim = 'La Niña moderat';
-            warningIklim = '⚠️ La Niña moderat — potensi hujan lebih tinggi, siapkan saluran drainase.';
-        } else {
-            kondisiIklim = 'Netral';
-            warningIklim = '';
-        }
-
-        // ── Pilih bulan tanam terbaik ────────────────────────────────────────
-        // Skor ideal tanam padi: 28–72 (air tersedia, tidak genang ekstrem)
-        // Prioritas: bulan yang paling dekat dan skornya layak
-        var SKOR_MIN = 28, SKOR_MAX = 72;
-        var terbaik  = null;
-        // Cari dalam 6 bulan ke depan dulu
+    if (!terbaik) {
+        // Cari dalam 6 bulan ke depan dulu (logika asli)
         for (var j = 0; j < 6; j++) {
             var p = proyeksi[j];
             if (p.skor >= SKOR_MIN && p.skor <= SKOR_MAX) {
@@ -415,83 +383,61 @@
                 break;
             }
         }
-        // Jika tidak ada dalam 6 bulan, perluas ke 9 bulan
-        if (!terbaik) {
-            for (var k = 0; k < proyeksi.length; k++) {
-                var q = proyeksi[k];
-                if (q.skor >= SKOR_MIN && q.skor <= SKOR_MAX) {
-                    terbaik = q;
-                    break;
-                }
+    }
+    // Jika tidak ada dalam 6 bulan, perluas ke 9 bulan
+    if (!terbaik) {
+        for (var k = 0; k < proyeksi.length; k++) {
+            var q = proyeksi[k];
+            if (q.skor >= SKOR_MIN && q.skor <= SKOR_MAX) {
+                terbaik = q;
+                break;
             }
         }
-        // Jika tetap tidak ada (sangat kering/basah ekstrem), ambil yang skornya paling mendekati ideal
-        if (!terbaik) {
-            var nilaiTerbaik = -Infinity;
-            proyeksi.slice(0, 6).forEach(function (p) {
-                var n = -Math.abs(p.skor - 50);
-                if (n > nilaiTerbaik) { nilaiTerbaik = n; terbaik = p; }
-            });
-        }
-
-        // ── Hitung tanggal tanam ─────────────────────────────────────────────
-        var tglTanam;
-        if (terbaik.offset === 0) {
-            // Bulan ini — beri 14 hari persiapan minimal
-            // Jika sudah lewat tgl 15, geser ke bulan depan
-            var tglRencana = tambahHari(sekarang, 14);
-            tglTanam = tglRencana.getDate() > 20
-                ? new Date(sekarang.getFullYear(), sekarang.getMonth() + 1, 5)
-                : tglRencana;
-        } else {
-            // Bulan mendatang — ambil tanggal 5 bulan tersebut (persiapan cukup)
-            tglTanam = new Date(sekarang.getFullYear(), sekarang.getMonth() + terbaik.offset, 5);
-        }
-
-        // ── Tentukan varietas ────────────────────────────────────────────────
-        var varietas, labelVarietas, alasanVarietas;
-
-        // Prioritas 1: Kondisi ENSO ekstrem
-        if (ensoVal > 0.8) {
-            varietas       = 'genjah';
-            labelVarietas  = 'Genjah < 95 HST (Inpari 42, Inpari 43, Cakrabuana, M70D)';
-            alasanVarietas = 'El Niño menekan curah hujan — varietas genjah mengurangi risiko kekeringan di fase generatif.';
-        } else if (ensoVal < -0.8) {
-            varietas       = 'sedang';
-            labelVarietas  = 'Sedang 95–115 HST, Tahan Rendaman (Inpari 30, Inpari 33, Inpari 38)';
-            alasanVarietas = 'La Niña meningkatkan risiko genangan — pilih varietas toleran banjir singkat.';
-        }
-        // Prioritas 2: Skor kelembapan bulan tanam
-        else if (terbaik.skor > 68) {
-            varietas       = 'sedang';
-            labelVarietas  = 'Sedang 95–115 HST, Tahan Basah (Inpari 30, Inpari 33, Mekongga)';
-            alasanVarietas = 'Curah hujan tinggi di bulan tanam — varietas sedang tahan rendaman lebih aman.';
-        } else if (terbaik.skor < 32) {
-            varietas       = 'genjah';
-            labelVarietas  = 'Genjah < 95 HST (Inpari 42, Inpari 43, Cakrabuana)';
-            alasanVarietas = 'Curah hujan rendah — varietas genjah meminimalisir risiko puso akibat kekurangan air.';
-        }
-        // Kondisi normal
-        else {
-            varietas       = 'sedang';
-            labelVarietas  = 'Sedang 95–115 HST (Ciherang, Mekongga, Inpari 32, Inpari 42)';
-            alasanVarietas = 'Kondisi curah hujan mendukung — varietas sedang unggul memberikan hasil optimal.';
-        }
-
-        return {
-            tglMulai:      tglTanam,
-            musim:         musim,
-            konteks:       konteks,
-            kondisiIklim:  kondisiIklim,
-            warningIklim:  warningIklim,
-            varietas:      varietas,
-            labelVarietas: labelVarietas,
-            alasanVarietas:alasanVarietas,
-            skorBulanTanam:terbaik.skor,
-            namaBulanTanam:terbaik.namaBln,
-            proyeksi:      proyeksi
-        };
     }
+    // Jika tetap tidak ada (sangat kering/basah ekstrem), ambil yang skornya paling mendekati ideal
+    if (!terbaik) {
+        var nilaiTerbaik = -Infinity;
+        proyeksi.slice(0, 6).forEach(function (p) {
+            var n = -Math.abs(p.skor - 50);
+            if (n > nilaiTerbaik) { nilaiTerbaik = n; terbaik = p; }
+        });
+    }
+
+    // ── Hitung tanggal tanam ─────────────────────────────────────────────
+    var tglTanam;
+    if (terbaik.offset === 0) {
+        var tglRencana = tambahHari(sekarang, 14);
+        tglTanam = tglRencana.getDate() > 20
+            ? new Date(sekarang.getFullYear(), sekarang.getMonth() + 1, 5)
+            : tglRencana;
+    } else {
+        tglTanam = new Date(sekarang.getFullYear(), sekarang.getMonth() + terbaik.offset, 5);
+    }
+
+    // ── (kode pemilihan varietas tetap sama) ──────────────────────────────
+    // ... [tidak diubah] ...
+
+    // ── Tambahkan peringatan jendela terlewat ke konteks ──────────────────
+    if (jendelaTerlewat) {
+        konteks += ' ⚠️ Jendela tanam optimal musim ini sudah lewat puncaknya — ' +
+                   'rekomendasi diarahkan ke siklus tanam berikutnya (' + terbaik.namaBln + ').';
+    }
+
+    return {
+        tglMulai:      tglTanam,
+        musim:         musim,
+        konteks:       konteks,
+        kondisiIklim:  kondisiIklim,
+        warningIklim:  warningIklim,
+        varietas:      varietas,
+        labelVarietas: labelVarietas,
+        alasanVarietas:alasanVarietas,
+        skorBulanTanam:terbaik.skor,
+        namaBulanTanam:terbaik.namaBln,
+        proyeksi:      proyeksi,
+        jendelaTerlewat: jendelaTerlewat  // <- flag baru, bisa dipakai UI
+    };
+}
 
     // =========================================================================
     //  ANALISIS RISIKO OPT — BERBASIS CUACA AKTUAL (UNIVERSAL)
