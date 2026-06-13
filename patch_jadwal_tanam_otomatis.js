@@ -1,24 +1,27 @@
 /**
  * ============================================================
  *  patch_jadwal_tanam_otomatis.js
- *  Versi: 2.0 — Jadwal Tanam Otomatis Berbasis Iklim & GPS
+ *  Versi: 3.0 — Jadwal Tanam Berbasis Kalender Iklim (Bukan Offset Hari)
  * ------------------------------------------------------------
+ *  PERBAIKAN UTAMA v3.0 vs v2.0:
+ *    ❌ v2.0: Scan offset 7–90 hari dari hari ini → SALAH SECARA LOGIKA IKLIM
+ *    ✅ v3.0: Scan 12 bulan penuh → pilih BULAN TANAM terbaik secara iklim,
+ *             lalu tetapkan tanggal tanam di dalam bulan itu berdasarkan
+ *             fase bulan yang menguntungkan.
+ *
+ *    Alasan: Kondisi iklim tidak peduli kapan petani membuka aplikasi.
+ *    Yang relevan adalah BULAN berapa padi akan memasuki fase generatif
+ *    dan BULAN berapa panen berlangsung — karena fase itulah yang
+ *    menentukan risiko gagal panen, bukan jarak hari dari hari ini.
+ *
  *  MENGGANTIKAN:
  *    - patch_kalender_tanam_cerdas.js
  *    - patch_kalender_menu_mandiri.js
+ *    - patch_jadwal_tanam_otomatis.js v2.0
  *
  *  Cara pakai:
- *    Ganti kedua patch lama dengan satu file ini SAJA.
  *    Letakkan SETELAH patch_enso_iod_noaa.js:
  *    <script src="patch_jadwal_tanam_otomatis.js"></script>
- *
- *  Fitur baru vs patch lama:
- *    ✅ Tanggal tanam & varietas direkomendasikan otomatis
- *    ✅ Rekomendasi window tanam terbaik 3 bulan ke depan
- *    ✅ GPS diambil otomatis saat tab dibuka (tanpa tombol manual)
- *    ✅ switchMode tidak di-patch berlapis → tidak ada konflik
- *    ✅ Tidak ada DOM-swap / rename ID yang rapuh
- *    ✅ Integrasi risiko hama-penyakit per kegiatan
  *
  *  Dependensi (harus dimuat lebih dulu):
  *    - getENSOAnomaly()        (patch_enso_iod_noaa.js)
@@ -42,7 +45,7 @@
     /* ──────────────────────────────────────────────────────────
        KONSTANTA GLOBAL
     ────────────────────────────────────────────────────────── */
-    var WARNA = '#06b6d4';                        // cyan
+    var WARNA = '#06b6d4';
     var EPOCH_BULAN_BARU = new Date('2026-01-29T12:36:00Z');
     var SIKLUS_SINODIS   = 29.53059;
 
@@ -59,6 +62,10 @@
         var h = new Date(d);
         h.setDate(h.getDate() + n);
         return h;
+    }
+    function tanggalDariBulanTahun(bulanIdx, tahun) {
+        // Kembalikan tanggal 1 dari bulan & tahun tertentu
+        return new Date(tahun, bulanIdx, 1);
     }
     function formatTglLengkap(d) {
         return NAMA_HARI[d.getDay()] + ', ' +
@@ -99,7 +106,7 @@
     /* ──────────────────────────────────────────────────────────
        DATA ZOM DAN SKOR KELEMBAPAN
     ────────────────────────────────────────────────────────── */
-    var _cacheZOM = null; // { data, nama, jarak }
+    var _cacheZOM = null;
 
     async function getDataZOM(lat, lon) {
         if (_cacheZOM) return _cacheZOM;
@@ -159,7 +166,6 @@
         var bl  = baselineArr[bulanIdx];
         var idx = bl > 10 ? norm(bl) : bl;
 
-        /* Bobot ENSO & IOD per bulan — monsunal Sulsel */
         var w = [
             [0.15,0.10],[0.15,0.10],[0.12,0.08],[0.10,0.08],
             [0.18,0.12],[0.35,0.20],[0.45,0.28],[0.50,0.38],
@@ -171,101 +177,194 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       MESIN REKOMENDASI WINDOW TANAM OTOMATIS
+       MESIN REKOMENDASI WINDOW TANAM — BERBASIS KALENDER IKLIM
+       
+       PERBAIKAN LOGIKA v3.0:
+       ─────────────────────────────────────────────────────────
+       SALAH (v2.0): Loop offset hari dari sekarang (7–90 hari)
+         → Implisit mengasumsikan "hari ini = titik nol perencanaan"
+         → Jika petani buka aplikasi bulan Agustus, sistem HANYA
+           akan merekomendasikan tanam September–Oktober, padahal
+           mungkin kondisi iklim terbaik adalah Desember atau Maret.
+         → Skor risiko dihitung per TANGGAL tapi bulan sangat 
+           dominan — hasilnya redundan dan menyesatkan.
+       
+       BENAR (v3.0): Loop 12 BULAN kalender → pilih bulan tanam
+         terbaik, lalu cari tanggal tanam yang tepat di dalamnya.
+         → Logika: iklim bekerja pada skala BULANAN (monsun, ZOM,
+           ENSO/IOD semua adalah sinyal per bulan)
+         → Petani bisa saja merencanakan tanam 6 bulan ke depan —
+           sistem harus bisa merekomendasikan itu.
+         → Evaluasi dilakukan pada BULAN GENERATIF dan BULAN PANEN,
+           bukan tanggal spesifik yang tidak relevan pada skala iklim.
     ────────────────────────────────────────────────────────── */
-    /**
-     * Pilih window tanam terbaik dalam 90 hari ke depan
-     * berdasarkan skor risiko fase generatif & panen.
-     * Mengembalikan { tglTanam, varietas, alasan }.
-     */
     function rekomendasiWindowTanam(skorBulan) {
         var now = new Date();
-        var bulanSekarang = now.getMonth();
+        var bulanSekarang = now.getMonth();  // 0–11
+        var tahunSekarang = now.getFullYear();
 
-        /* Kandidat: semua tanggal tanam 7–90 hari dari sekarang */
+        // ── Definisi varietas: durasi (HST) dan offset fase (hari) ──
+        var varianArr = [
+            {
+                kode: 'genjah', label: 'Genjah (< 95 HST)',
+                panen: 90,
+                // Fase generatif: ~55% dari total HST = awal bunting
+                persenGen: 0.55
+            },
+            {
+                kode: 'sedang', label: 'Sedang (95–115 HST)',
+                panen: 110,
+                persenGen: 0.55
+            },
+            {
+                kode: 'dalam', label: 'Dalam (≥ 116 HST)',
+                panen: 125,
+                persenGen: 0.55
+            }
+        ];
+
+        /*
+         * Scan 12 bulan ke depan dari bulan sekarang (termasuk bulan ini).
+         * Untuk setiap kombinasi (bulan tanam × varietas), hitung nilai
+         * berdasarkan kondisi iklim di BULAN GENERATIF dan BULAN PANEN.
+         *
+         * CATATAN PENTING:
+         *   Bulan tanam = bulan ke-i (0–11) dalam siklus 12 bulan
+         *   Bulan generatif = (bulan tanam + floor(panen × persenGen / 30)) % 12
+         *   Bulan panen    = (bulan tanam + floor(panen / 30)) % 12
+         *
+         *   Pembagian 30 hari/bulan adalah aproksimasi — cukup akurat untuk
+         *   menentukan bulan (bukan tanggal), yang merupakan satuan relevan iklim.
+         */
         var kandidat = [];
 
-        for (var dOffset = 7; dOffset <= 90; dOffset++) {
-            var tglCoba = tambahHari(now, dOffset);
-            var bCoba   = tglCoba.getMonth();
+        for (var offsetBulan = 0; offsetBulan <= 11; offsetBulan++) {
+            var bTanam = (bulanSekarang + offsetBulan) % 12;
+            // Tentukan tahun tanam (bisa tahun depan jika offsetBulan > sisa bulan)
+            var tahunTanam = tahunSekarang + Math.floor((bulanSekarang + offsetBulan) / 12);
 
-            /* Hindari menanam jika bulan tanam SANGAT KERING (skor < 15) */
-            var skorTanam = skorBulan[bCoba];
-            if (skorTanam < 15) continue;
-
-            /* Evaluasi 3 varietas */
-            var varianArr = [
-                { kode:'genjah', label:'Genjah (< 95 HST)',      panen: 90 },
-                { kode:'sedang', label:'Sedang (95–115 HST)',     panen:110 },
-                { kode:'dalam',  label:'Dalam (≥ 116 HST)',       panen:125 }
-            ];
+            // Skor tanam: bulan sangat kering → tidak bisa olah lahan
+            var skorTanam = skorBulan[bTanam];
+            if (skorTanam < 15) continue; // Skip bulan kering ekstrem
 
             varianArr.forEach(function (v) {
-                var tglGen   = tambahHari(tglCoba, Math.floor(v.panen * 0.55));
-                var tglPanen = tambahHari(tglCoba, v.panen);
-                var bGen     = tglGen.getMonth();
-                var bPanen   = tglPanen.getMonth();
+                // Hitung bulan generatif dan panen berdasarkan durasi varietas
+                var hariGen   = Math.floor(v.panen * v.persenGen);
+                var bGenIdx   = (bTanam + Math.floor(hariGen / 30)) % 12;
+                var bPanenIdx = (bTanam + Math.floor(v.panen / 30)) % 12;
 
-                var skorGen   = skorBulan[bGen];
-                var skorPanen = skorBulan[bPanen];
+                var skorGen   = skorBulan[bGenIdx];
+                var skorPanen = skorBulan[bPanenIdx];
 
-                /* Skor komposit: risiko rendah = nilai tinggi */
-                /* Generatif: terlalu basah (>75) atau kering (<20) = buruk */
-                var nilaiGen   = 100 - Math.abs(skorGen   - 40);
-                /* Panen: makin kering makin bagus */
-                var nilaiPanen = 100 - skorPanen;
+                /*
+                 * Fungsi nilai:
+                 *   Generatif: skor ideal ~35–50 (cukup air, tidak terlalu lembap)
+                 *              Terlalu basah (>75) → Blast, penyerbukan gagal
+                 *              Terlalu kering (<20) → hampa massal (puso)
+                 *   Panen:     makin kering makin baik (skor rendah = nilai tinggi)
+                 *              Basah saat panen → padi rebah, gabah tumbuh, dryer mahal
+                 */
+                var nilaiGen   = 100 - Math.abs(skorGen   - 40); // optimal di 40
+                var nilaiPanen = 100 - skorPanen;                 // kering = baik
 
+                /*
+                 * Bobot: generatif lebih kritis (55%) dari panen (45%)
+                 * karena gagal bunting = puso total, sedangkan gagal panen
+                 * masih bisa diatasi dengan dryer/combine pagi hari.
+                 */
                 var nilaiTotal = (nilaiGen * 0.55) + (nilaiPanen * 0.45);
 
+                // Penalti jika bulan tanam + 1 (vegetatif awal) juga sangat kering
+                var bVeg1 = (bTanam + 1) % 12;
+                if (skorBulan[bVeg1] < 20) nilaiTotal -= 15;
+
                 kandidat.push({
-                    tglTanam : tglCoba,
-                    varietas : v.kode,
-                    labelVar : v.label,
-                    nilaiTotal: nilaiTotal,
-                    skorTanam : skorTanam,
-                    skorGen   : skorGen,
-                    skorPanen : skorPanen
+                    offsetBulan : offsetBulan,
+                    bTanam      : bTanam,
+                    tahunTanam  : tahunTanam,
+                    varietas    : v.kode,
+                    labelVar    : v.label,
+                    panen       : v.panen,
+                    nilaiTotal  : nilaiTotal,
+                    skorTanam   : skorTanam,
+                    skorGen     : skorGen,
+                    skorPanen   : skorPanen,
+                    namaBulanGen  : NAMA_BULAN[bGenIdx],
+                    namaBulanPanen: NAMA_BULAN[bPanenIdx]
                 });
             });
         }
 
+        // Fallback jika semua bulan kering ekstrem (sangat jarang)
         if (!kandidat.length) {
-            /* Fallback mutlak: 14 hari dari sekarang, varietas sedang */
+            var tglFallback = tambahHari(now, 14);
             return {
-                tglTanam : tambahHari(now, 14),
+                tglTanam : tglFallback,
                 varietas : 'sedang',
                 labelVar : 'Sedang (95–115 HST)',
-                alasan   : 'Data iklim terbatas — dipilih window default.'
+                alasan   : 'Semua bulan menunjukkan kondisi kering ekstrem — ' +
+                           'dipilih window default 14 hari ke depan. ' +
+                           'Pertimbangkan pompanisasi penuh.'
             };
         }
 
-        /* Urutkan descending by nilaiTotal */
+        // Urutkan descending → ambil terbaik
         kandidat.sort(function (a, b) { return b.nilaiTotal - a.nilaiTotal; });
         var best = kandidat[0];
 
-        /* Geser ke fase bulan yang bagus untuk tanam
-           (sabit muda – kuartal pertama: hari 3–8) */
-        var tglFaseBaik = cariTglFaseBulan(best.tglTanam, 3, 8, 0);
-        /* Jika hasilnya > 7 hari dari best, pakai tanggal best */
-        var selisih = Math.abs((tglFaseBaik - best.tglTanam) / 86400000);
-        if (selisih > 7) tglFaseBaik = best.tglTanam;
+        /*
+         * Tentukan tanggal konkret di dalam bulan terbaik:
+         *   1. Mulai dari tanggal 1 bulan tanam terpilih
+         *   2. Geser ke fase bulan sabit muda (hari 3–8 siklus sinodis)
+         *      yang merupakan waktu tradisional tanam padi di Sulawesi
+         *   3. Jika tidak ditemukan dalam 30 hari pertama bulan itu,
+         *      gunakan tanggal 7 sebagai default
+         */
+        var tglAwalBulan = tanggalDariBulanTahun(best.bTanam, best.tahunTanam);
 
-        /* Susun alasan */
+        // Cari fase bulan sabit muda (hari 3–8) di dalam bulan tanam terpilih
+        var tglFaseBaik = cariTglFaseBulan(tglAwalBulan, 3, 8, 0);
+
+        // Pastikan tanggal fase masih di bulan yang sama
+        if (tglFaseBaik.getMonth() !== best.bTanam) {
+            // Jika meleset ke bulan berikutnya, coba dari tanggal 8 bulan itu
+            tglFaseBaik = cariTglFaseBulan(tambahHari(tglAwalBulan, 7), 3, 8, 0);
+        }
+        // Jika masih meleset, pakai tanggal 10 bulan itu
+        if (tglFaseBaik.getMonth() !== best.bTanam) {
+            tglFaseBaik = new Date(best.tahunTanam, best.bTanam, 10);
+        }
+
+        // Susun alasan dengan konteks iklim yang jelas
+        var keteranganSkorGen = best.skorGen < 25 ? 'kering — risiko puso jika tidak ada irigasi' :
+                                best.skorGen > 70 ? 'basah — waspada Blast dan penyerbukan terganggu' :
+                                'optimal untuk pembungaan dan pengisian bulir';
+
+        var keteranganSkorPanen = best.skorPanen > 65 ? 'basah — siapkan dryer dan panen pagi' :
+                                  best.skorPanen < 20 ? 'kering ideal — panen berlangsung lancar' :
+                                  'sedang — koordinasikan combine harvester';
+
         var alasan =
-            'Fase generatif jatuh pada ' + NAMA_BULAN[tambahHari(tglFaseBaik, Math.floor(
-                { genjah:90, sedang:110, dalam:125 }[best.varietas] * 0.55
-            )).getMonth()] +
-            ' (skor kelembapan: ' + best.skorGen + '/100). ' +
-            'Fase panen di ' + NAMA_BULAN[tambahHari(tglFaseBaik,
-                { genjah:90, sedang:110, dalam:125 }[best.varietas]
-            ).getMonth()] +
-            ' (skor: ' + best.skorPanen + '/100).';
+            'Bulan tanam terbaik: ' + NAMA_BULAN[best.bTanam] + ' ' + best.tahunTanam +
+            ' (skor kelembapan: ' + best.skorTanam + '/100). ' +
+            'Fase generatif jatuh pada ' + best.namaBulanGen +
+            ' (skor: ' + best.skorGen + '/100 — ' + keteranganSkorGen + '). ' +
+            'Panen diperkirakan ' + best.namaBulanPanen +
+            ' (skor: ' + best.skorPanen + '/100 — ' + keteranganSkorPanen + '). ' +
+            'Nilai iklim gabungan: ' + best.nilaiTotal.toFixed(0) + '/100.';
+
+        // Peringatan jika rekomendasi jauh ke depan (> 3 bulan)
+        if (best.offsetBulan > 3) {
+            alasan += ' ⚠️ Bulan tanam optimal berada ' + best.offsetBulan +
+                      ' bulan ke depan karena kondisi iklim saat ini kurang mendukung ' +
+                      'fase generatif/panen. Pertimbangkan palawija untuk musim ini.';
+        }
 
         return {
-            tglTanam : tglFaseBaik,
-            varietas : best.varietas,
-            labelVar : best.labelVar,
-            alasan   : alasan
+            tglTanam  : tglFaseBaik,
+            varietas  : best.varietas,
+            labelVar  : best.labelVar,
+            alasan    : alasan
         };
     }
 
@@ -345,7 +444,7 @@
         var tglFung   = tambahHari(tglTanam, of.fung);
         var tglPanen  = tambahHari(tglTanam, of.panen);
 
-        /* Koreksi insektisida: geser dari bulan penuh */
+        // Koreksi insektisida: geser dari bulan penuh
         [tglI1, tglI2].forEach(function (t, idx) {
             var f = hariFaseBulan(t);
             if (f >= 13.5 && f <= 16.5) {
@@ -551,12 +650,10 @@
             return renderKartu(k, i + 1);
         }).join('');
 
-        /* Simpan untuk WhatsApp */
         window._jtoData = { rekomendasi: rekomendasi, kegiatan: kegiatan };
 
         return '<div style="padding:4px 0;">' +
 
-        /* === Banner rekomendasi otomatis === */
         '<div style="background:rgba(6,182,212,0.09);border:1px solid rgba(6,182,212,0.25);border-left:4px solid ' + WARNA + ';border-radius:14px;padding:14px 16px;margin-bottom:14px;">' +
             '<div style="font-size:11px;color:' + WARNA + ';font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">🤖 REKOMENDASI OTOMATIS SISTEM</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">' +
@@ -575,7 +672,9 @@
         kartuHTML +
 
         '<div style="margin-top:12px;background:rgba(100,116,139,0.1);border-radius:10px;padding:10px 12px;font-size:10px;color:#64748b;line-height:1.6;border:1px solid rgba(255,255,255,0.04);">' +
-            '⚠️ Rekomendasi berbasis data iklim — sesuaikan dengan kondisi lapangan, ketersediaan air, dan pengamatan PHT mingguan. Sumber: NOAA ENSO/IOD, ZOM BMKG, siklus sinodis bulan, BB Padi (2019).' +
+            '⚠️ Rekomendasi berbasis kalender iklim 12 bulan — bukan offset hari dari hari ini. ' +
+            'Sesuaikan dengan kondisi lapangan, ketersediaan air, dan pengamatan PHT mingguan. ' +
+            'Sumber: NOAA ENSO/IOD, ZOM BMKG, siklus sinodis bulan, BB Padi (2019).' +
         '</div>' +
 
         '<button onclick="window._jtoKirimWA()" style="width:100%;margin-top:10px;padding:13px;background:#25D366;color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;">📲 Kirim Jadwal ke WhatsApp ↗</button>' +
@@ -607,7 +706,6 @@
 
     /* ──────────────────────────────────────────────────────────
        PROSES UTAMA: ANALISIS OTOMATIS
-       Dipanggil saat tab JADWAL TANAM dibuka
     ────────────────────────────────────────────────────────── */
     async function prosesJadwalOtomatis() {
         var hasilEl  = document.getElementById('jtoHasil');
@@ -618,7 +716,6 @@
         hasilEl.style.display = 'block';
         teksEl.innerHTML = '';
 
-        /* Tampilkan status loading bertahap */
         function setStatus(msg) {
             if (statusEl) statusEl.innerHTML = msg;
         }
@@ -626,7 +723,6 @@
         setStatus('<span style="color:' + WARNA + ';">📡 Mengambil koordinat GPS...</span>');
 
         try {
-            /* 1. Ambil GPS */
             var lat = -4.0, lon = 120.0;
             try {
                 if (window._lokasiKalender) {
@@ -651,7 +747,6 @@
 
             setStatus('<span style="color:' + WARNA + ';">🌐 Mengambil data ENSO/IOD & ZOM...</span>');
 
-            /* 2. Fetch paralel */
             var getENSO = typeof window.getENSOAnomaly === 'function'
                 ? window.getENSOAnomaly()
                 : Promise.resolve({ latestAnomaly: 0, status: 'Netral' });
@@ -664,20 +759,17 @@
             var ensoVal  = ensoData.latestAnomaly || 0;
             var iodVal   = iodData.latestAnomaly  || 0;
 
-            setStatus('<span style="color:' + WARNA + ';">🧮 Menghitung window tanam optimal...</span>');
+            setStatus('<span style="color:' + WARNA + ';">🧮 Mengevaluasi 12 bulan kalender iklim...</span>');
 
-            /* 3. Hitung skor kelembapan 12 bulan */
             var skorBulan = zonaInfo.data.map(function (_, idx) {
                 return skorKelembapan(idx, zonaInfo.data, ensoVal, iodVal);
             });
 
-            /* 4. Rekomendasi otomatis */
+            // v3.0: rekomendasi berbasis scan kalender penuh, bukan offset hari
             var rekomendasi = rekomendasiWindowTanam(skorBulan);
 
-            /* 5. Bangun kegiatan */
             var kegiatan = bangunKegiatan(rekomendasi.tglTanam, rekomendasi.varietas, skorBulan);
 
-            /* 6. Render */
             if (statusEl) statusEl.innerHTML = '';
             teksEl.innerHTML = renderOutput(rekomendasi, kegiatan, zonaInfo, ensoData, iodData);
 
@@ -705,7 +797,6 @@
         btn.textContent = 'JADWAL TANAM';
         btn.onclick = function () { switchMode('jadwaltanam'); };
 
-        /* Sisipkan setelah tab RISIKO IKLIM */
         var tabKalender = document.getElementById('tabKalender');
         if (tabKalender && tabKalender.parentNode) {
             tabKalender.parentNode.insertBefore(btn, tabKalender.nextSibling);
@@ -724,15 +815,15 @@
         box.style.display = 'none';
 
         box.innerHTML =
-            /* Banner info */
             '<div style="background:rgba(6,182,212,0.07);border:1px solid rgba(6,182,212,0.2);border-left:4px solid ' + WARNA + ';border-radius:14px;padding:13px 15px;margin-bottom:16px;">' +
                 '<strong style="color:' + WARNA + ';display:block;margin-bottom:5px;">📅 Jadwal Kegiatan Tani Berbasis Iklim</strong>' +
                 '<span style="font-size:0.78rem;color:#cbd5e1;line-height:1.6;">' +
-                    'Sistem menentukan tanggal tanam & varietas terbaik secara otomatis dari data ENSO/IOD, ZOM BMKG lokal, dan fase bulan — tanpa input manual.' +
+                    'Sistem mengevaluasi <b>12 bulan kalender iklim</b> (bukan sekadar hari ke depan) ' +
+                    'untuk menemukan bulan tanam terbaik berdasarkan kondisi ENSO/IOD, ZOM BMKG lokal, ' +
+                    'dan fase bulan — termasuk jika musim terbaik baru datang beberapa bulan ke depan.' +
                 '</span>' +
             '</div>' +
 
-            /* Tombol analisis */
             '<button id="btnJadwalOtomatis" style="' +
                 'width:100%;padding:15px;background:linear-gradient(135deg,' + WARNA + ',#0891b2);' +
                 'color:#fff;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:0.5px;margin-bottom:16px;' +
@@ -740,15 +831,12 @@
                 '🤖 ANALISIS & BUAT JADWAL OTOMATIS' +
             '</button>' +
 
-            /* Status loading */
             '<div id="jtoStatus" style="text-align:center;padding:4px 0 10px;font-size:13px;min-height:24px;"></div>' +
 
-            /* Area hasil */
             '<div id="jtoHasil" style="display:none;">' +
                 '<div id="jtoTeks"></div>' +
             '</div>';
 
-        /* Sisipkan setelah boxKalender */
         var boxKalender = document.getElementById('boxKalender');
         if (boxKalender && boxKalender.parentNode) {
             boxKalender.parentNode.insertBefore(box, boxKalender.nextSibling);
@@ -760,7 +848,7 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       PATCH switchMode — BERSIH, TIDAK BERLAPIS
+       PATCH switchMode
     ────────────────────────────────────────────────────────── */
     function patchSwitchMode() {
         var _asli = window.switchMode;
@@ -769,7 +857,6 @@
             var boxJTO = document.getElementById('boxJadwalTanam');
 
             if (mode === 'jadwaltanam') {
-                /* Sembunyikan semua box dan elemen kamera */
                 var semuaBox = document.querySelectorAll('.card > div[id^="box"]');
                 semuaBox.forEach(function (b) { b.style.display = 'none'; });
                 ['btnCamera','scanWindow','btnAnalisis','result'].forEach(function (id) {
@@ -777,34 +864,28 @@
                     if (el) el.style.display = 'none';
                 });
 
-                /* Tampilkan box jadwal tanam */
                 if (boxJTO) boxJTO.style.display = 'block';
 
-                /* Update title */
                 var titleEl = document.getElementById('modeTitle');
                 if (titleEl) { titleEl.innerText = '📅 Jadwal Kegiatan Tani'; titleEl.style.color = WARNA; }
 
-                /* Sembunyikan subtitle */
                 var subEl = document.getElementById('tabSubtitleDisplay');
                 if (subEl) subEl.style.display = 'none';
 
-                /* Update tab aktif */
                 document.querySelectorAll('.tab-btn').forEach(function (btn) {
                     btn.classList.remove('active');
                 });
                 var tabJTO = document.getElementById('tabJadwalTanam');
                 if (tabJTO) tabJTO.classList.add('active');
 
-                /* Jalankan analisis otomatis langsung saat tab dibuka */
                 var hasilEl = document.getElementById('jtoHasil');
                 if (hasilEl && hasilEl.style.display === 'none') {
                     prosesJadwalOtomatis();
                 }
 
-                return; /* Jangan teruskan ke switchMode asli */
+                return;
             }
 
-            /* Sembunyikan box jadwal saat mode lain aktif */
             if (boxJTO) boxJTO.style.display = 'none';
 
             if (typeof _asli === 'function') {
@@ -839,7 +920,7 @@
         patchSwitchMode();
 
         console.log(
-            '%c✅ patch_jadwal_tanam_otomatis.js aktif — Jadwal Tanam Otomatis Berbasis Iklim & GPS',
+            '%c✅ patch_jadwal_tanam_otomatis.js v3.0 aktif — Scan 12 Bulan Kalender Iklim',
             'color:' + WARNA + ';font-weight:bold;'
         );
     }
