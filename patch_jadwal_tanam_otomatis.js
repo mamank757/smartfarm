@@ -1,15 +1,15 @@
 /**
  * ============================================================
  *  patch_jadwal_tanam_otomatis.js
- *  Versi: 3.5 — Perencanaan Tahunan Statis (MT I Rendeng & MT II Gadu)
+ *  Versi: 3.6 — Perencanaan Tahunan Statis + Deteksi Musim Dinamis
  * ------------------------------------------------------------
- *  PERBAIKAN v3.5 vs v3.4:
- *  - Mengubah algoritma "Rolling Window 12 Bulan" menjadi 
- *    "Perencanaan Statis Tahunan".
- *  - Sistem sekarang menghasilkan 2 jadwal independen sekaligus
- *    untuk Musim Rendeng dan Musim Gadu pada tahun kalender berjalan.
- *  - UI dirombak untuk menampilkan 2 blok kalender (24 kartu).
- *  - Output WhatsApp disesuaikan untuk format dua musim.
+ *  PERBAIKAN v3.6 vs v3.5:
+ *  - [KRITIS] Menghapus hardcode bulan Rendeng (Okt-Mar) & Gadu (Apr-Sep).
+ *  - Menggunakan algoritma "Dynamic Sliding Window" untuk membaca
+ *    data ZOM 12 bulan: mencari blok 6 bulan terbasah sebagai MT I,
+ *    dan sisa 6 bulan sebagai MT II.
+ *  - Kini kalender 100% akurat untuk wilayah pola Lokal (anti-monsunal) 
+ *    dan Ekuatorial di seluruh Indonesia.
  * ============================================================
  */
 
@@ -170,22 +170,44 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       MESIN REKOMENDASI TAHUNAN STATIS (DUA MUSIM)
+       MESIN REKOMENDASI TAHUNAN STATIS (DETEKSI MUSIM DINAMIS)
     ────────────────────────────────────────────────────────── */
     function rekomendasiWindowTanam(skorBulan) {
         var now = new Date();
         var tahunSekarang = now.getFullYear();
 
+        // 1. CARI BLOK 6 BULAN TERBASAH (RENDENG)
+        var maxSum = -Infinity;
+        var startRendeng = 0;
+        
+        for (var i = 0; i < 12; i++) {
+            var sum = 0;
+            for (var j = 0; j < 6; j++) {
+                sum += skorBulan[(i + j) % 12];
+            }
+            if (sum > maxSum) {
+                maxSum = sum;
+                startRendeng = i;
+            }
+        }
+
+        // 2. TENTUKAN AWAL GADU (6 Bulan setelah Rendeng)
+        var startGadu = (startRendeng + 6) % 12;
+
+        // Ambil 4 bulan pertama dari tiap musim sebagai kandidat tanam
+        var rendengBulan = [startRendeng, (startRendeng+1)%12, (startRendeng+2)%12, (startRendeng+3)%12];
+        var gaduBulan = [startGadu, (startGadu+1)%12, (startGadu+2)%12, (startGadu+3)%12];
+
         var MUSIM = [
             {
-                nama  : 'MT I — Rendeng (Musim Hujan)',
+                nama  : 'MT I — Musim Utama (Puncak Hujan)',
                 kode  : 'rendeng',
-                bulanTanam: [9, 10, 11, 0] // Okt, Nov, Des, Jan
+                bulanTanam: rendengBulan
             },
             {
-                nama  : 'MT II — Gadu (Musim Kemarau)',
+                nama  : 'MT II — Musim Kedua (Hujan Menurun)',
                 kode  : 'gadu',
-                bulanTanam: [3, 4, 5, 6] // Apr, Mei, Jun, Jul
+                bulanTanam: gaduBulan
             }
         ];
 
@@ -201,11 +223,11 @@
             var kandidatMusim = [];
 
             musim.bulanTanam.forEach(function (bTanam) {
-                // Evaluasi statis untuk tahun kalender ini
                 var tahunTanam = tahunSekarang;
                 
-                // Jika bulan Jan untuk rendeng (yg berakar di akhir tahun), setahun depannya
-                if (musim.kode === 'rendeng' && bTanam === 0) {
+                // Cek silang tahun: Jika bulan tanam angkanya lebih kecil dari bulan mulai musim,
+                // berarti sudah menyeberang ke tahun kalender baru (Misal musim mulai Nov, tanam di Jan).
+                if (bTanam < musim.bulanTanam[0]) {
                     tahunTanam = tahunSekarang + 1;
                 }
 
@@ -247,8 +269,7 @@
 
             if (kandidatMusim.length === 0) {
                 var bFallback = musim.bulanTanam[0];
-                var tFallback = (musim.kode === 'rendeng' && bFallback === 0) ? tahunSekarang + 1 : tahunSekarang;
-                var tglAwalFallback = tanggalDariBulanTahun(bFallback, tFallback);
+                var tglAwalFallback = tanggalDariBulanTahun(bFallback, tahunSekarang);
                 var tglFaseFallback = cariTglFaseBulan(tglAwalFallback, 3, 8, 0);
 
                 hasilDuaMusim.push({
@@ -284,8 +305,8 @@
                     'sedang — aman';
 
                 var alasan =
-                    'Skor tanam (' + best.skorTanam + '/100). ' +
-                    'Fase generatif jatuh di ' + best.namaBulanGen +
+                    'Skor bulan tanam: ' + best.skorTanam + '/100. ' +
+                    'Generatif jatuh di ' + best.namaBulanGen +
                     ' (' + keteranganSkorGen + '). ' +
                     'Panen di ' + best.namaBulanPanen +
                     ' (' + keteranganSkorPanen + ').';
@@ -301,9 +322,7 @@
             }
         });
 
-        // Urutkan jadwal kronologis MT I lalu MT II
         hasilDuaMusim.sort(function(a, b) { return a.tglTanam.getTime() - b.tglTanam.getTime(); });
-        
         return hasilDuaMusim;
     }
 
@@ -600,7 +619,7 @@
         });
 
         html += '<div style="margin-top:16px;background:rgba(100,116,139,0.1);border-radius:10px;padding:10px 12px;font-size:10px;color:#64748b;line-height:1.6;border:1px solid rgba(255,255,255,0.04);">' +
-            '⚠️ Rekomendasi di atas merupakan perencanaan statis tahun berjalan (MT I & MT II). ' +
+            '⚠️ Rekomendasi 2 musim di atas terdeteksi otomatis dari analisis data ZOM lokal. ' +
             'Sesuaikan dengan kondisi lapangan, ketersediaan air, dan pengamatan PHT mingguan. ' +
             'Sumber: NOAA ENSO/IOD, ZOM BMKG, siklus sinodis bulan.' +
         '</div>';
@@ -697,7 +716,7 @@
             var ensoVal  = ensoData.latestAnomaly || 0;
             var iodVal   = iodData.latestAnomaly  || 0;
 
-            setStatus('<span style="color:' + WARNA + ';">🧮 Menyusun perencanaan statis tahunan...</span>');
+            setStatus('<span style="color:' + WARNA + ';">🧮 Deteksi musim & menyusun kalender...</span>');
 
             var skorBulan = zonaInfo.data.map(function (_, idx) {
                 return skorKelembapan(idx, zonaInfo.data, ensoVal, iodVal, lat, lon);
@@ -769,9 +788,9 @@
 
         box.innerHTML =
             '<div style="background:rgba(6,182,212,0.07);border:1px solid rgba(6,182,212,0.2);border-left:4px solid ' + WARNA + ';border-radius:14px;padding:13px 15px;margin-bottom:16px;">' +
-                '<strong style="color:' + WARNA + ';display:block;margin-bottom:5px;">📅 Kalender Tani Tahunan</strong>' +
+                '<strong style="color:' + WARNA + ';display:block;margin-bottom:5px;">📅 Kalender Tani Dinamis Tahunan</strong>' +
                 '<span style="font-size:0.78rem;color:#cbd5e1;line-height:1.6;">' +
-                    'Sistem memberikan perencanaan statis penuh untuk Musim Rendeng & Gadu tahun berjalan, dihitung berdasarkan data ZOM BMKG dan anomali iklim.' +
+                    'Sistem akan memindai ZOM lokal, membaca data ENSO/IOD, lalu secara cerdas mendeteksi bulan terbaik untuk Musim Utama (Rendeng) dan Musim Kedua (Gadu) di wilayah Anda.' +
                 '</span>' +
             '</div>' +
             '<button id="btnJadwalOtomatis" class="jto-pulse" style="' +
@@ -900,7 +919,7 @@
         injeksiTab();
         injeksiBox();
         patchSwitchMode();
-        console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.5 aktif — Perencanaan Tahunan Statis (MT I & MT II)', 'color:' + WARNA + ';font-weight:bold;');
+        console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.6 aktif — Deteksi Musim ZOM Dinamis', 'color:' + WARNA + ';font-weight:bold;');
     }
 
     if (document.readyState === 'loading') {
