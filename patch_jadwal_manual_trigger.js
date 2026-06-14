@@ -167,7 +167,7 @@
             '%c✅ patch_jadwal_manual_trigger.js v1.1 aktif ' +
             '— Analisis hanya berjalan saat tombol dipencet, ' +
             'reset state BWD/Malai sudah lengkap',
-            'color:#06b6d4; font-weight:bold;'
+            'color:#3b82f6; font-weight:bold;'
         );
     }
 
