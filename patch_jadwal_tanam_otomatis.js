@@ -1,39 +1,102 @@
 /**
  * ============================================================
  *  patch_jadwal_tanam_otomatis.js
- *  Versi: 3.3 — Fix Frame Bocor + Pulse Selama Loading
+ *  Versi: 3.4 — Integrasi Zona Iklim Dinamis + Fix URL_ZOM_LOKAL
  * ------------------------------------------------------------
- *  PERBAIKAN v3.3 vs v3.2:
+ *  PERBAIKAN v3.4 vs v3.3 — SEMUA TENTANG INTEGRASI ANTAR-PATCH
  *
- *  BUG 1 — Frame "Risiko Cuaca" bocor ke "Jadwal Tanam":
- *    ✅ Root cause: switchMode('jadwaltanam') tidak secara
- *       eksplisit menyembunyikan #boxCuaca dan #result.
- *       Elemen #result berisi semua data cuaca (wereng,
- *       blast, dsb) dan tetap visible karena patch v3.2
- *       hanya menyembunyikan div[id^="box"] sementara
- *       #result tidak punya awalan "box".
- *    ✅ Fix: tambahkan daftar whitelist semua elemen yang
- *       harus disembunyikan saat masuk mode jadwaltanam,
- *       termasuk #result, #boxCuaca, .info-box-dynamic, dan
- *       semua tombol kamera/analisis.
+ *  [FIX A — KRITIS] URL_ZOM_LOKAL tidak pernah terbaca
+ *    • Masalah : getDataZOM() membaca `window.URL_ZOM_LOKAL`.
+ *                Di HTML utama, variabel ini dideklarasikan
+ *                dengan `const URL_ZOM_LOKAL = "...exec"`.
+ *                Deklarasi `const`/`let` top-level pada <script>
+ *                TIDAK menjadi properti window, sehingga
+ *                window.URL_ZOM_LOKAL selalu undefined.
+ *    • Akibat  : getDataZOM() SELALU jatuh ke fallback statis —
+ *                data ZOM per-kabupaten (sumber yang sama dengan
+ *                yang dipakai prosesAnalisisKalender() di
+ *                patch_risiko_iklim.js) tidak pernah dipakai oleh
+ *                Jadwal Tanam Otomatis.
+ *    • Fix     : Semua <script> non-module berbagi satu
+ *                "global declarative environment" yang sama,
+ *                sehingga `URL_ZOM_LOKAL` (walau const) tetap
+ *                bisa diakses sebagai identifier bebas dari
+ *                script yang dimuat setelahnya. Diganti menjadi
+ *                `(typeof URL_ZOM_LOKAL !== 'undefined') ? URL_ZOM_LOKAL : ''`.
  *
- *  BUG 2 — Tombol tidak berdenyut saat menunggu hasil:
- *    ✅ Root cause: v3.2 menghapus class jto-pulse saat
- *       proses MULAI agar tombol terlihat "aktif/tertekan",
- *       padahal UX yang benar adalah tombol terus berdenyut
- *       selama proses berjalan (tanda sistem sedang bekerja).
- *    ✅ Fix: Ganti logika pulse:
- *       - Saat KLIK      → pulse TETAP (tidak dihapus)
- *       - Saat LOADING   → ubah teks & disable, pulse terus
- *       - Saat BERHASIL  → hapus pulse (hasil sudah tampil)
- *       - Saat ERROR     → pulse tetap (ajak retry)
- *    ✅ Tambahan: tombol berubah teks menjadi
- *       "🔄 MENGANALISIS IKLIM..." selama proses berjalan
- *       agar petani tahu sistem sedang bekerja.
+ *  [FIX B] Bobot ENSO/IOD hardcode "monsunal" untuk semua lokasi
+ *    • Masalah : skorKelembapan() memakai tabel bobot tetap
+ *                (kebetulan identik dengan BOBOT_IKLIM.monsunal
+ *                di patch_risiko_iklim.js), padahal patch tersebut
+ *                sudah menyediakan tentukanZonaIklim(lat, lon) +
+ *                BOBOT_IKLIM per-zona (monsunal/ekuatorial/
+ *                peralihan/lokal).
+ *    • Akibat  : Untuk user di luar Sulsel (Kalimantan, Sumatra,
+ *                Papua, dst), perhitungan skor kelembapan 12 bulan
+ *                tetap memakai karakter monsunal Sulsel — tidak
+ *                konsisten dengan analisis Risiko Iklim di tab
+ *                Kalender yang SUDAH zona-aware.
+ *    • Fix     : skorKelembapan(bulanIdx, baselineArr, ensoVal,
+ *                iodVal, lat, lon) sekarang memanggil
+ *                window.tentukanZonaIklim(lat, lon) +
+ *                BOBOT_IKLIM[zona] (dengan fallback ke tabel
+ *                monsunal lama bila kedua hal itu tidak tersedia).
  *
- *  Perbaikan agronomi dari v3.2 tetap dipertahankan:
- *    ✅ Pengolahan Lahan selalu mendahului Pembibitan Benih
- *    ✅ Urutan kartu kronologis berdasarkan tglMulai
+ *  [FIX C] normalisasiCurahHujan() dipanggil tanpa bulanIndex
+ *    • Masalah : patch_perbaikan_ilmiah.js memperbaiki
+ *                normalisasiCurahHujan(curahHujan, bulanIndex)
+ *                agar baseline "normal" berbeda untuk musim
+ *                rendeng vs gadu. skorKelembapan() v3.3 memanggil
+ *                norm(bl) — 1 argumen — sehingga fungsi jatuh ke
+ *                fallback "bulan sekarang", padahal yang relevan
+ *                adalah BULAN FASE yang sedang dihitung (bisa
+ *                berbeda jauh dari bulan sekarang untuk window
+ *                tanam beberapa bulan ke depan).
+ *    • Fix     : norm(bl, bulanIdx) — kirim indeks bulan fase.
+ *
+ *  [FIX D] Kamera BWD & state Malai tidak direset saat masuk
+ *          tab "Jadwal Tanam"
+ *    • Masalah : switchMode() asli SELALU memanggil stopCamera()
+ *                dan mereset UI BWD + antrean sampel Malai untuk
+ *                semua mode selain 'bwd'/'malai'. Karena
+ *                patchSwitchMode() v3.3 untuk mode==='jadwaltanam'
+ *                `return` lebih awal TANPA memanggil switchMode
+ *                asli, langkah ini terlewat.
+ *    • Akibat  : Jika user pindah dari tab "Uji BWD Urea" (kamera
+ *                aktif) langsung ke "Jadwal Tanam", stream kamera
+ *                tetap berjalan di background (boros baterai).
+ *    • Fix     : Tambahkan stopCamera() + reset UI BWD + reset
+ *                antrean hasilSampelBulir saat masuk jadwaltanam,
+ *                mengikuti logika switchMode() asli.
+ *
+ *  [FIX E] currentMode tidak disinkronkan
+ *    • Masalah : `currentMode` (let, top-level di script utama)
+ *                tidak pernah diset ke 'jadwaltanam' karena
+ *                switchMode asli tidak dipanggil untuk mode ini.
+ *                Beberapa patch (mis. patch_perbaikan_ilmiah.js)
+ *                membaca currentMode untuk logika kondisionalnya.
+ *    • Fix     : Set `currentMode = 'jadwaltanam'` (via identifier
+ *                bebas, sama seperti FIX A) saat tab ini aktif.
+ *                Saat keluar, switchMode asli (dipanggil via _asli)
+ *                sudah otomatis mengoreksi currentMode = mode baru.
+ *
+ *  [FIX F] Label "Zona Iklim" di kartu rekomendasi selalu
+ *          tersirat "Sulsel"
+ *    • Masalah : getDataZOM() fallback selalu memberi nama
+ *                "Pola Monsunal Sulsel (estimasi)" tanpa melihat
+ *                koordinat user — tidak konsisten dengan
+ *                tentukanZonaIklim() yang membedakan 4 zona.
+ *    • Fix     : getDataZOM() sekarang memanggil
+ *                tentukanZonaIklim(lat, lon) lebih dulu, dan
+ *                fallback per-zona (monsunal/ekuatorial/
+ *                peralihan/lokal) dengan label yang sesuai.
+ *                renderOutput() menampilkan kode zona + sumber
+ *                data (kabupaten ZOM lokal jika tersedia, atau
+ *                estimasi per-zona).
+ *
+ *  Catatan: seluruh perbaikan agronomi & UX dari v3.2/v3.3
+ *  (urutan kronologis kegiatan, pulse tombol saat loading, fix
+ *  bocoran frame cuaca) TETAP DIPERTAHANKAN tanpa perubahan.
  * ============================================================
  */
 
@@ -52,6 +115,14 @@
                       'Juli','Agustus','September','Oktober','November','Desember'];
     var NAMA_BULAN_PENDEK = ['Jan','Feb','Mar','Apr','Mei','Jun',
                               'Jul','Agu','Sep','Okt','Nov','Des'];
+
+    /* Label tampilan untuk kode zona dari tentukanZonaIklim() */
+    var LABEL_ZONA = {
+        monsunal:   'MONSUNAL',
+        ekuatorial: 'EKUATORIAL',
+        peralihan:  'PERALIHAN',
+        lokal:      'LOKAL'
+    };
 
     /* ──────────────────────────────────────────────────────────
        UTILITAS TANGGAL & BULAN
@@ -105,19 +176,68 @@
     ────────────────────────────────────────────────────────── */
     var _cacheZOM = null;
 
+    /**
+     * [FIX F] Fallback per-zona — dipakai jika data ZOM lokal
+     * (per kabupaten) tidak tersedia / di luar radius 150 km.
+     * Pola dasar dirujuk dari deskripsi zona pada
+     * patch_risiko_iklim.js (Aldrian & Susanto, 2003):
+     *   - monsunal  : 1 puncak basah (DJF), 1 puncak kering (JJA)
+     *   - ekuatorial: 2 puncak basah (MAM & SON)
+     *   - peralihan : versi redaman dari pola monsunal
+     *   - lokal     : amplitudo kecil, relatif datar sepanjang tahun
+     * Nilai tetap berupa INDEKS (-1.5..+1.5), bukan mm — sama
+     * format dengan output normalisasiCurahHujan().
+     */
+    var FALLBACK_ZOM_PER_ZONA = {
+        monsunal: {
+            data: [0.9, 0.8, 0.6, 0.3, -0.1, -0.8, -1.2, -1.3, -0.9, -0.3, 0.4, 0.8],
+            nama: 'Pola Monsunal (estimasi)'
+        },
+        ekuatorial: {
+            data: [0.2, 0.3, 0.5, 0.6, 0.4, 0.0, -0.3, -0.2, 0.3, 0.6, 0.5, 0.3],
+            nama: 'Pola Ekuatorial — 2 puncak hujan MAM & SON (estimasi)'
+        },
+        peralihan: {
+            data: [0.5, 0.5, 0.4, 0.2, 0.0, -0.4, -0.6, -0.6, -0.3, 0.1, 0.4, 0.5],
+            nama: 'Pola Peralihan (estimasi)'
+        },
+        lokal: {
+            data: [0.1, 0.1, 0.1, 0.0, 0.0, -0.1, -0.1, -0.1, 0.0, 0.1, 0.1, 0.1],
+            nama: 'Pola Lokal — amplitudo rendah (estimasi)'
+        }
+    };
+
     async function getDataZOM(lat, lon) {
         if (_cacheZOM) return _cacheZOM;
 
+        // [FIX F] Tentukan zona iklim lebih dulu via patch_risiko_iklim.js
+        // agar label & fallback selalu sesuai lokasi user, bukan selalu
+        // tersirat "Sulsel".
+        var zona = (typeof window.tentukanZonaIklim === 'function')
+            ? window.tentukanZonaIklim(lat, lon)
+            : 'monsunal';
+
+        var fallbackZona = FALLBACK_ZOM_PER_ZONA[zona] || FALLBACK_ZOM_PER_ZONA.monsunal;
         var fallback = {
-            data: [0.9, 0.8, 0.6, 0.3, -0.1, -0.8,
-                   -1.2, -1.3, -0.9, -0.3, 0.4, 0.8],
-            nama: 'Pola Monsunal Sulsel (estimasi)',
-            jarak: null
+            data: fallbackZona.data,
+            nama: fallbackZona.nama,
+            jarak: null,
+            zona: zona
         };
 
         try {
-            var urlZOM = window.URL_ZOM_LOKAL || '';
-            if (!urlZOM) return fallback;
+            // [FIX A] URL_ZOM_LOKAL dideklarasikan dengan `const` di
+            // <script> utama (bukan `var`/`function`), sehingga TIDAK
+            // pernah muncul sebagai window.URL_ZOM_LOKAL. Karena semua
+            // <script> non-module berbagi global declarative scope yang
+            // sama, identifier bebas `URL_ZOM_LOKAL` tetap bisa dibaca
+            // dari sini selama script utama sudah dieksekusi (selalu
+            // demikian, karena patch ini dimuat paling akhir).
+            var urlZOM = (typeof URL_ZOM_LOKAL !== 'undefined') ? URL_ZOM_LOKAL : '';
+            if (!urlZOM) {
+                console.warn('[JadwalOtomatis] URL_ZOM_LOKAL tidak ditemukan — pakai fallback per-zona.');
+                return fallback;
+            }
 
             var res  = await fetch(urlZOM);
             var data = await res.json();
@@ -141,7 +261,8 @@
                 _cacheZOM = {
                     data: keys.map(function (k) { return parseFloat(kab[k]) || 0; }),
                     nama: kab.kabupaten_kota || 'Lokal',
-                    jarak: jMin.toFixed(1)
+                    jarak: jMin.toFixed(1),
+                    zona: zona
                 };
                 return _cacheZOM;
             }
@@ -151,21 +272,59 @@
         return fallback;
     }
 
-    function skorKelembapan(bulanIdx, baselineArr, ensoVal, iodVal) {
+    /**
+     * skorKelembapan — [FIX B & C]
+     *
+     * @param bulanIdx    indeks bulan (0=Jan ... 11=Des) untuk fase
+     *                    yang sedang dievaluasi
+     * @param baselineArr array 12 nilai indeks/mm dari getDataZOM()
+     * @param ensoVal     anomali ENSO terkini
+     * @param iodVal      anomali IOD terkini
+     * @param lat, lon    koordinat user — dipakai untuk menentukan
+     *                    zona iklim (BOBOT_IKLIM dari
+     *                    patch_risiko_iklim.js). Opsional: jika tidak
+     *                    diberikan, jatuh ke tabel bobot monsunal lama.
+     */
+    function skorKelembapan(bulanIdx, baselineArr, ensoVal, iodVal, lat, lon) {
         var norm = window.normalisasiCurahHujan || function (v) {
             return v < 30 ? -1.5 : v < 75 ? -0.8 : v < 150 ? 0.0 : v < 250 ? 0.8 : 1.5;
         };
 
         var bl  = baselineArr[bulanIdx];
-        var idx = bl > 10 ? norm(bl) : bl;
+        // [FIX C] kirim bulanIdx agar normalisasi musiman (rendeng vs
+        // gadu) dari patch_perbaikan_ilmiah.js terpakai untuk BULAN
+        // FASE yang dievaluasi — bukan "bulan sekarang".
+        var idx = bl > 10 ? norm(bl, bulanIdx) : bl;
 
-        var w = [
-            [0.15,0.10],[0.15,0.10],[0.12,0.08],[0.10,0.08],
-            [0.18,0.12],[0.35,0.20],[0.45,0.28],[0.50,0.38],
-            [0.45,0.40],[0.35,0.30],[0.20,0.15],[0.15,0.10]
-        ];
-        var wE = w[bulanIdx][0], wI = w[bulanIdx][1], tot = 1 + wE + wI;
-        var s  = (idx / tot) - (ensoVal * wE / tot) - (iodVal * wI / tot);
+        // [FIX B] Bobot ENSO/IOD per-zona dari patch_risiko_iklim.js
+        // (BOBOT_IKLIM adalah `const` top-level di script tersebut,
+        // tetap terbaca sebagai identifier bebas karena berbagi global
+        // declarative scope dengan patch ini).
+        var wE, wI;
+        var tabelBobot = (typeof BOBOT_IKLIM !== 'undefined') ? BOBOT_IKLIM : null;
+        var zonaFn     = window.tentukanZonaIklim;
+
+        if (tabelBobot && typeof zonaFn === 'function' &&
+            typeof lat === 'number' && typeof lon === 'number') {
+            var zona  = zonaFn(lat, lon);
+            var tabel = tabelBobot[zona] || tabelBobot.monsunal;
+            wE = tabel.enso[bulanIdx];
+            wI = tabel.iod[bulanIdx];
+        } else {
+            // Fallback: tabel bobot monsunal (perilaku v3.3), dipakai
+            // hanya jika patch_risiko_iklim.js belum termuat / lat-lon
+            // tidak tersedia.
+            var wFallback = [
+                [0.15,0.10],[0.15,0.10],[0.12,0.08],[0.10,0.08],
+                [0.18,0.12],[0.35,0.20],[0.45,0.28],[0.50,0.38],
+                [0.45,0.40],[0.35,0.30],[0.20,0.15],[0.15,0.10]
+            ];
+            wE = wFallback[bulanIdx][0];
+            wI = wFallback[bulanIdx][1];
+        }
+
+        var tot = 1 + wE + wI;
+        var s   = (idx / tot) - (ensoVal * wE / tot) - (iodVal * wI / tot);
         return Math.max(0, Math.min(100, Math.round(50 + s * 25)));
     }
 
@@ -613,6 +772,16 @@
 
         window._jtoData = { rekomendasi: rekomendasi, kegiatan: kegiatan };
 
+        // [FIX F] Label zona iklim sekarang mengikuti
+        // tentukanZonaIklim() (4 zona), bukan selalu "Sulsel".
+        // Jika ZOM lokal kabupaten ditemukan, tampilkan juga
+        // nama kabupaten + jaraknya.
+        var labelZona = (zonaInfo.zona && LABEL_ZONA[zonaInfo.zona]) ? LABEL_ZONA[zonaInfo.zona] : 'MONSUNAL';
+        var sumberData = zonaInfo.jarak
+            ? zonaInfo.nama + ' (' + zonaInfo.jarak + ' km)'
+            : zonaInfo.nama;
+        var zonaTampil = labelZona + ' • ' + sumberData;
+
         return '<div style="padding:4px 0;">' +
 
         '<div style="background:rgba(6,182,212,0.09);border:1px solid rgba(6,182,212,0.25);border-left:4px solid ' + WARNA + ';border-radius:14px;padding:14px 16px;margin-bottom:14px;">' +
@@ -620,7 +789,7 @@
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">' +
                 '<div><span style="color:#64748b;">Tanggal tanam terbaik</span><br><strong style="color:#fff;font-size:13px;">' + formatTglLengkap(rekomendasi.tglTanam) + '</strong></div>' +
                 '<div><span style="color:#64748b;">Varietas</span><br><strong style="color:#fff;font-size:13px;">' + rekomendasi.labelVar + '</strong></div>' +
-                '<div><span style="color:#64748b;">Zona iklim</span><br><strong style="color:#fff;">' + (zonaInfo.nama || 'Sulsel') + '</strong></div>' +
+                '<div style="grid-column:span 2;"><span style="color:#64748b;">Zona iklim & sumber data</span><br><strong style="color:#fff;">' + zonaTampil + '</strong></div>' +
                 '<div><span style="color:#64748b;">ENSO / IOD</span><br><strong style="color:#fff;">' + (ensoData.status || 'Netral') + ' / ' + (iodData.status || 'Netral') + '</strong></div>' +
             '</div>' +
             '<div style="margin-top:10px;padding-top:9px;border-top:1px dashed rgba(255,255,255,0.1);font-size:11px;color:#94a3b8;line-height:1.5;">' +
@@ -635,7 +804,8 @@
         '<div style="margin-top:12px;background:rgba(100,116,139,0.1);border-radius:10px;padding:10px 12px;font-size:10px;color:#64748b;line-height:1.6;border:1px solid rgba(255,255,255,0.04);">' +
             '⚠️ Rekomendasi berbasis kalender iklim 12 bulan — bukan sekadar hari ke depan. ' +
             'Sesuaikan dengan kondisi lapangan, ketersediaan air, dan pengamatan PHT mingguan. ' +
-            'Sumber: NOAA ENSO/IOD, ZOM BMKG, siklus sinodis bulan, BB Padi (2019).' +
+            'Sumber: NOAA ENSO/IOD, ZOM BMKG, siklus sinodis bulan, BB Padi (2019), ' +
+            'zona iklim (Aldrian &amp; Susanto 2003 — sama dengan tab Risiko Iklim).' +
         '</div>' +
 
         '<button onclick="window._jtoKirimWA()" style="width:100%;margin-top:10px;padding:13px;background:#25D366;color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;">📲 Kirim Jadwal ke WhatsApp ↗</button>' +
@@ -667,8 +837,8 @@
 
     /* ──────────────────────────────────────────────────────────
        PROSES UTAMA: ANALISIS OTOMATIS
-       
-       LOGIKA PULSE v3.3 (DIUBAH TOTAL):
+
+       LOGIKA PULSE (dipertahankan dari v3.3):
        ────────────────────────────────────
        ✅ Saat KLIK      → pulse TETAP (tidak dihapus sama sekali)
                            Tombol disabled + teks berubah jadi
@@ -689,10 +859,6 @@
         hasilEl.style.display = 'block';
         teksEl.innerHTML = '';
 
-        /* ── FIX v3.3: Pulse TETAP saat loading ─────────────────
-           Hanya disable tombol & ubah teks, jangan hapus pulse.
-           Pulse adalah sinyal visual "sistem sedang bekerja".
-        ─────────────────────────────────────────────────────── */
         var teksAsliBtn = '🤖 ANALISIS & BUAT JADWAL OTOMATIS';
         if (btnJTO) {
             btnJTO.disabled = true;
@@ -746,8 +912,11 @@
 
             setStatus('<span style="color:' + WARNA + ';">🧮 Mengevaluasi 12 bulan kalender iklim...</span>');
 
+            // [FIX B/C] sertakan lat & lon agar skorKelembapan() bisa
+            // menentukan zona iklim & bobot ENSO/IOD yang sesuai,
+            // serta meneruskan bulanIdx ke normalisasiCurahHujan().
             var skorBulan = zonaInfo.data.map(function (_, idx) {
-                return skorKelembapan(idx, zonaInfo.data, ensoVal, iodVal);
+                return skorKelembapan(idx, zonaInfo.data, ensoVal, iodVal, lat, lon);
             });
 
             var rekomendasi = rekomendasiWindowTanam(skorBulan);
@@ -755,9 +924,6 @@
 
             if (statusEl) statusEl.innerHTML = '';
 
-            /* ── FIX v3.3: Hapus pulse HANYA saat berhasil ──────────
-               Hasil sudah tampil → tidak perlu tarik perhatian lagi.
-            ─────────────────────────────────────────────────────── */
             if (btnJTO) {
                 btnJTO.disabled = false;
                 btnJTO.style.opacity = '';
@@ -771,9 +937,6 @@
             console.error('[JadwalOtomatis]', err);
             if (statusEl) statusEl.innerHTML = '';
 
-            /* ── FIX v3.3: Error → pulse TETAP (ajak retry) ─────────
-               Tombol dikembalikan, pulse tetap berjalan.
-            ─────────────────────────────────────────────────────── */
             if (btnJTO) {
                 btnJTO.disabled = false;
                 btnJTO.style.opacity = '';
@@ -854,24 +1017,10 @@
 
     /* ──────────────────────────────────────────────────────────
        PATCH switchMode
-       
-       FIX v3.3 — BOCORAN CUACA KE JADWAL TANAM:
-       ─────────────────────────────────────────────
-       Root cause: saat masuk mode 'jadwaltanam', kode
-       lama hanya menyembunyikan div[id^="box"] tapi TIDAK
-       menyembunyikan:
-         - #result        → container semua hasil cuaca/analisis
-         - #resLabel      → label hasil
-         - #resConf       → confidence bar
-         - .info-box-dynamic → kartu wereng/blast/tungro
-         - #btnCamera / #scanWindow / #btnAnalisis
-       
-       Fix: buat fungsi sembunyikanSemuaElementCuaca() yang
-       secara eksplisit menyembunyikan SEMUA elemen terkait
-       sebelum menampilkan #boxJadwalTanam.
-    ────────────────────────────────────────────────────────── */
 
-    /* Daftar lengkap ID yang harus disembunyikan saat jadwaltanam */
+       Daftar lengkap ID yang harus disembunyikan saat masuk
+       mode 'jadwaltanam' (fix bocoran frame cuaca, tetap dari v3.3)
+    ────────────────────────────────────────────────────────── */
     var ELEMEN_TERSEMBUNYI_JADWAL = [
         'result', 'btnCamera', 'scanWindow', 'btnAnalisis',
         'boxCuaca', 'boxPenyakit', 'boxHama', 'boxGulma',
@@ -883,21 +1032,62 @@
     ];
 
     function sembunyikanSemuaUntukJadwal() {
-        /* Sembunyikan via ID */
         ELEMEN_TERSEMBUNYI_JADWAL.forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.style.display = 'none';
         });
 
-        /* Sembunyikan semua .info-box-dynamic (kartu analisis cuaca dinamis) */
         document.querySelectorAll('.info-box-dynamic').forEach(function (el) {
             el.style.display = 'none';
         });
 
-        /* Sembunyikan semua div[id^="box"] di dalam .card (jaga-jaga dari patch lain) */
         document.querySelectorAll('.card > div[id^="box"]').forEach(function (b) {
             b.style.display = 'none';
         });
+    }
+
+    /**
+     * [FIX D] Reset state BWD (kamera + UI) & antrean sampel Malai,
+     * mengikuti perilaku switchMode() asli untuk semua mode selain
+     * 'bwd'/'malai'. Dipanggil saat masuk mode 'jadwaltanam' karena
+     * patchSwitchMode() untuk mode ini tidak memanggil switchMode asli.
+     */
+    function resetStateBwdDanMalai() {
+        // Hentikan stream kamera BWD jika sedang aktif
+        if (typeof window.stopCamera === 'function') {
+            window.stopCamera();
+        }
+
+        var bwdPrompt    = document.getElementById('bwdCameraPrompt');
+        var camContainer = document.getElementById('cameraContainer');
+        var btnCapture   = document.getElementById('btnCapture');
+        var btnAktifkan  = document.getElementById('btnAktifkanKameraBWD');
+        var previewImg   = document.getElementById('bwdPreviewImage');
+        var focusBox     = document.getElementById('focusBox');
+
+        if (bwdPrompt)    bwdPrompt.style.display    = 'block';
+        if (camContainer) camContainer.style.display = 'none';
+        if (btnCapture)   btnCapture.style.display   = 'none';
+        if (previewImg)   previewImg.style.display   = 'none';
+        if (focusBox)     focusBox.style.display      = 'block';
+        if (btnAktifkan)  {
+            btnAktifkan.innerText = '📷 AKTIFKAN KAMERA';
+            btnAktifkan.disabled  = false;
+            btnAktifkan.style.opacity = '1';
+        }
+
+        // Reset antrean sampel Malai. `hasilSampelBulir` dideklarasikan
+        // dengan `let` di script utama — tetap bisa diakses sebagai
+        // identifier bebas karena berbagi global declarative scope
+        // (sama seperti URL_ZOM_LOKAL pada FIX A).
+        try {
+            if (typeof hasilSampelBulir !== 'undefined') {
+                hasilSampelBulir = [];
+            }
+        } catch (e) { /* abaikan jika tidak bisa diakses */ }
+
+        var listM = document.getElementById('listMalai');
+        if (listM) listM.innerHTML = '';
     }
 
     function patchSwitchMode() {
@@ -908,7 +1098,18 @@
             var tabJTO = document.getElementById('tabJadwalTanam');
 
             if (mode === 'jadwaltanam') {
-                /* ── FIX v3.3: sembunyikan SEMUA elemen termasuk #result ── */
+                // [FIX D] samakan dengan perilaku switchMode asli untuk
+                // mode selain 'bwd': hentikan kamera & reset UI BWD/Malai
+                resetStateBwdDanMalai();
+
+                // [FIX E] sinkronkan currentMode (let top-level di script
+                // utama) agar patch lain yang membacanya tetap konsisten.
+                try {
+                    if (typeof currentMode !== 'undefined') {
+                        currentMode = 'jadwaltanam';
+                    }
+                } catch (e) { /* abaikan jika tidak bisa diakses */ }
+
                 sembunyikanSemuaUntukJadwal();
 
                 if (boxJTO) boxJTO.style.display = 'block';
@@ -938,16 +1139,15 @@
 
             if (typeof _asli === 'function') {
                 _asli.apply(this, arguments);
+                // currentMode sudah otomatis disinkronkan oleh switchMode
+                // asli (baris `currentMode = mode;` di awal fungsi),
+                // sehingga tidak perlu diset ulang di sini.
             }
         };
     }
 
     /* ──────────────────────────────────────────────────────────
-       CSS TAMBAHAN v3.3
-       Animasi pulse diperkuat:
-         - will-change: box-shadow (hint GPU acceleration)
-         - animation-play-state tidak pernah paused lewat JS
-         - Durasi 1.5s, easing ease-out untuk feel "radar"
+       CSS TAMBAHAN
     ────────────────────────────────────────────────────────── */
     function injeksiCSS() {
         if (document.getElementById('jtoCSS')) return;
@@ -960,7 +1160,6 @@
             '#btnJadwalOtomatis:hover{opacity:0.88;}',
             '#btnJadwalOtomatis:active{transform:scale(0.985);}',
 
-            /* Animasi radar pulse — berjalan terus selama class jto-pulse ada */
             '@keyframes jto-radar{',
             '  0%   { box-shadow: 0 0 0 0   rgba(6,182,212,0.85); }',
             '  65%  { box-shadow: 0 0 0 20px rgba(6,182,212,0.00); }',
@@ -986,7 +1185,7 @@
         patchSwitchMode();
 
         console.log(
-            '%c✅ patch_jadwal_tanam_otomatis.js v3.3 aktif — Fix bocoran cuaca + pulse selama loading',
+            '%c✅ patch_jadwal_tanam_otomatis.js v3.4 aktif — Integrasi zona iklim dinamis (BOBOT_IKLIM/tentukanZonaIklim), fix URL_ZOM_LOKAL, sinkronisasi currentMode & kamera BWD',
             'color:' + WARNA + ';font-weight:bold;'
         );
     }
