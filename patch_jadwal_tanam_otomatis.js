@@ -1,21 +1,39 @@
 /**
  * ============================================================
  *  patch_jadwal_tanam_otomatis.js
- *  Versi: 3.2 — Fix Pulse Button + Logika Urutan Kegiatan
+ *  Versi: 3.3 — Fix Frame Bocor + Pulse Selama Loading
  * ------------------------------------------------------------
- *  PERBAIKAN v3.2 vs v3.1:
- *    ✅ Tombol denyut kini DIPULIHKAN setelah analisis selesai
- *       (di v3.1 class jto-pulse dihapus saat proses dimulai
- *        tapi tidak pernah dikembalikan)
- *    ✅ Animasi CSS diperkuat agar selalu terlihat
- *    ✅ FIX AGRONOMI: Pengolahan Lahan kini SELALU mendahului
- *       Pembibitan Benih. Sebelumnya benih bisa mulai D-21
- *       sementara olah lahan baru D-14 — ini mustahil di
- *       lapangan karena persemaian harus ada di tempat lain
- *       (polibag/bedeng) PARALEL dengan olah lahan, bukan
- *       sebelumnya.
- *    ✅ Urutan kartu disortir kronologis berdasarkan tglMulai
- *       sehingga timeline selalu logis untuk petani.
+ *  PERBAIKAN v3.3 vs v3.2:
+ *
+ *  BUG 1 — Frame "Risiko Cuaca" bocor ke "Jadwal Tanam":
+ *    ✅ Root cause: switchMode('jadwaltanam') tidak secara
+ *       eksplisit menyembunyikan #boxCuaca dan #result.
+ *       Elemen #result berisi semua data cuaca (wereng,
+ *       blast, dsb) dan tetap visible karena patch v3.2
+ *       hanya menyembunyikan div[id^="box"] sementara
+ *       #result tidak punya awalan "box".
+ *    ✅ Fix: tambahkan daftar whitelist semua elemen yang
+ *       harus disembunyikan saat masuk mode jadwaltanam,
+ *       termasuk #result, #boxCuaca, .info-box-dynamic, dan
+ *       semua tombol kamera/analisis.
+ *
+ *  BUG 2 — Tombol tidak berdenyut saat menunggu hasil:
+ *    ✅ Root cause: v3.2 menghapus class jto-pulse saat
+ *       proses MULAI agar tombol terlihat "aktif/tertekan",
+ *       padahal UX yang benar adalah tombol terus berdenyut
+ *       selama proses berjalan (tanda sistem sedang bekerja).
+ *    ✅ Fix: Ganti logika pulse:
+ *       - Saat KLIK      → pulse TETAP (tidak dihapus)
+ *       - Saat LOADING   → ubah teks & disable, pulse terus
+ *       - Saat BERHASIL  → hapus pulse (hasil sudah tampil)
+ *       - Saat ERROR     → pulse tetap (ajak retry)
+ *    ✅ Tambahan: tombol berubah teks menjadi
+ *       "🔄 MENGANALISIS IKLIM..." selama proses berjalan
+ *       agar petani tahu sistem sedang bekerja.
+ *
+ *  Perbaikan agronomi dari v3.2 tetap dipertahankan:
+ *    ✅ Pengolahan Lahan selalu mendahului Pembibitan Benih
+ *    ✅ Urutan kartu kronologis berdasarkan tglMulai
  * ============================================================
  */
 
@@ -352,28 +370,12 @@
 
     /* ──────────────────────────────────────────────────────────
        BANGUN DAFTAR KEGIATAN
-       
-       PERBAIKAN v3.2 — URUTAN AGRONOMI YANG BENAR:
-       ─────────────────────────────────────────────
-       Urutan lapangan sesungguhnya:
-         1. Pengolahan Lahan  → D-21 s/d D-14  (bajak + garu)
-         2. Pembibitan Benih  → D-14 s/d D-7   (semai di bedeng/polibag,
-                                                 PARALEL dengan lahan yang
-                                                 sudah digenangi & didiamkan)
-         3. Pasang TBS        → D-7  s/d D-4
+       Urutan agronomi yang benar (v3.2+):
+         1. Pengolahan Lahan  → D-(benih+7)
+         2. Pembibitan Benih  → D-benih
+         3. Pasang TBS        → D-7
          4. Tanam             → D-0
-         ...dst.
-       
-       Di v3.1, tglOlah = D-14 dan tglBenih = D-21 (untuk sedang),
-       sehingga benih muncul lebih duluan — tidak mungkin agronomis
-       karena petakan belum siap sama sekali.
-       
-       Solusi: tglOlah selalu = tglTanam - (hariSemai + 7)
-       sehingga olah lahan SELALU mulai ≥ 7 hari sebelum semai.
-       tglBenih tetap = tglTanam - hariSemai (14/21/28 HSS).
-       
-       Selain itu, daftar kegiatan diurutkan kronologis
-       berdasarkan tglMulai sebelum di-render.
+         ...dst
     ────────────────────────────────────────────────────────── */
     function bangunKegiatan(tglTanam, varietas, skorBulan) {
         var of = {
@@ -382,17 +384,10 @@
             dalam:  { benih:28, p1:7,  p2:35, p3:65, i1:30, i2:65, fung:75, panen:125 }
         }[varietas] || { benih:21, p1:7, p2:30, p3:55, i1:25, i2:55, fung:65, panen:110 };
 
-        /*
-         * FIX: Pengolahan lahan dimulai (hariSemai + 7) hari sebelum tanam.
-         * Contoh varietas sedang: benih=21 → olah mulai D-28, semai D-21.
-         * Ini memberikan jeda 7 hari antara selesai olah (D-21) dan mulai
-         * semai, sesuai SOP: lahan direndam/didiamkan dulu 5–7 hari
-         * sebelum bibit siap pindah tanam.
-         */
-        var hariOlah  = of.benih + 7;   /* D-(benih+7) */
+        var hariOlah  = of.benih + 7;
         var tglOlah   = tambahHari(tglTanam, -hariOlah);
         var tglBenih  = tambahHari(tglTanam, -of.benih);
-        var tglTBS    = tambahHari(tglTanam, -7);   /* seminggu sebelum tanam */
+        var tglTBS    = tambahHari(tglTanam, -7);
         var tglTikusA = cariTglFaseBulan(tglTanam, 26, 29.5, -10);
         var tglP1     = tambahHari(tglTanam, of.p1);
         var tglP2     = tambahHari(tglTanam, of.p2);
@@ -402,7 +397,6 @@
         var tglFung   = tambahHari(tglTanam, of.fung);
         var tglPanen  = tambahHari(tglTanam, of.panen);
 
-        /* Geser insektisida jika jatuh di bulan penuh */
         [tglI1, tglI2].forEach(function (t, idx) {
             var f = hariFaseBulan(t);
             if (f >= 13.5 && f <= 16.5) {
@@ -553,7 +547,6 @@
             }
         ];
 
-        /* Urutkan kronologis — pastikan tampilan timeline selalu logis */
         daftar.sort(function (a, b) {
             return a.tglMulai.getTime() - b.tglMulai.getTime();
         });
@@ -640,7 +633,7 @@
         kartuHTML +
 
         '<div style="margin-top:12px;background:rgba(100,116,139,0.1);border-radius:10px;padding:10px 12px;font-size:10px;color:#64748b;line-height:1.6;border:1px solid rgba(255,255,255,0.04);">' +
-            '⚠️ Rekomendasi berbasis kalender iklim 12 bulan — bukan offset hari dari hari ini. ' +
+            '⚠️ Rekomendasi berbasis kalender iklim 12 bulan — bukan sekadar hari ke depan. ' +
             'Sesuaikan dengan kondisi lapangan, ketersediaan air, dan pengamatan PHT mingguan. ' +
             'Sumber: NOAA ENSO/IOD, ZOM BMKG, siklus sinodis bulan, BB Padi (2019).' +
         '</div>' +
@@ -675,22 +668,16 @@
     /* ──────────────────────────────────────────────────────────
        PROSES UTAMA: ANALISIS OTOMATIS
        
-       PERBAIKAN v3.2 — PULSE BUTTON:
-       ────────────────────────────────
-       Di v3.1, class jto-pulse dihapus saat proses dimulai
-       tapi TIDAK PERNAH dikembalikan setelah selesai.
-       Akibatnya tombol berhenti berdenyut selamanya setelah
-       klik pertama.
-       
-       Solusi:
-         - Saat proses MULAI   → hapus pulse (tombol "aktif")
-         - Saat proses SELESAI → kembalikan pulse jika belum
-           ada hasil (hasil kosong = masih perlu diklik)
-         - Saat BERHASIL       → JANGAN kembalikan pulse
-           (ada hasil sudah ditampilkan, tidak perlu menarik
-           perhatian lagi)
-         - Saat ERROR          → kembalikan pulse agar user
-           tahu tombol bisa dicoba lagi
+       LOGIKA PULSE v3.3 (DIUBAH TOTAL):
+       ────────────────────────────────────
+       ✅ Saat KLIK      → pulse TETAP (tidak dihapus sama sekali)
+                           Tombol disabled + teks berubah jadi
+                           "🔄 MENGANALISIS IKLIM..."
+       ✅ Saat LOADING   → pulse tetap berjalan sebagai sinyal
+                           sistem sedang bekerja
+       ✅ Saat BERHASIL  → hapus pulse (hasil sudah tampil,
+                           tidak perlu menarik perhatian lagi)
+       ✅ Saat ERROR     → pulse tetap (ajak user retry)
     ────────────────────────────────────────────────────────── */
     async function prosesJadwalOtomatis() {
         var hasilEl  = document.getElementById('jtoHasil');
@@ -702,11 +689,16 @@
         hasilEl.style.display = 'block';
         teksEl.innerHTML = '';
 
-        /* Hentikan animasi denyut saat proses berjalan */
+        /* ── FIX v3.3: Pulse TETAP saat loading ─────────────────
+           Hanya disable tombol & ubah teks, jangan hapus pulse.
+           Pulse adalah sinyal visual "sistem sedang bekerja".
+        ─────────────────────────────────────────────────────── */
+        var teksAsliBtn = '🤖 ANALISIS & BUAT JADWAL OTOMATIS';
         if (btnJTO) {
-            btnJTO.classList.remove('jto-pulse');
             btnJTO.disabled = true;
-            btnJTO.style.opacity = '0.7';
+            btnJTO.style.opacity = '0.75';
+            btnJTO.textContent = '🔄 MENGANALISIS IKLIM...';
+            /* TIDAK menghapus class jto-pulse — biarkan tetap berdenyut */
         }
 
         function setStatus(msg) {
@@ -763,11 +755,14 @@
 
             if (statusEl) statusEl.innerHTML = '';
 
-            /* Aktifkan kembali tombol (tanpa pulse — hasil sudah ada) */
+            /* ── FIX v3.3: Hapus pulse HANYA saat berhasil ──────────
+               Hasil sudah tampil → tidak perlu tarik perhatian lagi.
+            ─────────────────────────────────────────────────────── */
             if (btnJTO) {
                 btnJTO.disabled = false;
                 btnJTO.style.opacity = '';
-                /* Pulse TIDAK dikembalikan — hasil sudah tampil */
+                btnJTO.textContent = teksAsliBtn;
+                btnJTO.classList.remove('jto-pulse'); /* berhasil = berhenti denyut */
             }
 
             teksEl.innerHTML = renderOutput(rekomendasi, kegiatan, zonaInfo, ensoData, iodData);
@@ -776,11 +771,14 @@
             console.error('[JadwalOtomatis]', err);
             if (statusEl) statusEl.innerHTML = '';
 
-            /* Error → kembalikan pulse agar user tahu bisa coba lagi */
+            /* ── FIX v3.3: Error → pulse TETAP (ajak retry) ─────────
+               Tombol dikembalikan, pulse tetap berjalan.
+            ─────────────────────────────────────────────────────── */
             if (btnJTO) {
                 btnJTO.disabled = false;
                 btnJTO.style.opacity = '';
-                btnJTO.classList.add('jto-pulse');
+                btnJTO.textContent = teksAsliBtn;
+                /* jto-pulse sudah ada dari awal, tidak perlu ditambah lagi */
             }
 
             teksEl.innerHTML =
@@ -855,8 +853,53 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       PATCH switchMode — sama seperti v3.1 (tidak berubah)
+       PATCH switchMode
+       
+       FIX v3.3 — BOCORAN CUACA KE JADWAL TANAM:
+       ─────────────────────────────────────────────
+       Root cause: saat masuk mode 'jadwaltanam', kode
+       lama hanya menyembunyikan div[id^="box"] tapi TIDAK
+       menyembunyikan:
+         - #result        → container semua hasil cuaca/analisis
+         - #resLabel      → label hasil
+         - #resConf       → confidence bar
+         - .info-box-dynamic → kartu wereng/blast/tungro
+         - #btnCamera / #scanWindow / #btnAnalisis
+       
+       Fix: buat fungsi sembunyikanSemuaElementCuaca() yang
+       secara eksplisit menyembunyikan SEMUA elemen terkait
+       sebelum menampilkan #boxJadwalTanam.
     ────────────────────────────────────────────────────────── */
+
+    /* Daftar lengkap ID yang harus disembunyikan saat jadwaltanam */
+    var ELEMEN_TERSEMBUNYI_JADWAL = [
+        'result', 'btnCamera', 'scanWindow', 'btnAnalisis',
+        'boxCuaca', 'boxPenyakit', 'boxHama', 'boxGulma',
+        'boxTanah', 'boxBWD', 'boxMalai', 'boxBiayaTani',
+        'boxKalkulatorPupuk', 'boxKalender', 'boxVarietasPadi',
+        'boxUkurLahan', 'boxPestisida', 'boxGabah',
+        'formParameterLahan', 'tabSubtitleDisplay',
+        'loader', 'cameraWarning'
+    ];
+
+    function sembunyikanSemuaUntukJadwal() {
+        /* Sembunyikan via ID */
+        ELEMEN_TERSEMBUNYI_JADWAL.forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+
+        /* Sembunyikan semua .info-box-dynamic (kartu analisis cuaca dinamis) */
+        document.querySelectorAll('.info-box-dynamic').forEach(function (el) {
+            el.style.display = 'none';
+        });
+
+        /* Sembunyikan semua div[id^="box"] di dalam .card (jaga-jaga dari patch lain) */
+        document.querySelectorAll('.card > div[id^="box"]').forEach(function (b) {
+            b.style.display = 'none';
+        });
+    }
+
     function patchSwitchMode() {
         var _asli = window.switchMode;
 
@@ -865,12 +908,8 @@
             var tabJTO = document.getElementById('tabJadwalTanam');
 
             if (mode === 'jadwaltanam') {
-                var semuaBox = document.querySelectorAll('.card > div[id^="box"]');
-                semuaBox.forEach(function (b) { b.style.display = 'none'; });
-                ['btnCamera','scanWindow','btnAnalisis','result'].forEach(function (id) {
-                    var el = document.getElementById(id);
-                    if (el) el.style.display = 'none';
-                });
+                /* ── FIX v3.3: sembunyikan SEMUA elemen termasuk #result ── */
+                sembunyikanSemuaUntukJadwal();
 
                 if (boxJTO) boxJTO.style.display = 'block';
 
@@ -878,7 +917,7 @@
                 if (titleEl) { titleEl.innerText = '📅 Jadwal Kegiatan Tani'; titleEl.style.color = WARNA; }
 
                 var subEl = document.getElementById('tabSubtitleDisplay');
-                if (subEl) subEl.style.display = 'none';
+                if (subEl) { subEl.innerText = ''; subEl.style.display = 'none'; }
 
                 document.querySelectorAll('.tab-btn').forEach(function (btn) {
                     btn.classList.remove('active');
@@ -893,6 +932,7 @@
                 return;
             }
 
+            /* Saat keluar dari jadwaltanam, sembunyikan boxnya */
             if (boxJTO) boxJTO.style.display = 'none';
             if (tabJTO) tabJTO.classList.remove('active');
 
@@ -903,33 +943,27 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       CSS TAMBAHAN
-       
-       PERBAIKAN v3.2 — ANIMASI PULSE LEBIH KUAT:
-       ────────────────────────────────────────────
-       Di v3.1, animation-fill-mode tidak di-set sehingga di
-       beberapa browser animasi bisa "ghosting" atau tidak
-       langsung terlihat. Sekarang ditambahkan will-change
-       dan dipastikan keyframe tidak bentrok.
+       CSS TAMBAHAN v3.3
+       Animasi pulse diperkuat:
+         - will-change: box-shadow (hint GPU acceleration)
+         - animation-play-state tidak pernah paused lewat JS
+         - Durasi 1.5s, easing ease-out untuk feel "radar"
     ────────────────────────────────────────────────────────── */
     function injeksiCSS() {
         if (document.getElementById('jtoCSS')) return;
         var style = document.createElement('style');
         style.id = 'jtoCSS';
         style.textContent = [
-            /* Tab aktif */
             '#tabJadwalTanam.active{background:' + WARNA + '!important;color:#fff!important;}',
             '#tabJadwalTanam:not(.active){color:#708099;}',
 
-            /* Tombol analisis */
             '#btnJadwalOtomatis:hover{opacity:0.88;}',
             '#btnJadwalOtomatis:active{transform:scale(0.985);}',
-            '#btnJadwalOtomatis:disabled{cursor:not-allowed;}',
 
-            /* ── ANIMASI DENYUT RADAR — diperkuat v3.2 ── */
+            /* Animasi radar pulse — berjalan terus selama class jto-pulse ada */
             '@keyframes jto-radar{',
-            '  0%   { box-shadow: 0 0 0 0   rgba(6,182,212,0.80); }',
-            '  60%  { box-shadow: 0 0 0 18px rgba(6,182,212,0.00); }',
+            '  0%   { box-shadow: 0 0 0 0   rgba(6,182,212,0.85); }',
+            '  65%  { box-shadow: 0 0 0 20px rgba(6,182,212,0.00); }',
             '  100% { box-shadow: 0 0 0 0   rgba(6,182,212,0.00); }',
             '}',
             '#btnJadwalOtomatis.jto-pulse{',
@@ -937,7 +971,6 @@
             '  will-change: box-shadow;',
             '}',
 
-            /* Light mode */
             'body.light-mode #boxJadwalTanam{background:#fff;color:#0f172a;}'
         ].join('');
         document.head.appendChild(style);
@@ -953,7 +986,7 @@
         patchSwitchMode();
 
         console.log(
-            '%c✅ patch_jadwal_tanam_otomatis.js v3.2 aktif — Pulse fix + Urutan kegiatan agronomi',
+            '%c✅ patch_jadwal_tanam_otomatis.js v3.3 aktif — Fix bocoran cuaca + pulse selama loading',
             'color:' + WARNA + ';font-weight:bold;'
         );
     }
