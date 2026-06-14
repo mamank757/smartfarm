@@ -305,16 +305,6 @@ if (skorOlah < 35) {
 // Penalti jika saat tanam dan masa vegetatif tiba-tiba kering
 if (skorTanam < 30) nilaiTotal -= (30 - skorTanam) * 1.5;
 if (skorVeg1 < 30) nilaiTotal -= (30 - skorVeg1) * 1.5;
-/* ========================================================
-   FIX AGRONOMI LOKAL: PRIORITAS AWAL MUSIM & AIR MELIMPAH
-======================================================== */
-// 1. Bonus Awal Musim: Cegah penundaan tanam untuk menghindari hama
-var indeksUrutan = musim.bulanTanam.indexOf(bTanam); 
-var bonusAwal = (3 - indeksUrutan) * 15; // Bulan 1: +45, Bulan 2: +30, dst.
-nilaiTotal += bonusAwal;
-
-// 2. Bonus Ketersediaan Air: Petani butuh air melimpah saat olah lahan/tanam
-nilaiTotal += (skorTanam * 0.35);
 
                     kandidatMusim.push({
                         musimNama : musim.nama,
