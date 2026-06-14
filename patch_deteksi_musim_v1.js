@@ -298,8 +298,8 @@ var nilaiTotal = (nilaiTanam * 0.40) + (nilaiGen * 0.40) + (nilaiPanen * 0.20);
    PENALTI AGRONOMI: SYARAT MUTLAK AIR BAJAK/GARU
 ======================================================== */
 // Jika bulan pengolahan (sebelum tanam) belum ada hujan (< 35), tanah keras & traktor tidak bisa turun.
-if (skorOlah < 35) {
-    nilaiTotal -= (35 - skorOlah) * 3; // Penalti sangat berat agar jadwal tergeser ke bulan berikutnya!
+if (skorOlah < 50) {
+    nilaiTotal -= (50 - skorOlah) * 5; 
 }
 
 // Penalti jika saat tanam dan masa vegetatif tiba-tiba kering
