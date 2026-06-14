@@ -962,7 +962,7 @@
         var btn = document.createElement('button');
         btn.className  = 'tab-btn';
         btn.id         = 'tabJadwalTanam';
-        btn.textContent = 'KLNDR TNM';
+        btn.textContent = 'KALENDER TNM';
         btn.onclick = function () { switchMode('jadwaltanam'); };
 
         var tabKalender = document.getElementById('tabKalender');
