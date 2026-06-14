@@ -65,7 +65,7 @@
         window.switchMode = function (mode) {
             var boxJTO = document.getElementById('boxJadwalTanam');
             var tabJTO = document.getElementById('tabJadwalTanam');
-            var WARNA  = ' #3b82f6';
+            var WARNA  = '#3b82f6';
 
             if (mode === 'jadwaltanam') {
                 /* Jalankan reset kamera/malai jika fungsinya tersedia */
