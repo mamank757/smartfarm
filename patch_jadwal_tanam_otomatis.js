@@ -177,59 +177,44 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       MESIN REKOMENDASI WINDOW TANAM — BERBASIS 2 MUSIM TANAM
+       MESIN REKOMENDASI WINDOW TANAM — 2 MUSIM, ADAPTIF 4 POLA ZOM
        
-       LOGIKA v3.1 — Mengikuti siklus musim tanam padi Indonesia:
+       LOGIKA v3.2 — Tidak hardcode kalender, deteksi dinamis:
        ─────────────────────────────────────────────────────────
-       Indonesia mengenal 2 musim tanam padi per tahun:
-         • MT I  "Rendeng" (musim hujan)  — tanam Okt–Jan, panen Feb–Apr
-         • MT II "Gadu"    (musim kemarau) — tanam Apr–Jul, panen Agu–Okt
+       v3.1 hardcode MT I=Okt–Jan & MT II=Apr–Jul. Itu BENAR untuk
+       pola Monsunal (1 puncak hujan/tahun, khas Sulsel bagian
+       selatan), tapi SALAH untuk 3 pola ZOM lain yang juga
+       digunakan di aplikasi ini (lihat prosesAnalisisKalender):
        
-       Setiap musim tanam dibagi dalam window 6 bulan (bukan 12),
-       karena menanam di luar window musim yang tepat berarti fase
-       generatif/panen akan jatuh di bulan yang berlawanan dengan
-       pola air/irigasi lokal — dan itu tidak masuk akal secara agronomis.
+         • Monsunal  : 1 puncak hujan (Nov–Mar), 1 puncak kering (Jun–Sep)
+         • Ekuatorial: 2 puncak hujan/tahun (sekitar Mar & Okt)
+         • Lokal     : pola berkebalikan dari Monsunal (musim hujan
+                       justru saat Monsunal kering)
+         • Peralihan : campuran, tanpa pola dominan jelas
        
-       Cara kerja:
-         1. Tentukan petani sedang di MT I atau MT II berdasarkan bulan sekarang
-         2. Scan 6 bulan window MT tersebut (bulan tanam valid di MT itu)
-         3. Evaluasi tiap bulan tanam × varietas berdasarkan skor iklim
-            di BULAN GENERATIF dan BULAN PANEN (bukan offset hari)
-         4. Pilih kombinasi terbaik, lalu tetapkan tanggal konkret
-            berdasarkan fase bulan menguntungkan di bulan itu
-         5. Jika MT sekarang sudah terlewat (> 5 bulan berjalan),
-            rekomendasikan MT berikutnya
+       Karena getDataZOM() SUDAH mengambil data 12-bulan RIIL dari
+       kabupaten terdekat (via Haversine) — skorBulan otomatis
+       merefleksikan pola lokal apapun bentuknya. Maka window MT
+       seharusnya DITURUNKAN dari skorBulan, bukan di-hardcode.
+       
+       Algoritma:
+         1. Untuk tiap bulan (0–11), hitung nilai terbaik sebagai
+            "bulan tanam" (terbaik dari 3 varietas)
+         2. Musim A = bulan dengan nilai tertinggi (global)
+         3. Musim B = bulan dengan nilai tertinggi di antara bulan
+            yang berjarak ≥ 4 bulan (siklus) dari Musim A
+            → ini menghasilkan struktur "2 musim tanam" yang
+              berlaku untuk pola apapun, karena pola hujan
+              Indonesia (termasuk Ekuatorial bimodal) selalu
+              punya ≥2 window yang masing-masing layak tanam
+         4. Pilih musim dengan offset (jarak bulan dari sekarang)
+            TERKECIL sebagai rekomendasi utama — musim lainnya
+            disebutkan sebagai info tambahan
     ────────────────────────────────────────────────────────── */
     function rekomendasiWindowTanam(skorBulan) {
         var now = new Date();
         var bulanSekarang = now.getMonth();  // 0=Jan … 11=Des
         var tahunSekarang = now.getFullYear();
-
-        /*
-         * Definisi 2 musim tanam padi Indonesia
-         * (indeks bulan 0-based: 0=Jan, 9=Okt, dst.)
-         *
-         * MT I  Rendeng : tanam Okt–Jan  (bulan 9,10,11,0)
-         * MT II Gadu    : tanam Apr–Jul  (bulan 3,4,5,6)
-         *
-         * Catatan: window tanam sengaja dibatasi 4 bulan per MT
-         * karena tanam di luar window itu berarti padi memasuki
-         * fase generatif di bulan yang salah (terlalu kering atau
-         * terlalu basah) untuk iklim monsunal Sulawesi Selatan.
-         */
-        var MUSIM = [
-            {
-                nama  : 'MT I — Rendeng (Musim Hujan)',
-                kode  : 'rendeng',
-                // Bulan-bulan valid untuk tanam MT I (indeks 0-based)
-                bulanTanam: [9, 10, 11, 0]   // Okt, Nov, Des, Jan
-            },
-            {
-                nama  : 'MT II — Gadu (Musim Kemarau)',
-                kode  : 'gadu',
-                bulanTanam: [3, 4, 5, 6]      // Apr, Mei, Jun, Jul
-            }
-        ];
 
         // ── Definisi varietas ──
         var varianArr = [
@@ -239,139 +224,157 @@
         ];
 
         /*
-         * Tentukan musim tanam yang relevan untuk petani saat ini.
-         * Aturan:
-         *   - Jika bulan sekarang ada di window tanam suatu MT → gunakan MT itu
-         *   - Jika sedang di antara 2 MT → gunakan MT yang lebih dekat ke depan
-         *   - Selalu evaluasi KEDUA MT, lalu pilih yang nilainya lebih tinggi
-         *     (agar petani tahu pilihan terbaik, bahkan jika MT sekarang buruk)
+         * Jarak sirkular antar bulan (0–11), selalu bernilai 0–6.
+         * Contoh: jarak(11, 1) = 2 (Des → Feb), jarak(2, 9) = 5
          */
-        var kandidat = [];
+        function jarakSirkular(a, b) {
+            var d = Math.abs(a - b) % 12;
+            return d > 6 ? 12 - d : d;
+        }
 
-        MUSIM.forEach(function (musim) {
-            musim.bulanTanam.forEach(function (bTanam) {
+        /*
+         * LANGKAH 1: Hitung nilai terbaik untuk setiap bulan (0–11)
+         * sebagai kandidat bulan tanam — ambil varietas terbaik
+         * untuk bulan itu. Hasil disimpan di array 12 elemen.
+         */
+        var nilaiPerBulan = []; // { nilaiTotal, varietas, labelVar, skorTanam, skorGen, skorPanen, namaBulanGen, namaBulanPanen }
+
+        for (var bTanam = 0; bTanam <= 11; bTanam++) {
+            var skorTanam = skorBulan[bTanam];
+
+            // Bulan kering ekstrem → tidak layak jadi bulan tanam
+            if (skorTanam < 15) {
+                nilaiPerBulan.push(null);
+                continue;
+            }
+
+            var terbaikVar = null;
+
+            varianArr.forEach(function (v) {
+                var hariGen   = Math.floor(v.panen * v.persenGen);
+                var bGenIdx   = (bTanam + Math.floor(hariGen  / 30)) % 12;
+                var bPanenIdx = (bTanam + Math.floor(v.panen  / 30)) % 12;
+
+                var skorGen   = skorBulan[bGenIdx];
+                var skorPanen = skorBulan[bPanenIdx];
+
                 /*
-                 * Hitung tahun tanam untuk bulan ini.
-                 * Logika: jika bulan tanam sudah lewat di tahun ini,
-                 * artinya musim ini baru akan datang tahun depan.
-                 * Contoh: sekarang Agustus (8), bulan tanam MT I = Okt (9)
-                 *   → tahun tanam = tahun sekarang (belum lewat)
-                 * Contoh: sekarang Februari (1), bulan tanam MT II = Apr (3)
-                 *   → tahun tanam = tahun sekarang (belum lewat)
-                 * Contoh: sekarang Februari (1), bulan tanam MT I = Okt (9)
-                 *   → tahun tanam = tahun sekarang + 1 (sudah lewat)
-                 *
-                 * Untuk MT I yang melintasi pergantian tahun (Des/Jan),
-                 * bulan 0 (Jan) harus diperlakukan sebagai tahun berikutnya
-                 * jika sekarang masih di bulan 9–11.
+                 * Generatif ideal di skor ~40 (cukup air, tidak ekstrem).
+                 * Panen ideal makin kering (skor rendah) makin baik.
                  */
-                var tahunTanam;
-                if (bTanam >= bulanSekarang) {
-                    tahunTanam = tahunSekarang;
-                } else {
-                    // Bulan tanam sudah lewat tahun ini → tahun depan
-                    tahunTanam = tahunSekarang + 1;
+                var nilaiGen   = 100 - Math.abs(skorGen - 40);
+                var nilaiPanen = 100 - skorPanen;
+                var nilaiTotal = (nilaiGen * 0.55) + (nilaiPanen * 0.45);
+
+                // Penalti jika vegetatif awal (bulan tanam+1) sangat kering
+                var bVeg1 = (bTanam + 1) % 12;
+                if (skorBulan[bVeg1] < 20) nilaiTotal -= 15;
+
+                if (!terbaikVar || nilaiTotal > terbaikVar.nilaiTotal) {
+                    terbaikVar = {
+                        nilaiTotal : nilaiTotal,
+                        varietas   : v.kode,
+                        labelVar   : v.label,
+                        skorTanam  : skorTanam,
+                        skorGen    : skorGen,
+                        skorPanen  : skorPanen,
+                        namaBulanGen   : NAMA_BULAN[bGenIdx],
+                        namaBulanPanen : NAMA_BULAN[bPanenIdx]
+                    };
                 }
-
-                // Khusus MT I: bulan 0 (Jan) selalu +1 tahun jika sekarang Okt–Des
-                // karena MT I dimulai Okt tahun ini, berakhir Jan TAHUN BERIKUTNYA
-                if (musim.kode === 'rendeng' && bTanam === 0) {
-                    // Jan selalu jatuh setelah Okt–Des dalam satu siklus MT I
-                    if (bulanSekarang >= 9) {
-                        tahunTanam = tahunSekarang + 1;
-                    }
-                }
-
-                var skorTanam = skorBulan[bTanam];
-
-                // Skip bulan kering ekstrem — tidak ada air untuk olah lahan
-                if (skorTanam < 15) return;
-
-                varianArr.forEach(function (v) {
-                    // Bulan generatif dan panen dihitung berbasis kalender
-                    // (30 hari/bulan = aproksimasi cukup untuk resolusi bulanan)
-                    var hariGen   = Math.floor(v.panen * v.persenGen);
-                    var bGenIdx   = (bTanam + Math.floor(hariGen  / 30)) % 12;
-                    var bPanenIdx = (bTanam + Math.floor(v.panen  / 30)) % 12;
-
-                    var skorGen   = skorBulan[bGenIdx];
-                    var skorPanen = skorBulan[bPanenIdx];
-
-                    /*
-                     * Fungsi nilai per fase:
-                     *   Generatif : ideal skor 30–50 (ada air, tidak terlalu lembap)
-                     *               > 70 → Blast, penyerbukan terganggu
-                     *               < 20 → puso (hampa massal)
-                     *   Panen     : semakin kering semakin baik
-                     *               > 65 → padi rebah, gabah tumbuh, dryer mahal
-                     */
-                    var nilaiGen   = 100 - Math.abs(skorGen - 40); // puncak di skor 40
-                    var nilaiPanen = 100 - skorPanen;
-
-                    // Bobot: generatif (55%) lebih kritis dari panen (45%)
-                    var nilaiTotal = (nilaiGen * 0.55) + (nilaiPanen * 0.45);
-
-                    // Penalti: vegetatif awal (bulan tanam+1) sangat kering
-                    var bVeg1 = (bTanam + 1) % 12;
-                    if (skorBulan[bVeg1] < 20) nilaiTotal -= 15;
-
-                    // Hitung jarak bulan dari sekarang (untuk info user)
-                    var offsetBulan = (bTanam - bulanSekarang + 12) % 12;
-                    // Koreksi: jika tahun tanam sudah tahun depan dan offset < 6
-                    if (tahunTanam > tahunSekarang && offsetBulan < 6) {
-                        offsetBulan += 12;
-                    }
-
-                    kandidat.push({
-                        musimNama   : musim.nama,
-                        musimKode   : musim.kode,
-                        offsetBulan : offsetBulan,
-                        bTanam      : bTanam,
-                        tahunTanam  : tahunTanam,
-                        varietas    : v.kode,
-                        labelVar    : v.label,
-                        panen       : v.panen,
-                        nilaiTotal  : nilaiTotal,
-                        skorTanam   : skorTanam,
-                        skorGen     : skorGen,
-                        skorPanen   : skorPanen,
-                        namaBulanGen  : NAMA_BULAN[bGenIdx],
-                        namaBulanPanen: NAMA_BULAN[bPanenIdx]
-                    });
-                });
             });
-        });
 
-        // Fallback jika semua bulan di kedua MT kering ekstrem
-        if (!kandidat.length) {
+            nilaiPerBulan.push(terbaikVar);
+        }
+
+        // Jika semua bulan kering ekstrem → fallback
+        var adaKandidat = nilaiPerBulan.some(function (x) { return x !== null; });
+        if (!adaKandidat) {
             var tglFallback = tambahHari(now, 14);
             return {
                 tglTanam : tglFallback,
                 varietas : 'sedang',
                 labelVar : 'Sedang (95–115 HST)',
-                alasan   : 'Semua window musim tanam menunjukkan kondisi kering ekstrem. ' +
+                alasan   : 'Seluruh 12 bulan menunjukkan kondisi kering ekstrem. ' +
                            'Dipilih tanggal default. Pertimbangkan pompanisasi penuh atau palawija.'
             };
         }
 
-        // Urutkan descending → ambil terbaik
-        kandidat.sort(function (a, b) { return b.nilaiTotal - a.nilaiTotal; });
-        var best = kandidat[0];
+        /*
+         * LANGKAH 2: Tentukan Musim Tanam A = bulan dengan nilai
+         * tertinggi secara global.
+         */
+        var idxMusimA = -1, nilaiMaxA = -Infinity;
+        for (var i = 0; i <= 11; i++) {
+            if (nilaiPerBulan[i] && nilaiPerBulan[i].nilaiTotal > nilaiMaxA) {
+                nilaiMaxA = nilaiPerBulan[i].nilaiTotal;
+                idxMusimA = i;
+            }
+        }
 
         /*
-         * Tentukan tanggal konkret di dalam bulan tanam terpilih.
-         * Cari fase bulan sabit muda (hari 3–8 siklus sinodis) —
-         * waktu tradisional tanam padi di Sulawesi.
-         * Jika tidak ditemukan di bulan yang sama, pakai tanggal 10.
+         * LANGKAH 3: Tentukan Musim Tanam B = bulan dengan nilai
+         * tertinggi di antara bulan yang berjarak SIRKULAR ≥ 4
+         * dari Musim A. Jarak ≥4 bulan memastikan kedua musim
+         * tidak tumpang-tindih (1 siklus tanam ≈ 3–4 bulan).
+         *
+         * Jika tidak ada kandidat valid berjarak ≥4 (kasus langka,
+         * misal hanya 1–2 bulan layak tanam dalam setahun karena
+         * iklim sangat ekstrem), Musim B = null (hanya 1 musim layak).
          */
-        var tglAwalBulan = tanggalDariBulanTahun(best.bTanam, best.tahunTanam);
+        var idxMusimB = -1, nilaiMaxB = -Infinity;
+        for (var j = 0; j <= 11; j++) {
+            if (!nilaiPerBulan[j]) continue;
+            if (jarakSirkular(j, idxMusimA) < 4) continue;
+            if (nilaiPerBulan[j].nilaiTotal > nilaiMaxB) {
+                nilaiMaxB = nilaiPerBulan[j].nilaiTotal;
+                idxMusimB = j;
+            }
+        }
+
+        /*
+         * LANGKAH 4: Hitung offset bulan (jarak ke depan dari
+         * bulan sekarang) untuk Musim A dan Musim B. Pilih yang
+         * offsetnya lebih kecil sebagai REKOMENDASI UTAMA.
+         */
+        function hitungOffsetDanTahun(bTanam) {
+            var offset = (bTanam - bulanSekarang + 12) % 12;
+            var tahunTanam = tahunSekarang + Math.floor((bulanSekarang + offset) / 12);
+            return { offset: offset, tahun: tahunTanam };
+        }
+
+        var infoA = hitungOffsetDanTahun(idxMusimA);
+        var infoB = idxMusimB >= 0 ? hitungOffsetDanTahun(idxMusimB) : null;
+
+        var pilihUtama, pilihAlternatif, idxUtama, idxAlternatif;
+        if (infoB && infoB.offset < infoA.offset) {
+            pilihUtama = { idx: idxMusimB, info: infoB, data: nilaiPerBulan[idxMusimB] };
+            pilihAlternatif = { idx: idxMusimA, info: infoA, data: nilaiPerBulan[idxMusimA] };
+        } else {
+            pilihUtama = { idx: idxMusimA, info: infoA, data: nilaiPerBulan[idxMusimA] };
+            pilihAlternatif = idxMusimB >= 0
+                ? { idx: idxMusimB, info: infoB, data: nilaiPerBulan[idxMusimB] }
+                : null;
+        }
+
+        var best = pilihUtama.data;
+        var bTanamFinal   = pilihUtama.idx;
+        var tahunFinal    = pilihUtama.info.tahun;
+        var offsetFinal   = pilihUtama.info.offset;
+
+        /*
+         * LANGKAH 5: Tentukan tanggal konkret di dalam bulan
+         * tanam terpilih — cari fase bulan sabit muda (hari 3–8
+         * siklus sinodis), waktu tradisional tanam padi.
+         */
+        var tglAwalBulan = tanggalDariBulanTahun(bTanamFinal, tahunFinal);
         var tglFaseBaik  = cariTglFaseBulan(tglAwalBulan, 3, 8, 0);
 
-        if (tglFaseBaik.getMonth() !== best.bTanam) {
+        if (tglFaseBaik.getMonth() !== bTanamFinal) {
             tglFaseBaik = cariTglFaseBulan(tambahHari(tglAwalBulan, 7), 3, 8, 0);
         }
-        if (tglFaseBaik.getMonth() !== best.bTanam) {
-            tglFaseBaik = new Date(best.tahunTanam, best.bTanam, 10);
+        if (tglFaseBaik.getMonth() !== bTanamFinal) {
+            tglFaseBaik = new Date(tahunFinal, bTanamFinal, 10);
         }
 
         // Keterangan skor iklim untuk ditampilkan ke petani
@@ -386,20 +389,26 @@
                                   'sedang — koordinasikan combine harvester';
 
         var alasan =
-            best.musimNama + '. ' +
-            'Bulan tanam: ' + NAMA_BULAN[best.bTanam] + ' ' + best.tahunTanam +
+            'Musim Tanam Terdekat: ' + NAMA_BULAN[bTanamFinal] + ' ' + tahunFinal +
             ' (skor kelembapan: ' + best.skorTanam + '/100). ' +
             'Fase generatif → ' + best.namaBulanGen +
             ' (skor: ' + best.skorGen + '/100 — ' + keteranganSkorGen + '). ' +
             'Panen → ' + best.namaBulanPanen +
             ' (skor: ' + best.skorPanen + '/100 — ' + keteranganSkorPanen + '). ' +
-            'Nilai iklim gabungan: ' + best.nilaiTotal.toFixed(0) + '/100.';
+            'Nilai iklim: ' + best.nilaiTotal.toFixed(0) + '/100.';
 
-        // Peringatan jika musim terbaik ada di MT lain (> 2 bulan ke depan)
-        if (best.offsetBulan > 2) {
-            alasan += ' ⚠️ Waktu tanam optimal masih ' + best.offsetBulan +
+        // Info musim alternatif (musim tanam ke-2 dalam setahun)
+        if (pilihAlternatif) {
+            alasan += ' 📅 Musim tanam alternatif: ' +
+                      NAMA_BULAN[pilihAlternatif.idx] + ' ' + pilihAlternatif.info.tahun +
+                      ' (nilai iklim: ' + pilihAlternatif.data.nilaiTotal.toFixed(0) + '/100).';
+        }
+
+        // Peringatan jika musim terbaik masih > 2 bulan ke depan
+        if (offsetFinal > 2) {
+            alasan += ' ⚠️ Waktu tanam optimal masih ' + offsetFinal +
                       ' bulan ke depan. Pertimbangkan palawija (jagung/kedelai) ' +
-                      'untuk musim antara ini.';
+                      'untuk mengisi musim antara ini.';
         }
 
         return {
