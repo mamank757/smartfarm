@@ -1,35 +1,33 @@
 /**
  * ============================================================
  *  patch_jadwal_tanam_otomatis.js
- *  Versi: 3.8 — Fix Logika Tahun, Fase Bulan, Cache ZOM,
- *               Skor Threshold, dan Konsistensi HST
+ *  Versi: 3.9 — Blueprint Tahun Berjalan
  * ------------------------------------------------------------
- *  PERBAIKAN v3.8 vs v3.7:
+ *  PERBAIKAN v3.9 vs v3.8:
  *
- *  [KRITIS #1] Deteksi silang tahun menggunakan perbandingan
- *    bulan & tahun saat ini, bukan bulan[0] musim saja.
- *    Mencegah jadwal tanam jatuh di masa lalu.
+ *  [UTAMA] Jadwal selalu dalam lingkup TAHUN BERJALAN.
+ *    Bulan yang sudah lewat TIDAK digeser ke tahun depan,
+ *    melainkan ditampilkan sebagai "Blueprint Proyeksi" —
+ *    referensi retrospektif berbasis parameter iklim tahun
+ *    berjalan (ENSO/IOD/ZOM aktual).
  *
- *  [KRITIS #2] cariTglFaseBulan kini menerima parameter
- *    batasBulan dan iterasi hingga 45 hari ke depan agar
- *    tidak melampaui bulan target.
+ *    Setiap item hasil rekomendasi kini membawa flag:
+ *      isLewat  : true/false — apakah window tanam sudah lewat
+ *      isBerjalan: true/false — apakah sedang dalam window tanam
  *
- *  [SEDANG #1] Signature normalisasiCurahHujan disesuaikan
- *    — argumen kedua (bulanIdx) kini diteruskan dengan benar.
+ *    Tampilan UI:
+ *      - Sudah lewat  → badge abu "📋 Blueprint" + opacity muted
+ *      - Sedang berjalan → badge hijau berkedip "🟢 Aktif"
+ *      - Akan datang  → tampilan normal
  *
- *  [SEDANG #2] Zona ekuatorial menggunakan deteksi lembah
- *    (blok terkering) sebagai batas musim, bukan sekadar
- *    +6 bulan dari blok terbasah.
+ *    Kartu kegiatan yang sudah lewat juga diberi visual
+ *    "Realisasi / Referensi" agar petani tahu ini adalah
+ *    rekonstruksi proyeksi, bukan instruksi aktif.
  *
- *  [SEDANG #3] Cache ZOM diinvalidasi jika koordinat berubah
- *    lebih dari ~5 km (threshold haversine sederhana).
- *
- *  [MINOR #1] Threshold skor tanam diturunkan dari 15 → 10,
- *    dengan penalti tambahan di nilaiTotal untuk bulan kering.
- *
- *  [MINOR #2] Indeks bulan generatif/panen dihitung via
- *    tambahHari(tglTanam, hst).getMonth() — konsisten dengan
- *    bangunKegiatan, bukan Math.floor(hst/30).
+ *  [TETAP dari v3.8] Semua fix lainnya (cariTglFaseBulan
+ *    dengan batasBulan, normalisasi 2 argumen, deteksi lembah
+ *    ekuatorial, invalidasi cache ZOM, threshold 10, HST via
+ *    tambahHari) tetap aktif.
  * ============================================================
  */
 
@@ -297,21 +295,18 @@
 
             musim.bulanTanam.forEach(function (bTanam) {
 
-                // ── [FIX KRITIS #1] ─────────────────────────────────────
-                // Tentukan tahun tanam berdasarkan bulan & tahun saat ini,
-                // bukan sekadar membandingkan dengan bulanTanam[0].
-                // Jika bulan sudah lewat pada tahun ini, tanam tahun depan.
-                var tahunTanam = tahunSekarang;
-                if (bTanam < bulanSekarang) {
-                    tahunTanam = tahunSekarang + 1;
-                } else if (bTanam === bulanSekarang) {
-                    // Masih bulan ini tapi cek apakah sudah terlalu terlambat
-                    // (> 20 hari sudah berjalan → jadwalkan ke tahun depan)
-                    if (now.getDate() > 20) tahunTanam = tahunSekarang + 1;
-                }
+                // ── [v3.9] SELALU TAHUN BERJALAN ────────────────────────
+                // Tidak ada geser ke tahun depan. Semua bulan — lewat
+                // maupun belum — dihitung dalam tahun yang sama.
+                // Flag isLewat / isBerjalan ditentukan di sini dan dibawa
+                // sampai ke layer render untuk ditampilkan sebagai
+                // "Blueprint Proyeksi" jika window sudah terlewati.
+                var tahunTanam   = tahunSekarang;
+                var isLewat      = bTanam < bulanSekarang ||
+                                   (bTanam === bulanSekarang && now.getDate() > 20);
+                var isBerjalan   = bTanam === bulanSekarang && !isLewat;
                 // ────────────────────────────────────────────────────────
 
-                // [FIX MINOR #1] Threshold diturunkan 15 → 10
                 var skorTanam = skorBulan[bTanam];
                 if (skorTanam < 10) return;
 
@@ -351,25 +346,30 @@
                         skorGen     : skorGen,
                         skorPanen   : skorPanen,
                         namaBulanGen  : NAMA_BULAN[bGenIdx],
-                        namaBulanPanen: NAMA_BULAN[bPanenIdx]
+                        namaBulanPanen: NAMA_BULAN[bPanenIdx],
+                        isLewat     : isLewat,
+                        isBerjalan  : isBerjalan
                     });
                 });
             });
 
             if (kandidatMusim.length === 0) {
                 var bFallback       = musim.bulanTanam[0];
-                var tFallback       = bFallback < bulanSekarang ? tahunSekarang + 1 : tahunSekarang;
-                var tglAwalFallback = tanggalDariBulanTahun(bFallback, tFallback);
-                // [FIX KRITIS #2] Batasi pencarian ke bulan target
+                // [v3.9] Selalu tahun berjalan, tandai isLewat jika sudah lewat
+                var tglAwalFallback = tanggalDariBulanTahun(bFallback, tahunSekarang);
                 var tglFaseFallback = cariTglFaseBulan(tglAwalFallback, 3, 8, 0, bFallback);
+                var fbLewat         = bFallback < bulanSekarang ||
+                                      (bFallback === bulanSekarang && now.getDate() > 20);
 
                 hasilDuaMusim.push({
-                    musimNama : musim.nama,
-                    musimKode : musim.kode,
-                    tglTanam  : tglFaseFallback,
-                    varietas  : 'sedang',
-                    labelVar  : 'Sedang (95–115 HST)',
-                    alasan    : 'Kondisi kering ekstrem di seluruh jendela tanam musim ini. Dipilih tanggal default fase bulan terbaik. Pompanisasi penuh mungkin diperlukan.'
+                    musimNama  : musim.nama,
+                    musimKode  : musim.kode,
+                    tglTanam   : tglFaseFallback,
+                    varietas   : 'sedang',
+                    labelVar   : 'Sedang (95–115 HST)',
+                    alasan     : 'Kondisi kering ekstrem di seluruh jendela tanam musim ini. Dipilih tanggal default fase bulan terbaik. Pompanisasi penuh mungkin diperlukan.',
+                    isLewat    : fbLewat,
+                    isBerjalan : false
                 });
             } else {
                 kandidatMusim.sort(function (a, b) { return b.nilaiTotal - a.nilaiTotal; });
@@ -408,12 +408,14 @@
                     ' (' + keteranganSkorPanen + ').';
 
                 hasilDuaMusim.push({
-                    musimNama : best.musimNama,
-                    musimKode : best.musimKode,
-                    tglTanam  : tglFaseBaik,
-                    varietas  : best.varietas,
-                    labelVar  : best.labelVar,
-                    alasan    : alasan
+                    musimNama  : best.musimNama,
+                    musimKode  : best.musimKode,
+                    tglTanam   : tglFaseBaik,
+                    varietas   : best.varietas,
+                    labelVar   : best.labelVar,
+                    alasan     : alasan,
+                    isLewat    : best.isLewat,
+                    isBerjalan : best.isBerjalan
                 });
             }
         });
@@ -636,26 +638,50 @@
         if (chevron) chevron.style.transform = open ? '' : 'rotate(180deg)';
     };
 
-    function renderKartu(k, nomor) {
-        var w  = k.risiko.warna;
-        var fb = namaFaseBulan(hariFaseBulan(k.tglMulai));
+    /**
+     * [v3.9] renderKartu kini menerima flag isLewat.
+     * Kartu kegiatan yang sudah lewat ditampilkan dengan:
+     *  - Opacity 0.55 (muted) pada seluruh kartu
+     *  - Label "📋 Referensi" menggantikan badge status risiko
+     *  - Border kiri abu-abu
+     *  - Catatan iklim diganti keterangan blueprint
+     */
+    function renderKartu(k, nomor, isLewat) {
+        var now = new Date();
+        var kegLewat = isLewat || k.tglSelesai < now;
+        var w   = kegLewat ? '#64748b' : k.risiko.warna;
+        var fb  = namaFaseBulan(hariFaseBulan(k.tglMulai));
         var tipsHTML = k.tips.map(function (t) {
-            return '<li style="margin-bottom:5px;color:#cbd5e1;line-height:1.5;">' + t + '</li>';
+            return '<li style="margin-bottom:5px;color:' + (kegLewat ? '#475569' : '#cbd5e1') + ';line-height:1.5;">' + t + '</li>';
         }).join('');
 
-        return '<div style="background:#1b273a;border:0.5px solid rgba(255,255,255,0.07);border-radius:16px;margin-bottom:9px;overflow:hidden;">' +
+        var badgeHTML = kegLewat
+            ? '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;background:#1e293b;color:#64748b;white-space:nowrap;flex-shrink:0;border:1px solid #334155;">📋 Referensi</span>'
+            : '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;background:' + w + '22;color:' + w + ';white-space:nowrap;flex-shrink:0;">' + k.risiko.level + '</span>';
+
+        var catatanHTML = kegLewat
+            ? '<div style="background:#111c2e;border-radius:10px;padding:9px 11px;margin-top:10px;margin-bottom:10px;border-left:3px solid #334155;">' +
+                  '<div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:2px;">📋 Data Proyeksi (Blueprint)</div>' +
+                  '<div style="font-size:12px;color:#475569;">Kegiatan ini sudah terlewati. Ditampilkan sebagai referensi proyeksi iklim tahun berjalan.</div>' +
+              '</div>'
+            : '<div style="background:#111c2e;border-radius:10px;padding:9px 11px;margin-top:10px;margin-bottom:10px;border-left:3px solid ' + w + ';">' +
+                  '<div style="font-size:11px;font-weight:700;color:' + w + ';margin-bottom:2px;">Catatan Kondisi Iklim</div>' +
+                  '<div style="font-size:12px;color:#cbd5e1;">' + k.risiko.catatan + '</div>' +
+              '</div>';
+
+        return '<div style="background:#1b273a;border:0.5px solid ' + (kegLewat ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)') + ';border-radius:16px;margin-bottom:9px;overflow:hidden;opacity:' + (kegLewat ? '0.55' : '1') + ';">' +
             '<div style="padding:12px 14px;display:flex;align-items:flex-start;gap:12px;cursor:pointer;border-left:3px solid ' + w + ';" onclick="window._jtoToggle(this)">' +
                 '<div style="width:34px;height:34px;border-radius:50%;background:#111c2e;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">' + k.ikon + '</div>' +
                 '<div style="flex:1;min-width:0;">' +
                     '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
                         '<div>' +
                             '<div style="font-size:10px;color:#64748b;font-weight:600;margin-bottom:1px;">Kegiatan ' + nomor + '</div>' +
-                            '<div style="font-size:14px;font-weight:700;color:#fff;">' + k.nama + '</div>' +
+                            '<div style="font-size:14px;font-weight:700;color:' + (kegLewat ? '#64748b' : '#fff') + ';">' + k.nama + '</div>' +
                         '</div>' +
-                        '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;background:' + w + '22;color:' + w + ';white-space:nowrap;flex-shrink:0;">' + k.risiko.level + '</span>' +
+                        badgeHTML +
                     '</div>' +
                     '<div style="font-size:12px;color:#94a3b8;margin-top:3px;">' +
-                        '<strong style="color:#e2e8f0;">' + formatTglLengkap(k.tglMulai) + '</strong>' +
+                        '<strong style="color:' + (kegLewat ? '#475569' : '#e2e8f0') + ';">' + formatTglLengkap(k.tglMulai) + '</strong>' +
                         ' s/d ' + formatTglPendek(k.tglSelesai) +
                     '</div>' +
                     '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + fb.ikon + ' ' + fb.nama + ' &nbsp;•&nbsp; ' + k.deskripsi + '</div>' +
@@ -663,10 +689,7 @@
                 '<span class="jto-chevron" style="font-size:12px;color:#64748b;flex-shrink:0;margin-top:8px;transition:transform 0.2s;">▼</span>' +
             '</div>' +
             '<div class="jto-detail" style="display:none;padding:0 14px 14px;border-top:0.5px solid rgba(255,255,255,0.05);">' +
-                '<div style="background:#111c2e;border-radius:10px;padding:9px 11px;margin-top:10px;margin-bottom:10px;border-left:3px solid ' + w + ';">' +
-                    '<div style="font-size:11px;font-weight:700;color:' + w + ';margin-bottom:2px;">Catatan Kondisi Iklim</div>' +
-                    '<div style="font-size:12px;color:#cbd5e1;">' + k.risiko.catatan + '</div>' +
-                '</div>' +
+                catatanHTML +
                 '<div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Tips Lapangan</div>' +
                 '<ul style="margin:0;padding-left:15px;font-size:12px;">' + tipsHTML + '</ul>' +
             '</div>' +
