@@ -211,7 +211,7 @@
                 '\n Rendeng mulai : ' + NAMA_BULAN[startRendeng] +
                 '\n Gadu mulai : ' + NAMA_BULAN[startGadu] +
                 '\n Koordinat : [' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ']',
-                'color:#06b6d4; font-weight:bold;'
+                'color:#3b82f6; font-weight:bold;'
             );
         } else {
             console.log('[PatchMusim] Pola ekuatorial dua puncak — pakai deteksi lembah dari v3.8');
@@ -395,7 +395,7 @@ if (skorVeg1 < 30) nilaiTotal -= (30 - skorVeg1) * 1.5;
         window.tentukanKalenderMusimLokal = tentukanKalenderMusimLokal;
 
         console.log('%c✅ patch_deteksi_musim_v1.js v1.3 aktif — Pantai Timur Sulsel pakai Rendeng April–September',
-                   'color:#06b6d4; font-weight:bold;');
+                   'color:#3b82f6; font-weight:bold;');
     }
 
     if (document.readyState === 'loading') {
