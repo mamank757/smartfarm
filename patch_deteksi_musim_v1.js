@@ -290,7 +290,7 @@
     /* =========================================================
        FUNGSI UTAMA REKOMENDASI (rekonstruksi menyeluruh)
     ========================================================= */
-    function rekomendasiWindowTanamV3(skorBulan, rawZOM, zona) {
+    function rekomendasiWindowTanamV3(skorBulan, rawZOM, zona, ensoVal = 0, iodVal = 0) {
         var now           = new Date();
         var tahunSekarang = now.getFullYear();
 
