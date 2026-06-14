@@ -1,41 +1,23 @@
 /**
  * ============================================================
- *  patch_deteksi_musim_v1.js
- *  Versi: 1.0 — Deteksi Musim Berbasis Koordinat + ZOM
- * ------------------------------------------------------------
- *  MASALAH YANG DIPERBAIKI:
- *
- *  rekomendasiWindowTanam() di patch_jadwal_tanam_otomatis.js
- *  salah menyebut musim karena hanya melihat "blok 6 bulan
- *  terbanyak mm = Rendeng". Ini hanya benar untuk Sulsel
- *  pantai barat (pola monsunal barat). Di Sulsel pantai timur
- *  dan wilayah lain dengan pola terbalik, hasilnya kebalik:
- *    - Puncak hujan Apr–Sep → sistem beri label "MT I Rendeng"
- *    - Padahal petani setempat menyebut itu "Gadu"
- *    - Rendeng lokal (Okt–Feb) malah diberi label "MT II Gadu"
- *
- *  SOLUSI:
- *  Tambahkan fungsi tentukanKalenderMusimLokal(lat, lon, rawZOM)
- *  yang:
- *    1. Mendeteksi "tipe pola hujan" wilayah dari koordinat GPS
- *       dan distribusi ZOM aktual (bukan hanya zona iklim).
- *    2. Menentukan bulan Rendeng dan Gadu sesuai kalender tanam
- *       LOKAL — bukan sekadar bulan terbasah vs terkering.
- *    3. Memberi label MT I dan MT II dengan orientasi yang benar
- *       dari perspektif petani setempat.
- *
- *  CARA PAKAI:
- *  Tambahkan tag <script src="patch_deteksi_musim_v1.js"></script>
- *  SETELAH patch_jadwal_tanam_otomatis.js. Patch ini akan
- *  meng-override fungsi rekomendasiWindowTanam() secara otomatis.
- *
- *  TIDAK ADA perubahan di file lain yang diperlukan.
+ * patch_deteksi_musim_v1.js
+ * Versi: 1.3 — Deteksi Musim Berbasis Koordinat + ZOM + Data Lokal Pantai Timur
+ * ============================================================
+ * 
+ * Perbaikan:
+ * - Pantai Timur & Tengah Sulsel (Bone, Wajo, Soppeng, Sinjai, dll.) 
+ *   menggunakan Rendeng April–September sesuai kenyataan petani lokal.
+ * - Kode dibersihkan dari duplikasi.
+ * - Logging lebih informatif.
  * ============================================================
  */
 
 (function () {
     'use strict';
 
+    /* =========================================================
+       REFERENSI KALENDER MUSIM TANAM LOKAL
+    ========================================================= */
     var REFERENSI_MUSIM_REGIONAL = [
 
         /* ── Pantai Barat & Barat Daya (Pola Monsun Barat Klasik) ───── */
@@ -50,9 +32,7 @@
         },
 
         /* ── Pantai Timur & Tengah Sulsel (Pola Terbalik - Mayoritas) ──
-           Meliputi: Bone, Wajo, Soppeng, Sinjai, Bulukumba, Selayar,
-           Bantaeng timur, sebagian Gowa timur, dll.
-           Musim Utama Rendeng: April–September */
+           Bone, Wajo, Soppeng, Sinjai, Bulukumba, Selayar, Bantaeng timur, dll. */
         {
             latMin: -6.0, latMaks: -3.0,
             lonMin: 120.6, lonMaks: 122.8,
@@ -97,6 +77,9 @@
         }
     ];
 
+    /* =========================================================
+       FUNGSI DETEKSI MUSIM LOKAL
+    ========================================================= */
     function tentukanKalenderMusimLokal(lat, lon, rawZOM) {
         var refRegional = null;
         for (var r = 0; r < REFERENSI_MUSIM_REGIONAL.length; r++) {
@@ -121,12 +104,16 @@
                          (bulanTertinggi >= 3 && bulanTertinggi <= 8) ? 'timur' : 'barat';
 
         if (refRegional) {
-            if (refRegional.polaPuncak !== 'peralihan_sultra' && 
+            if (refRegional.polaPuncak !== 'peralihan_sultra' &&
                 refRegional.polaPuncak !== 'ekuatorial_dua_puncak' &&
                 refRegional.polaPuncak !== polaDariZOM) {
                 console.warn(`[PatchMusim] Pola ZOM (${polaDariZOM}) ≠ referensi di [${lat.toFixed(3)}, ${lon.toFixed(3)}]`);
             }
-            return { ...refRegional, sumber: 'referensi-regional', polaDideteksi: refRegional.polaPuncak };
+            return { 
+                ...refRegional, 
+                sumber: 'referensi-regional', 
+                polaDideteksi: refRegional.polaPuncak 
+            };
         }
 
         // Fallback
@@ -154,81 +141,81 @@
     }
 
     /* =========================================================
-       OVERRIDE rekomendasiWindowTanam
-       Menggantikan fungsi yang ada di patch_jadwal_tanam_otomatis.js
+       HELPER FUNCTIONS
     ========================================================= */
     var NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni',
                       'Juli','Agustus','September','Oktober','November','Desember'];
+
     var EPOCH_BULAN_BARU = new Date('2026-01-29T12:36:00Z');
-    var SIKLUS_SINODIS   = 29.53059;
+    var SIKLUS_SINODIS = 29.53059;
 
     function tambahHari(d, n) {
         var h = new Date(d);
         h.setDate(h.getDate() + n);
         return h;
     }
+
     function tanggalDariBulanTahun(bulanIdx, tahun) {
         return new Date(tahun, bulanIdx, 1);
     }
+
     function hariFaseBulan(tgl) {
         var s = (tgl.getTime() - EPOCH_BULAN_BARU.getTime()) / 86400000;
         return ((s % SIKLUS_SINODIS) + SIKLUS_SINODIS) % SIKLUS_SINODIS;
     }
+
     function cariTglFaseBulan(acuan, faseMin, faseMax, offsetMulai, batasBulan) {
         var mulai = tambahHari(acuan, offsetMulai || 0);
         for (var i = 0; i <= 45; i++) {
             var t = tambahHari(mulai, i);
             if (batasBulan !== null && batasBulan !== undefined &&
-                t.getMonth() !== batasBulan) { continue; }
+                t.getMonth() !== batasBulan) continue;
             var f = hariFaseBulan(t);
             if (f >= faseMin && f <= faseMax) return t;
         }
         return mulai;
     }
 
-    /* Fungsi rekomendasiWindowTanam yang sudah diperbaiki */
+    /* =========================================================
+       FUNGSI UTAMA YANG DI-OVERRIDE
+    ========================================================= */
     function rekomendasiWindowTanamV2(skorBulan, rawZOM, zona) {
-        var now           = new Date();
+        var now = new Date();
         var tahunSekarang = now.getFullYear();
         var bulanSekarang = now.getMonth();
 
-        /* ── Ambil koordinat untuk penentuan kalender musim lokal ── */
         var lat = (window._lokasiKalender && window._lokasiKalender.lat) || -4.0;
         var lon = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
 
-        /* ── Tentukan kalender musim lokal ── */
-        var kalenderLokal = tentukanKalenderMusimLokal(lat, lon, rawZOM, zona);
+        var kalenderLokal = tentukanKalenderMusimLokal(lat, lon, rawZOM);
 
         var startRendeng, startGadu, namaRendeng, namaGadu;
 
         if (kalenderLokal !== null) {
-            /* Gunakan kalender lokal yang sudah terverifikasi koordinat */
             startRendeng = kalenderLokal.rendengMulai;
-            startGadu    = kalenderLokal.gaduMulai;
-            namaRendeng  = kalenderLokal.namaRendeng;
-            namaGadu     = kalenderLokal.namaGadu;
+            startGadu = kalenderLokal.gaduMulai;
+            namaRendeng = kalenderLokal.namaRendeng;
+            namaGadu = kalenderLokal.namaGadu;
 
             console.log(
                 '%c[PatchMusim] Kalender musim lokal ditentukan dari: ' + kalenderLokal.sumber +
-                '\n  Pola terdeteksi : ' + kalenderLokal.polaDideteksi +
-                '\n  Rendeng mulai   : ' + NAMA_BULAN[startRendeng] +
-                '\n  Gadu mulai      : ' + NAMA_BULAN[startGadu] +
-                '\n  Koordinat       : [' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ']',
+                '\n Pola terdeteksi : ' + kalenderLokal.polaDideteksi +
+                '\n Rendeng mulai : ' + NAMA_BULAN[startRendeng] +
+                '\n Gadu mulai : ' + NAMA_BULAN[startGadu] +
+                '\n Koordinat : [' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ']',
                 'color:#06b6d4; font-weight:bold;'
             );
         } else {
-            /* Fallback: gunakan logika lama (pencarian blok terbanyak)
-               tapi HANYA untuk zona ekuatorial dua puncak */
-            console.log(
-                '[PatchMusim] Pola ekuatorial dua puncak — pakai deteksi lembah dari v3.8'
-            );
-
+            console.log('[PatchMusim] Pola ekuatorial dua puncak — pakai deteksi lembah dari v3.8');
             var maxSum = -Infinity;
             startRendeng = 0;
             for (var i = 0; i < 12; i++) {
                 var sum = 0;
                 for (var j = 0; j < 6; j++) sum += rawZOM[(i + j) % 12];
-                if (sum > maxSum) { maxSum = sum; startRendeng = i; }
+                if (sum > maxSum) { 
+                    maxSum = sum; 
+                    startRendeng = i; 
+                }
             }
 
             var minSum = Infinity;
@@ -240,29 +227,27 @@
                     var tengahLembah = (ii + 2) % 12;
                     var jarakDariRendeng = (tengahLembah - startRendeng + 12) % 12;
                     if (jarakDariRendeng >= 3 && jarakDariRendeng <= 9) {
-                        minSum    = lembahSum;
+                        minSum = lembahSum;
                         startGadu = ii;
                     }
                 }
             }
             namaRendeng = 'MT I — Musim Utama (Puncak Hujan)';
-            namaGadu    = 'MT II — Musim Kedua (Hujan Menurun)';
+            namaGadu = 'MT II — Musim Kedua (Hujan Menurun)';
         }
 
-        var rendengBulan = [startRendeng,  (startRendeng+1)%12,
-                             (startRendeng+2)%12, (startRendeng+3)%12];
-        var gaduBulan    = [startGadu,     (startGadu+1)%12,
-                             (startGadu+2)%12,    (startGadu+3)%12];
+        var rendengBulan = [startRendeng, (startRendeng+1)%12, (startRendeng+2)%12, (startRendeng+3)%12];
+        var gaduBulan = [startGadu, (startGadu+1)%12, (startGadu+2)%12, (startGadu+3)%12];
 
         var MUSIM = [
             { nama: namaRendeng, kode: 'rendeng', bulanTanam: rendengBulan },
-            { nama: namaGadu,    kode: 'gadu',    bulanTanam: gaduBulan   }
+            { nama: namaGadu, kode: 'gadu', bulanTanam: gaduBulan }
         ];
 
         var varianArr = [
-            { kode:'genjah', label:'Genjah (< 95 HST)',   panen: 90,  persenGen: 0.55 },
+            { kode:'genjah', label:'Genjah (< 95 HST)', panen: 90, persenGen: 0.55 },
             { kode:'sedang', label:'Sedang (95–115 HST)', panen: 110, persenGen: 0.55 },
-            { kode:'dalam',  label:'Dalam (≥ 116 HST)',   panen: 125, persenGen: 0.55 }
+            { kode:'dalam', label:'Dalam (≥ 116 HST)', panen: 125, persenGen: 0.55 }
         ];
 
         var hasilDuaMusim = [];
@@ -272,23 +257,22 @@
 
             musim.bulanTanam.forEach(function (bTanam) {
                 var tahunTanam = tahunSekarang;
-                var isLewat    = bTanam < bulanSekarang ||
-                                 (bTanam === bulanSekarang && now.getDate() > 20);
+                var isLewat = bTanam < bulanSekarang || (bTanam === bulanSekarang && now.getDate() > 20);
                 var isBerjalan = bTanam === bulanSekarang && !isLewat;
 
                 var skorTanam = skorBulan[bTanam];
                 if (skorTanam < 10) return;
 
                 varianArr.forEach(function (v) {
-                    var hariGen     = Math.floor(v.panen * v.persenGen);
+                    var hariGen = Math.floor(v.panen * v.persenGen);
                     var tglTanamRef = tanggalDariBulanTahun(bTanam, tahunTanam);
-                    var bGenIdx     = tambahHari(tglTanamRef, hariGen).getMonth();
-                    var bPanenIdx   = tambahHari(tglTanamRef, v.panen).getMonth();
+                    var bGenIdx = tambahHari(tglTanamRef, hariGen).getMonth();
+                    var bPanenIdx = tambahHari(tglTanamRef, v.panen).getMonth();
 
-                    var skorGen   = skorBulan[bGenIdx];
+                    var skorGen = skorBulan[bGenIdx];
                     var skorPanen = skorBulan[bPanenIdx];
 
-                    var nilaiGen   = 100 - Math.abs(skorGen - 40);
+                    var nilaiGen = 100 - Math.abs(skorGen - 40);
                     var nilaiPanen = 100 - skorPanen;
                     var nilaiTotal = (nilaiGen * 0.55) + (nilaiPanen * 0.45);
 
@@ -297,41 +281,40 @@
                     if (skorTanam < 20) nilaiTotal -= (20 - skorTanam) * 1.5;
 
                     kandidatMusim.push({
-                        musimNama     : musim.nama,
-                        musimKode     : musim.kode,
-                        bTanam        : bTanam,
-                        tahunTanam    : tahunTanam,
-                        varietas      : v.kode,
-                        labelVar      : v.label,
-                        panen         : v.panen,
-                        nilaiTotal    : nilaiTotal,
-                        skorTanam     : skorTanam,
-                        skorGen       : skorGen,
-                        skorPanen     : skorPanen,
-                        namaBulanGen  : NAMA_BULAN[bGenIdx],
+                        musimNama : musim.nama,
+                        musimKode : musim.kode,
+                        bTanam : bTanam,
+                        tahunTanam : tahunTanam,
+                        varietas : v.kode,
+                        labelVar : v.label,
+                        panen : v.panen,
+                        nilaiTotal : nilaiTotal,
+                        skorTanam : skorTanam,
+                        skorGen : skorGen,
+                        skorPanen : skorPanen,
+                        namaBulanGen : NAMA_BULAN[bGenIdx],
                         namaBulanPanen: NAMA_BULAN[bPanenIdx],
-                        isLewat       : isLewat,
-                        isBerjalan    : isBerjalan
+                        isLewat : isLewat,
+                        isBerjalan : isBerjalan
                     });
                 });
             });
 
             if (kandidatMusim.length === 0) {
-                var bFallback       = musim.bulanTanam[0];
+                // Fallback logic (sama seperti asli)
+                var bFallback = musim.bulanTanam[0];
                 var tglAwalFallback = tanggalDariBulanTahun(bFallback, tahunSekarang);
                 var tglFaseFallback = cariTglFaseBulan(tglAwalFallback, 3, 8, 0, bFallback);
-                var fbLewat         = bFallback < bulanSekarang ||
-                                      (bFallback === bulanSekarang && now.getDate() > 20);
+                var fbLewat = bFallback < bulanSekarang || (bFallback === bulanSekarang && now.getDate() > 20);
 
                 hasilDuaMusim.push({
-                    musimNama  : musim.nama,
-                    musimKode  : musim.kode,
-                    tglTanam   : tglFaseFallback,
-                    varietas   : 'sedang',
-                    labelVar   : 'Sedang (95–115 HST)',
-                    alasan     : 'Kondisi kering ekstrem di seluruh jendela tanam musim ini. ' +
-                                 'Dipilih tanggal default fase bulan terbaik.',
-                    isLewat    : fbLewat,
+                    musimNama : musim.nama,
+                    musimKode : musim.kode,
+                    tglTanam : tglFaseFallback,
+                    varietas : 'sedang',
+                    labelVar : 'Sedang (95–115 HST)',
+                    alasan : 'Kondisi kering ekstrem di seluruh jendela tanam musim ini.',
+                    isLewat : fbLewat,
                     isBerjalan : false
                 });
             } else {
@@ -339,7 +322,7 @@
                 var best = kandidatMusim[0];
 
                 var tglAwalBulan = tanggalDariBulanTahun(best.bTanam, best.tahunTanam);
-                var tglFaseBaik  = cariTglFaseBulan(tglAwalBulan, 3, 8, 0, best.bTanam);
+                var tglFaseBaik = cariTglFaseBulan(tglAwalBulan, 3, 8, 0, best.bTanam);
 
                 if (tglFaseBaik.getMonth() !== best.bTanam) {
                     tglFaseBaik = cariTglFaseBulan(tambahHari(tglAwalBulan, 7), 3, 8, 0, best.bTanam);
@@ -348,41 +331,35 @@
                     tglFaseBaik = new Date(best.tahunTanam, best.bTanam, 10);
                 }
 
-                var keteranganSkorGen =
-                    best.skorGen < 25 ? 'kering — risiko puso' :
-                    best.skorGen > 70 ? 'basah — waspada Blast' :
-                    'optimal pembungaan';
-                var keteranganSkorPanen =
-                    best.skorPanen > 65 ? 'basah — butuh dryer' :
-                    best.skorPanen < 20 ? 'kering ideal' :
-                    'sedang — aman';
+                var keteranganSkorGen = best.skorGen < 25 ? 'kering — risiko puso' :
+                                       best.skorGen > 70 ? 'basah — waspada Blast' : 'optimal pembungaan';
+                var keteranganSkorPanen = best.skorPanen > 65 ? 'basah — butuh dryer' :
+                                        best.skorPanen < 20 ? 'kering ideal' : 'sedang — aman';
 
                 hasilDuaMusim.push({
-                    musimNama  : best.musimNama,
-                    musimKode  : best.musimKode,
-                    tglTanam   : tglFaseBaik,
-                    varietas   : best.varietas,
-                    labelVar   : best.labelVar,
-                    alasan     : 'Skor bulan tanam: ' + best.skorTanam + '/100. ' +
-                                 'Generatif jatuh di ' + best.namaBulanGen +
-                                 ' (' + keteranganSkorGen + '). ' +
-                                 'Panen di ' + best.namaBulanPanen +
-                                 ' (' + keteranganSkorPanen + ').',
-                    isLewat    : best.isLewat,
+                    musimNama : best.musimNama,
+                    musimKode : best.musimKode,
+                    tglTanam : tglFaseBaik,
+                    varietas : best.varietas,
+                    labelVar : best.labelVar,
+                    alasan : 'Skor bulan tanam: ' + best.skorTanam + '/100. ' +
+                             'Generatif di ' + best.namaBulanGen + ' (' + keteranganSkorGen + '). ' +
+                             'Panen di ' + best.namaBulanPanen + ' (' + keteranganSkorPanen + ').',
+                    isLewat : best.isLewat,
                     isBerjalan : best.isBerjalan
                 });
             }
         });
 
-        /* Urut berdasarkan tanggal tanam */
         hasilDuaMusim.sort(function(a, b) {
             return a.tglTanam.getTime() - b.tglTanam.getTime();
         });
+
         return hasilDuaMusim;
     }
 
     /* =========================================================
-       INJEKSI — Override fungsi lama setelah DOM siap
+       INJEKSI OVERRIDE
     ========================================================= */
     function injeksiOverride() {
         if (typeof window.rekomendasiWindowTanam === 'function') {
@@ -391,24 +368,7 @@
         window.rekomendasiWindowTanam = rekomendasiWindowTanamV2;
         window.tentukanKalenderMusimLokal = tentukanKalenderMusimLokal;
 
-        console.log('%c✅ patch_deteksi_musim_v1.js v1.1 aktif — Deteksi Musim Lokal lebih akurat', 
-                   'color:#06b6d4; font-weight:bold;');
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', injeksiOverride);
-    } else {
-        setTimeout(injeksiOverride, 100);
-    }
-
-})();function injeksiOverride() {
-        if (typeof window.rekomendasiWindowTanam === 'function') {
-            window._rekomendasiWindowTanamLama = window.rekomendasiWindowTanam;
-        }
-        window.rekomendasiWindowTanam = rekomendasiWindowTanamV2;
-        window.tentukanKalenderMusimLokal = tentukanKalenderMusimLokal;
-
-        console.log('%c✅ patch_deteksi_musim_v1.js v1.3 aktif — Pantai Timur Sulsel pakai Rendeng April–September', 
+        console.log('%c✅ patch_deteksi_musim_v1.js v1.3 aktif — Pantai Timur Sulsel pakai Rendeng April–September',
                    'color:#06b6d4; font-weight:bold;');
     }
 
