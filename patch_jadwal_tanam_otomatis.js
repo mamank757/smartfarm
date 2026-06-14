@@ -826,8 +826,9 @@
                 return skorKelembapan(idx, zonaInfo.data, ensoVal, iodVal, lat, lon);
             });
 
-            // [FIX] Teruskan zona ke rekomendasiWindowTanam untuk deteksi ekuatorial
-            var rekomendasiArr = rekomendasiWindowTanam(skorBulan, zonaInfo.data, zonaInfo.zona);
+            // [FIX] Panggil dari 'window' agar override dari patch_deteksi_musim (regional Pantai Timur) bisa terbaca!
+var fungsiRekomendasi = window.rekomendasiWindowTanam || rekomendasiWindowTanam;
+var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona);
 
             var multiJadwal = rekomendasiArr.map(function(rek) {
                 return {
