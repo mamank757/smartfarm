@@ -36,38 +36,31 @@
 (function () {
     'use strict';
 
-    /* =========================================================
-       REFERENSI KALENDER MUSIM TANAM LOKAL (Diperbaiki)
-       Sumber: BMKG, data ZOM, laporan petani, dan studi pola hujan Sulsel
-    ========================================================= */
     var REFERENSI_MUSIM_REGIONAL = [
 
-        /* ── Sulsel Pantai Barat & Tengah (Dominan) ─────────────
-           Makassar, Maros, Gowa, Takalar, Jeneponto barat, 
-           Pinrang, Sidrap, Soppeng, Wajo barat, Barru, Pangkep, Parepare
-           Pola klasik monsun barat: Puncak hujan Des–Feb */
+        /* ── Pantai Barat & Barat Daya (Pola Monsun Barat Klasik) ───── */
         {
             latMin: -6.0, latMaks: -2.5,
-            lonMin: 119.0, lonMaks: 120.8,
+            lonMin: 119.0, lonMaks: 120.6,
             polaPuncak: 'barat',
-            rendengMulai: 10, // November (MT I utama)
+            rendengMulai: 10, // November
             gaduMulai: 4,     // Mei
             namaRendeng: 'MT I — Musim Utama (Rendeng, Nov–Mar)',
             namaGadu: 'MT II — Musim Kedua (Gadu, Mei–Agu)'
         },
 
-        /* ── Sulsel Pantai Timur & Teluk Bone (Pola Terbalik) ──
-           Sinjai, Bone timur, Bulukumba pesisir, Selayar, 
-           Jeneponto & Bantaeng timur
-           Puncak hujan April–Agustus (pengaruh angin tenggara) */
+        /* ── Pantai Timur & Tengah Sulsel (Pola Terbalik - Mayoritas) ──
+           Meliputi: Bone, Wajo, Soppeng, Sinjai, Bulukumba, Selayar,
+           Bantaeng timur, sebagian Gowa timur, dll.
+           Musim Utama Rendeng: April–September */
         {
             latMin: -6.0, latMaks: -3.0,
-            lonMin: 120.7, lonMaks: 122.8,
+            lonMin: 120.6, lonMaks: 122.8,
             polaPuncak: 'timur',
-            rendengMulai: 3,  // April (MT I lokal = Gadu nasional)
-            gaduMulai: 9,     // Oktober (MT II lokal = Rendeng nasional)
-            namaRendeng: 'MT I — Musim Utama Lokal (Gadu, Apr–Agu)',
-            namaGadu: 'MT II — Musim Kedua Lokal (Rendeng, Okt–Feb)'
+            rendengMulai: 3,  // April
+            gaduMulai: 9,     // Oktober
+            namaRendeng: 'MT I — Musim Utama Lokal (Rendeng, Apr–Agu)',
+            namaGadu: 'MT II — Musim Kedua Lokal (Gadu, Okt–Feb)'
         },
 
         /* ── Sulawesi Tenggara (Peralihan) ───────────────────── */
@@ -75,24 +68,24 @@
             latMin: -5.5, latMaks: -2.5,
             lonMin: 121.5, lonMaks: 124.5,
             polaPuncak: 'peralihan_sultra',
-            rendengMulai: 2,  // Maret
-            gaduMulai: 9,     // Oktober
+            rendengMulai: 2,
+            gaduMulai: 9,
             namaRendeng: 'MT I — Musim Utama (Mar–Jun)',
             namaGadu: 'MT II — Musim Kedua (Okt–Jan)'
         },
 
-        /* ── Sulawesi Barat (Mamuju dkk) ─────────────────────── */
+        /* ── Sulawesi Barat ──────────────────────────────────── */
         {
             latMin: -3.5, latMaks: -0.5,
             lonMin: 118.5, lonMaks: 120.5,
             polaPuncak: 'barat',
-            rendengMulai: 11, // Desember
-            gaduMulai: 5,     // Juni
+            rendengMulai: 11,
+            gaduMulai: 5,
             namaRendeng: 'MT I — Musim Utama (Rendeng, Des–Mar)',
             namaGadu: 'MT II — Musim Kedua (Gadu, Jun–Sep)'
         },
 
-        /* ── Sulawesi Tengah Selatan (Palu dll) ──────────────── */
+        /* ── Sulawesi Tengah Selatan (Ekuatorial) ────────────── */
         {
             latMin: -2.5, latMaks: 0.0,
             lonMin: 119.5, lonMaks: 122.0,
@@ -104,16 +97,7 @@
         }
     ];
 
-    /* =========================================================
-       FUNGSI UTAMA: tentukanKalenderMusimLokal
-       Menggabungkan tiga sumber informasi:
-         1. Koordinat GPS → lookup referensi regional
-         2. Pola distribusi ZOM → verifikasi/koreksi
-         3. Zona iklim → fallback
-    ========================================================= */
-    function tentukanKalenderMusimLokal(lat, lon, rawZOM, zonaIklim) {
-
-        /* Langkah 1: Cari referensi regional berdasarkan koordinat */
+    function tentukanKalenderMusimLokal(lat, lon, rawZOM) {
         var refRegional = null;
         for (var r = 0; r < REFERENSI_MUSIM_REGIONAL.length; r++) {
             var ref = REFERENSI_MUSIM_REGIONAL[r];
@@ -124,7 +108,7 @@
             }
         }
 
-        // Analisis ZOM (sama seperti sebelumnya, tapi lebih toleran)
+        // Analisis ZOM
         var bulanTertinggi = 0, nilaiMax = -Infinity;
         for (var i = 0; i < 12; i++) {
             if (rawZOM[i] > nilaiMax) {
@@ -133,27 +117,25 @@
             }
         }
 
-        var polaDariZOM = 'barat';
-        if (nilaiMax < 0.4) polaDariZOM = 'ekuatorial';
-        else if (bulanTertinggi >= 3 && bulanTertinggi <= 8) polaDariZOM = 'timur';
+        var polaDariZOM = (nilaiMax < 0.4) ? 'ekuatorial' :
+                         (bulanTertinggi >= 3 && bulanTertinggi <= 8) ? 'timur' : 'barat';
 
         if (refRegional) {
-            // Verifikasi silang tetap ada
             if (refRegional.polaPuncak !== 'peralihan_sultra' && 
                 refRegional.polaPuncak !== 'ekuatorial_dua_puncak' &&
                 refRegional.polaPuncak !== polaDariZOM) {
-                console.warn(`[PatchMusim] Pola ZOM (${polaDariZOM}) ≠ referensi regional (${refRegional.polaPuncak}) di [${lat.toFixed(3)}, ${lon.toFixed(3)}]`);
+                console.warn(`[PatchMusim] Pola ZOM (${polaDariZOM}) ≠ referensi di [${lat.toFixed(3)}, ${lon.toFixed(3)}]`);
             }
             return { ...refRegional, sumber: 'referensi-regional', polaDideteksi: refRegional.polaPuncak };
         }
 
-        // Fallback logic (diperbaiki)
+        // Fallback
         if (polaDariZOM === 'timur') {
             return {
-                rendengMulai: (bulanTertinggi + 11) % 12, // mundur sedikit
+                rendengMulai: (bulanTertinggi - 1 + 12) % 12,
                 gaduMulai: (bulanTertinggi + 5) % 12,
-                namaRendeng: 'MT I — Musim Utama Lokal (Puncak Hujan)',
-                namaGadu: 'MT II — Musim Kedua Lokal',
+                namaRendeng: 'MT I — Musim Utama Lokal (Rendeng)',
+                namaGadu: 'MT II — Musim Kedua Lokal (Gadu)',
                 sumber: 'zom-pola-timur',
                 polaDideteksi: 'timur'
             };
@@ -161,7 +143,6 @@
 
         if (polaDariZOM === 'ekuatorial') return null;
 
-        // Default barat
         return {
             rendengMulai: 10,
             gaduMulai: 4,
@@ -420,4 +401,20 @@
         setTimeout(injeksiOverride, 100);
     }
 
+})();function injeksiOverride() {
+        if (typeof window.rekomendasiWindowTanam === 'function') {
+            window._rekomendasiWindowTanamLama = window.rekomendasiWindowTanam;
+        }
+        window.rekomendasiWindowTanam = rekomendasiWindowTanamV2;
+        window.tentukanKalenderMusimLokal = tentukanKalenderMusimLokal;
+
+        console.log('%c✅ patch_deteksi_musim_v1.js v1.3 aktif — Pantai Timur Sulsel pakai Rendeng April–September', 
+                   'color:#06b6d4; font-weight:bold;');
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', injeksiOverride);
+    } else {
+        setTimeout(injeksiOverride, 100);
+    }
 })();
