@@ -997,20 +997,25 @@ var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona);
             var boxJTO = document.getElementById('boxJadwalTanam');
             var tabJTO = document.getElementById('tabJadwalTanam');
             if (mode === 'jadwaltanam') {
-                resetStateBwdDanMalai();
-                try { if (typeof currentMode !== 'undefined') currentMode = 'jadwaltanam'; } catch (e) {}
-                sembunyikanSemuaUntukJadwal();
-                if (boxJTO) boxJTO.style.display = 'block';
-                var titleEl = document.getElementById('modeTitle');
-                if (titleEl) { titleEl.innerText = '📅 Jadwal Kegiatan Tani'; titleEl.style.color = WARNA; }
-                var subEl = document.getElementById('tabSubtitleDisplay');
-                if (subEl)  { subEl.innerText = ''; subEl.style.display = 'none'; }
-                document.querySelectorAll('.tab-btn').forEach(function (btn) { btn.classList.remove('active'); });
-                if (tabJTO) tabJTO.classList.add('active');
-                var hasilEl = document.getElementById('jtoHasil');
-                if (hasilEl && hasilEl.style.display === 'none') prosesJadwalOtomatis();
-                return;
-            }
+    resetStateBwdDanMalai();
+    try { if (typeof currentMode !== 'undefined') currentMode = 'jadwaltanam'; } catch (e) {}
+    sembunyikanSemuaUntukJadwal();
+    if (boxJTO) boxJTO.style.display = 'block';
+    var titleEl = document.getElementById('modeTitle');
+    if (titleEl) { titleEl.innerText = '📅 Jadwal Kegiatan Tani'; titleEl.style.color = WARNA; }
+    var subEl = document.getElementById('tabSubtitleDisplay');
+    if (subEl)  { subEl.innerText = ''; subEl.style.display = 'none'; }
+    document.querySelectorAll('.tab-btn').forEach(function (btn) { btn.classList.remove('active'); });
+    if (tabJTO) tabJTO.classList.add('active');
+
+    /* [v3.11] Auto-trigger DIHAPUS dari sini (bukan cuma di-skip oleh
+       patch lain). Analisis hanya jalan saat tombol dipencet manual.
+       Dengan baris ini dihapus, SEKALIPUN patch_jadwal_manual_trigger.js
+       gagal/tidak terpasang, switchMode versi ini SENDIRI sudah aman
+       dan tidak bisa memicu bug auto-trigger lagi. */
+
+    return;
+}
             if (boxJTO) boxJTO.style.display = 'none';
             if (tabJTO) tabJTO.classList.remove('active');
             if (typeof _asli === 'function') _asli.apply(this, arguments);
