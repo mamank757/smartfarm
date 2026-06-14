@@ -280,14 +280,24 @@
                     var skorGen = skorBulan[bGenIdx];
                     var skorPanen = skorBulan[bPanenIdx];
 
-                    var nilaiGen = 100 - Math.abs(skorGen - 40);
-var nilaiPanen = 100 - skorPanen;
-var nilaiTotal = (nilaiGen * 0.55) + (nilaiPanen * 0.45);
-
+                    // 1. Fase Tanam & Vegetatif: Semakin basah data aktual bulan ini, semakin bagus (100% mengikuti skor iklim)
+var nilaiTanam = skorTanam;
 var bVeg1 = (bTanam + 1) % 12;
-if (skorBulan[bVeg1] < 20) nilaiTotal -= 15;
-if (skorTanam < 20) nilaiTotal -= (20 - skorTanam) * 1.5;
+var skorVeg1 = skorBulan[bVeg1];
 
+// 2. Fase Generatif: Butuh air cukup, tetapi hindari ekstrem basah/kering
+var nilaiGen = 100 - Math.abs(skorGen - 50);
+
+// 3. Fase Panen: Toleransi dinaikkan. Penalti untuk panen di bulan basah didiskon 50%
+var nilaiPanen = 100 - (skorPanen * 0.5);
+
+// PEMBOBOTAN BARU (Berbasis Data Iklim Terkini):
+// 40% Prioritas Air Tanam + 40% Air Generatif + 20% Toleransi Panen
+var nilaiTotal = (nilaiTanam * 0.40) + (nilaiGen * 0.40) + (nilaiPanen * 0.20);
+
+// Penalti dinamis HANYA JIKA bulan tersebut secara data riil (ENSO/IOD) memang kering
+if (skorTanam < 30) nilaiTotal -= (30 - skorTanam) * 1.5;
+if (skorVeg1 < 30) nilaiTotal -= (30 - skorVeg1) * 1.5;
 /* ========================================================
    FIX AGRONOMI LOKAL: PRIORITAS AWAL MUSIM & AIR MELIMPAH
 ======================================================== */
