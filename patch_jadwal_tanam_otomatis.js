@@ -1,15 +1,15 @@
 /**
  * ============================================================
  *  patch_jadwal_tanam_otomatis.js
- *  Versi: 3.6 — Perencanaan Tahunan Statis + Deteksi Musim Dinamis
+ *  Versi: 3.7 — Fix Kalibrasi Deteksi Musim ZOM Dinamis
  * ------------------------------------------------------------
- *  PERBAIKAN v3.6 vs v3.5:
- *  - [KRITIS] Menghapus hardcode bulan Rendeng (Okt-Mar) & Gadu (Apr-Sep).
- *  - Menggunakan algoritma "Dynamic Sliding Window" untuk membaca
- *    data ZOM 12 bulan: mencari blok 6 bulan terbasah sebagai MT I,
- *    dan sisa 6 bulan sebagai MT II.
- *  - Kini kalender 100% akurat untuk wilayah pola Lokal (anti-monsunal) 
- *    dan Ekuatorial di seluruh Indonesia.
+ *  PERBAIKAN v3.7 vs v3.6:
+ *  - [KRITIS] Deteksi Musim (Sliding Window) kini menggunakan 
+ *    DATA MENTAH curah hujan (mm) dari zonaInfo.data, BUKAN 
+ *    skorBulan yang sudah dinormalisasi (0-100).
+ *  - Mengatasi bug "skor mentok" (curah hujan > 250mm dianggap
+ *    sama) yang menyebabkan sistem melenceng saat menetapkan 
+ *    awal Rendeng di wilayah bercurah hujan ekstrem.
  * ============================================================
  */
 
@@ -172,18 +172,18 @@
     /* ──────────────────────────────────────────────────────────
        MESIN REKOMENDASI TAHUNAN STATIS (DETEKSI MUSIM DINAMIS)
     ────────────────────────────────────────────────────────── */
-    function rekomendasiWindowTanam(skorBulan) {
+    function rekomendasiWindowTanam(skorBulan, rawZOM) {
         var now = new Date();
         var tahunSekarang = now.getFullYear();
 
-        // 1. CARI BLOK 6 BULAN TERBASAH (RENDENG)
+        // 1. CARI BLOK 6 BULAN TERBASAH MENGGUNAKAN DATA MENTAH (mm)
         var maxSum = -Infinity;
         var startRendeng = 0;
         
         for (var i = 0; i < 12; i++) {
             var sum = 0;
             for (var j = 0; j < 6; j++) {
-                sum += skorBulan[(i + j) % 12];
+                sum += rawZOM[(i + j) % 12];
             }
             if (sum > maxSum) {
                 maxSum = sum;
@@ -225,8 +225,7 @@
             musim.bulanTanam.forEach(function (bTanam) {
                 var tahunTanam = tahunSekarang;
                 
-                // Cek silang tahun: Jika bulan tanam angkanya lebih kecil dari bulan mulai musim,
-                // berarti sudah menyeberang ke tahun kalender baru (Misal musim mulai Nov, tanam di Jan).
+                // Cek silang tahun
                 if (bTanam < musim.bulanTanam[0]) {
                     tahunTanam = tahunSekarang + 1;
                 }
@@ -619,7 +618,7 @@
         });
 
         html += '<div style="margin-top:16px;background:rgba(100,116,139,0.1);border-radius:10px;padding:10px 12px;font-size:10px;color:#64748b;line-height:1.6;border:1px solid rgba(255,255,255,0.04);">' +
-            '⚠️ Rekomendasi 2 musim di atas terdeteksi otomatis dari analisis data ZOM lokal. ' +
+            '⚠️ Rekomendasi 2 musim di atas terdeteksi otomatis dari pemindaian DATA MENTAH (mm) ZOM lokal. ' +
             'Sesuaikan dengan kondisi lapangan, ketersediaan air, dan pengamatan PHT mingguan. ' +
             'Sumber: NOAA ENSO/IOD, ZOM BMKG, siklus sinodis bulan.' +
         '</div>';
@@ -722,7 +721,9 @@
                 return skorKelembapan(idx, zonaInfo.data, ensoVal, iodVal, lat, lon);
             });
 
-            var rekomendasiArr = rekomendasiWindowTanam(skorBulan);
+            // [FIX 3.7] Kirim DATA MENTAH (zonaInfo.data) ke fungsi rekomendasi
+            var rekomendasiArr = rekomendasiWindowTanam(skorBulan, zonaInfo.data);
+            
             var multiJadwal = rekomendasiArr.map(function(rek) {
                 return {
                     rekomendasi: rek,
@@ -919,7 +920,7 @@
         injeksiTab();
         injeksiBox();
         patchSwitchMode();
-        console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.6 aktif — Deteksi Musim ZOM Dinamis', 'color:' + WARNA + ';font-weight:bold;');
+        console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.7 aktif — Fix Kalibrasi Deteksi Musim ZOM Dinamis', 'color:' + WARNA + ';font-weight:bold;');
     }
 
     if (document.readyState === 'loading') {
