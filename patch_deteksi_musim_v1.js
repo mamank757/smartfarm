@@ -281,12 +281,23 @@
                     var skorPanen = skorBulan[bPanenIdx];
 
                     var nilaiGen = 100 - Math.abs(skorGen - 40);
-                    var nilaiPanen = 100 - skorPanen;
-                    var nilaiTotal = (nilaiGen * 0.55) + (nilaiPanen * 0.45);
+var nilaiPanen = 100 - skorPanen;
+var nilaiTotal = (nilaiGen * 0.55) + (nilaiPanen * 0.45);
 
-                    var bVeg1 = (bTanam + 1) % 12;
-                    if (skorBulan[bVeg1] < 20) nilaiTotal -= 15;
-                    if (skorTanam < 20) nilaiTotal -= (20 - skorTanam) * 1.5;
+var bVeg1 = (bTanam + 1) % 12;
+if (skorBulan[bVeg1] < 20) nilaiTotal -= 15;
+if (skorTanam < 20) nilaiTotal -= (20 - skorTanam) * 1.5;
+
+/* ========================================================
+   FIX AGRONOMI LOKAL: PRIORITAS AWAL MUSIM & AIR MELIMPAH
+======================================================== */
+// 1. Bonus Awal Musim: Cegah penundaan tanam untuk menghindari hama
+var indeksUrutan = musim.bulanTanam.indexOf(bTanam); 
+var bonusAwal = (3 - indeksUrutan) * 15; // Bulan 1: +45, Bulan 2: +30, dst.
+nilaiTotal += bonusAwal;
+
+// 2. Bonus Ketersediaan Air: Petani butuh air melimpah saat olah lahan/tanam
+nilaiTotal += (skorTanam * 0.35);
 
                     kandidatMusim.push({
                         musimNama : musim.nama,
