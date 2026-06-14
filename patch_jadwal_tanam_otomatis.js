@@ -132,20 +132,15 @@
      * @param {number|null} batasBulan - Index bulan target (0–11), atau null = bebas
      */
     function cariTglFaseBulan(acuan, faseMin, faseMax, offsetMulai, batasBulan) {
-        var mulai = tambahHari(acuan, offsetMulai || 0);
-        for (var i = 0; i <= 45; i++) {
-            var t = tambahHari(mulai, i);
-            // [FIX] Jangan melampaui bulan target jika ditentukan
-            if (batasBulan !== null && batasBulan !== undefined &&
-                t.getMonth() !== batasBulan) {
-                continue;
-            }
-            var f = hariFaseBulan(t);
-            if (f >= faseMin && f <= faseMax) return t;
-        }
-        // Fallback: kembalikan tanggal mulai
-        return mulai;
+    var mulai = tambahHari(acuan, offsetMulai || 0);
+    for (var i = 0; i <= 45; i++) {
+        var t = tambahHari(mulai, i);
+        if (batasBulan !== null && batasBulan !== undefined && t.getMonth() !== batasBulan) continue;
+        var f = hariFaseBulan(t);
+        if (f >= faseMin && f <= faseMax) return t;
     }
+    return null; // Ubah dari "return mulai;" menjadi "return null;"
+}
 
     /* ──────────────────────────────────────────────────────────
        DATA ZOM DAN SKOR KELEMBAPAN
