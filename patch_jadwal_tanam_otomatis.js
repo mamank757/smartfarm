@@ -1,15 +1,35 @@
 /**
  * ============================================================
  *  patch_jadwal_tanam_otomatis.js
- *  Versi: 3.7 — Fix Kalibrasi Deteksi Musim ZOM Dinamis
+ *  Versi: 3.8 — Fix Logika Tahun, Fase Bulan, Cache ZOM,
+ *               Skor Threshold, dan Konsistensi HST
  * ------------------------------------------------------------
- *  PERBAIKAN v3.7 vs v3.6:
- *  - [KRITIS] Deteksi Musim (Sliding Window) kini menggunakan 
- *    DATA MENTAH curah hujan (mm) dari zonaInfo.data, BUKAN 
- *    skorBulan yang sudah dinormalisasi (0-100).
- *  - Mengatasi bug "skor mentok" (curah hujan > 250mm dianggap
- *    sama) yang menyebabkan sistem melenceng saat menetapkan 
- *    awal Rendeng di wilayah bercurah hujan ekstrem.
+ *  PERBAIKAN v3.8 vs v3.7:
+ *
+ *  [KRITIS #1] Deteksi silang tahun menggunakan perbandingan
+ *    bulan & tahun saat ini, bukan bulan[0] musim saja.
+ *    Mencegah jadwal tanam jatuh di masa lalu.
+ *
+ *  [KRITIS #2] cariTglFaseBulan kini menerima parameter
+ *    batasBulan dan iterasi hingga 45 hari ke depan agar
+ *    tidak melampaui bulan target.
+ *
+ *  [SEDANG #1] Signature normalisasiCurahHujan disesuaikan
+ *    — argumen kedua (bulanIdx) kini diteruskan dengan benar.
+ *
+ *  [SEDANG #2] Zona ekuatorial menggunakan deteksi lembah
+ *    (blok terkering) sebagai batas musim, bukan sekadar
+ *    +6 bulan dari blok terbasah.
+ *
+ *  [SEDANG #3] Cache ZOM diinvalidasi jika koordinat berubah
+ *    lebih dari ~5 km (threshold haversine sederhana).
+ *
+ *  [MINOR #1] Threshold skor tanam diturunkan dari 15 → 10,
+ *    dengan penalti tambahan di nilaiTotal untuk bulan kering.
+ *
+ *  [MINOR #2] Indeks bulan generatif/panen dihitung via
+ *    tambahHari(tglTanam, hst).getMonth() — konsisten dengan
+ *    bangunKegiatan, bukan Math.floor(hst/30).
  * ============================================================
  */
 
@@ -70,30 +90,69 @@
         if (h < 29.0) return { nama: 'Bulan Sabit Tua',  ikon: '🌘' };
         return                { nama: 'Bulan Mati',        ikon: '🌑' };
     }
-    function cariTglFaseBulan(acuan, faseMin, faseMax, offsetMulai) {
+
+    /**
+     * [FIX KRITIS #2]
+     * Tambahkan parameter `batasBulan` (opsional, 0–11).
+     * Fungsi tidak akan mengembalikan tanggal di luar bulan target tsb.
+     * Iterasi diperpanjang ke 45 hari agar menutup seluruh siklus fase
+     * yang bisa jatuh di awal bulan berikutnya.
+     *
+     * @param {Date}   acuan       - Tanggal mulai pencarian
+     * @param {number} faseMin     - Batas bawah fase (hari)
+     * @param {number} faseMax     - Batas atas fase (hari)
+     * @param {number} offsetMulai - Offset awal (hari)
+     * @param {number|null} batasBulan - Index bulan target (0–11), atau null = bebas
+     */
+    function cariTglFaseBulan(acuan, faseMin, faseMax, offsetMulai, batasBulan) {
         var mulai = tambahHari(acuan, offsetMulai || 0);
         for (var i = 0; i <= 45; i++) {
             var t = tambahHari(mulai, i);
+            // [FIX] Jangan melampaui bulan target jika ditentukan
+            if (batasBulan !== null && batasBulan !== undefined &&
+                t.getMonth() !== batasBulan) {
+                continue;
+            }
             var f = hariFaseBulan(t);
             if (f >= faseMin && f <= faseMax) return t;
         }
+        // Fallback: kembalikan tanggal mulai
         return mulai;
     }
 
     /* ──────────────────────────────────────────────────────────
        DATA ZOM DAN SKOR KELEMBAPAN
     ────────────────────────────────────────────────────────── */
+
+    // [FIX SEDANG #3] Cache menyimpan koordinat untuk invalidasi
     var _cacheZOM = null;
+    var _cacheZOMKoord = null;
 
     var FALLBACK_ZOM_PER_ZONA = {
-        monsunal: { data: [0.9, 0.8, 0.6, 0.3, -0.1, -0.8, -1.2, -1.3, -0.9, -0.3, 0.4, 0.8], nama: 'Pola Monsunal (estimasi)' },
-        ekuatorial: { data: [0.2, 0.3, 0.5, 0.6, 0.4, 0.0, -0.3, -0.2, 0.3, 0.6, 0.5, 0.3], nama: 'Pola Ekuatorial (estimasi)' },
-        peralihan: { data: [0.5, 0.5, 0.4, 0.2, 0.0, -0.4, -0.6, -0.6, -0.3, 0.1, 0.4, 0.5], nama: 'Pola Peralihan (estimasi)' },
-        lokal: { data: [0.1, 0.1, 0.1, 0.0, 0.0, -0.1, -0.1, -0.1, 0.0, 0.1, 0.1, 0.1], nama: 'Pola Lokal (estimasi)' }
+        monsunal:   { data: [0.9, 0.8, 0.6, 0.3, -0.1, -0.8, -1.2, -1.3, -0.9, -0.3, 0.4, 0.8], nama: 'Pola Monsunal (estimasi)' },
+        ekuatorial: { data: [0.2, 0.3, 0.5, 0.6,  0.4,  0.0, -0.3, -0.2,  0.3,  0.6, 0.5, 0.3], nama: 'Pola Ekuatorial (estimasi)' },
+        peralihan:  { data: [0.5, 0.5, 0.4, 0.2,  0.0, -0.4, -0.6, -0.6, -0.3,  0.1, 0.4, 0.5], nama: 'Pola Peralihan (estimasi)' },
+        lokal:      { data: [0.1, 0.1, 0.1, 0.0,  0.0, -0.1, -0.1, -0.1,  0.0,  0.1, 0.1, 0.1], nama: 'Pola Lokal (estimasi)' }
     };
 
+    /**
+     * [FIX SEDANG #3] Invalidasi cache jika koordinat berubah > ~5 km.
+     * Menggunakan approx haversine sederhana (derajat ke km).
+     */
+    function koordinatBerubah(lat, lon) {
+        if (!_cacheZOMKoord) return true;
+        var dLat = Math.abs(lat - _cacheZOMKoord.lat) * 111;
+        var dLon = Math.abs(lon - _cacheZOMKoord.lon) * 111 * Math.cos(lat * Math.PI / 180);
+        return Math.sqrt(dLat * dLat + dLon * dLon) > 5;
+    }
+
     async function getDataZOM(lat, lon) {
-        if (_cacheZOM) return _cacheZOM;
+        // [FIX] Invalidasi cache jika koordinat berbeda signifikan
+        if (_cacheZOM && !koordinatBerubah(lat, lon)) return _cacheZOM;
+        if (koordinatBerubah(lat, lon)) {
+            _cacheZOM = null;
+            _cacheZOMKoord = null;
+        }
 
         var zona = (typeof window.tentukanZonaIklim === 'function')
             ? window.tentukanZonaIklim(lat, lon)
@@ -129,6 +188,8 @@
                     jarak: jMin.toFixed(1),
                     zona: zona
                 };
+                // [FIX] Simpan koordinat yang dipakai untuk cache ini
+                _cacheZOMKoord = { lat: lat, lon: lon };
                 return _cacheZOM;
             }
         } catch (e) {
@@ -137,12 +198,18 @@
         return fallback;
     }
 
+    /**
+     * [FIX SEDANG #1]
+     * Teruskan bulanIdx sebagai argumen kedua ke normalisasiCurahHujan
+     * agar implementasi asli yang mungkin menggunakannya bekerja benar.
+     */
     function skorKelembapan(bulanIdx, baselineArr, ensoVal, iodVal, lat, lon) {
-        var norm = window.normalisasiCurahHujan || function (v) {
+        var norm = window.normalisasiCurahHujan || function (v /*, bulanIdx */) {
             return v < 30 ? -1.5 : v < 75 ? -0.8 : v < 150 ? 0.0 : v < 250 ? 0.8 : 1.5;
         };
 
         var bl  = baselineArr[bulanIdx];
+        // [FIX] Teruskan bulanIdx sebagai argumen kedua
         var idx = bl > 10 ? norm(bl, bulanIdx) : bl;
 
         var wE, wI;
@@ -172,49 +239,55 @@
     /* ──────────────────────────────────────────────────────────
        MESIN REKOMENDASI TAHUNAN STATIS (DETEKSI MUSIM DINAMIS)
     ────────────────────────────────────────────────────────── */
-    function rekomendasiWindowTanam(skorBulan, rawZOM) {
-        var now = new Date();
+    function rekomendasiWindowTanam(skorBulan, rawZOM, zona) {
+        var now          = new Date();
         var tahunSekarang = now.getFullYear();
+        var bulanSekarang = now.getMonth();
 
-        // 1. CARI BLOK 6 BULAN TERBASAH MENGGUNAKAN DATA MENTAH (mm)
+        // 1. CARI BLOK 6 BULAN TERBASAH (DATA MENTAH mm)
         var maxSum = -Infinity;
         var startRendeng = 0;
-        
         for (var i = 0; i < 12; i++) {
             var sum = 0;
-            for (var j = 0; j < 6; j++) {
-                sum += rawZOM[(i + j) % 12];
-            }
-            if (sum > maxSum) {
-                maxSum = sum;
-                startRendeng = i;
-            }
+            for (var j = 0; j < 6; j++) sum += rawZOM[(i + j) % 12];
+            if (sum > maxSum) { maxSum = sum; startRendeng = i; }
         }
 
-        // 2. TENTUKAN AWAL GADU (6 Bulan setelah Rendeng)
-        var startGadu = (startRendeng + 6) % 12;
+        // 2. TENTUKAN AWAL GADU
+        // [FIX SEDANG #2] Zona ekuatorial: cari lembah (blok terkering) sebagai batas Gadu
+        var startGadu;
+        if (zona === 'ekuatorial') {
+            var minSum = Infinity;
+            startGadu = (startRendeng + 6) % 12; // default
+            for (var ii = 0; ii < 12; ii++) {
+                var lembahSum = 0;
+                for (var jj = 0; jj < 5; jj++) lembahSum += rawZOM[(ii + jj) % 12];
+                if (lembahSum < minSum) {
+                    // Pilih lembah yang tidak overlap dengan blok Rendeng
+                    var tengahLembah = (ii + 2) % 12;
+                    var jarakDariRendeng = (tengahLembah - startRendeng + 12) % 12;
+                    if (jarakDariRendeng >= 3 && jarakDariRendeng <= 9) {
+                        minSum = lembahSum;
+                        startGadu = ii;
+                    }
+                }
+            }
+        } else {
+            startGadu = (startRendeng + 6) % 12;
+        }
 
-        // Ambil 4 bulan pertama dari tiap musim sebagai kandidat tanam
         var rendengBulan = [startRendeng, (startRendeng+1)%12, (startRendeng+2)%12, (startRendeng+3)%12];
-        var gaduBulan = [startGadu, (startGadu+1)%12, (startGadu+2)%12, (startGadu+3)%12];
+        var gaduBulan    = [startGadu,    (startGadu+1)%12,    (startGadu+2)%12,    (startGadu+3)%12];
 
         var MUSIM = [
-            {
-                nama  : 'MT I — Musim Utama (Puncak Hujan)',
-                kode  : 'rendeng',
-                bulanTanam: rendengBulan
-            },
-            {
-                nama  : 'MT II — Musim Kedua (Hujan Menurun)',
-                kode  : 'gadu',
-                bulanTanam: gaduBulan
-            }
+            { nama: 'MT I — Musim Utama (Puncak Hujan)',  kode: 'rendeng', bulanTanam: rendengBulan },
+            { nama: 'MT II — Musim Kedua (Hujan Menurun)', kode: 'gadu',   bulanTanam: gaduBulan   }
         ];
 
         var varianArr = [
-            { kode:'genjah', label:'Genjah (< 95 HST)',  panen:90,  persenGen:0.55 },
-            { kode:'sedang', label:'Sedang (95–115 HST)', panen:110, persenGen:0.55 },
-            { kode:'dalam',  label:'Dalam (≥ 116 HST)',  panen:125, persenGen:0.55 }
+            { kode:'genjah', label:'Genjah (< 95 HST)',   panen: 90, persenGen: 0.55 },
+            { kode:'sedang', label:'Sedang (95–115 HST)', panen:110, persenGen: 0.55 },
+            { kode:'dalam',  label:'Dalam (≥ 116 HST)',   panen:125, persenGen: 0.55 }
         ];
 
         var hasilDuaMusim = [];
@@ -223,20 +296,33 @@
             var kandidatMusim = [];
 
             musim.bulanTanam.forEach(function (bTanam) {
-                var tahunTanam = tahunSekarang;
-                
-                // Cek silang tahun
-                if (bTanam < musim.bulanTanam[0]) {
-                    tahunTanam = tahunSekarang + 1;
-                }
 
+                // ── [FIX KRITIS #1] ─────────────────────────────────────
+                // Tentukan tahun tanam berdasarkan bulan & tahun saat ini,
+                // bukan sekadar membandingkan dengan bulanTanam[0].
+                // Jika bulan sudah lewat pada tahun ini, tanam tahun depan.
+                var tahunTanam = tahunSekarang;
+                if (bTanam < bulanSekarang) {
+                    tahunTanam = tahunSekarang + 1;
+                } else if (bTanam === bulanSekarang) {
+                    // Masih bulan ini tapi cek apakah sudah terlalu terlambat
+                    // (> 20 hari sudah berjalan → jadwalkan ke tahun depan)
+                    if (now.getDate() > 20) tahunTanam = tahunSekarang + 1;
+                }
+                // ────────────────────────────────────────────────────────
+
+                // [FIX MINOR #1] Threshold diturunkan 15 → 10
                 var skorTanam = skorBulan[bTanam];
-                if (skorTanam < 15) return;
+                if (skorTanam < 10) return;
 
                 varianArr.forEach(function (v) {
                     var hariGen   = Math.floor(v.panen * v.persenGen);
-                    var bGenIdx   = (bTanam + Math.floor(hariGen  / 30)) % 12;
-                    var bPanenIdx = (bTanam + Math.floor(v.panen  / 30)) % 12;
+
+                    // [FIX MINOR #2] Gunakan tambahHari untuk indeks bulan,
+                    // konsisten dengan bangunKegiatan()
+                    var tglTanamRef = tanggalDariBulanTahun(bTanam, tahunTanam);
+                    var bGenIdx     = tambahHari(tglTanamRef, hariGen).getMonth();
+                    var bPanenIdx   = tambahHari(tglTanamRef, v.panen).getMonth();
 
                     var skorGen   = skorBulan[bGenIdx];
                     var skorPanen = skorBulan[bPanenIdx];
@@ -247,6 +333,10 @@
 
                     var bVeg1 = (bTanam + 1) % 12;
                     if (skorBulan[bVeg1] < 20) nilaiTotal -= 15;
+
+                    // [FIX MINOR #1] Penalti progresif untuk bulan kering
+                    // (menggantikan hard-threshold tunggal di 15)
+                    if (skorTanam < 20) nilaiTotal -= (20 - skorTanam) * 1.5;
 
                     kandidatMusim.push({
                         musimNama   : musim.nama,
@@ -267,9 +357,11 @@
             });
 
             if (kandidatMusim.length === 0) {
-                var bFallback = musim.bulanTanam[0];
-                var tglAwalFallback = tanggalDariBulanTahun(bFallback, tahunSekarang);
-                var tglFaseFallback = cariTglFaseBulan(tglAwalFallback, 3, 8, 0);
+                var bFallback       = musim.bulanTanam[0];
+                var tFallback       = bFallback < bulanSekarang ? tahunSekarang + 1 : tahunSekarang;
+                var tglAwalFallback = tanggalDariBulanTahun(bFallback, tFallback);
+                // [FIX KRITIS #2] Batasi pencarian ke bulan target
+                var tglFaseFallback = cariTglFaseBulan(tglAwalFallback, 3, 8, 0, bFallback);
 
                 hasilDuaMusim.push({
                     musimNama : musim.nama,
@@ -284,11 +376,16 @@
                 var best = kandidatMusim[0];
 
                 var tglAwalBulan = tanggalDariBulanTahun(best.bTanam, best.tahunTanam);
-                var tglFaseBaik  = cariTglFaseBulan(tglAwalBulan, 3, 8, 0);
 
+                // [FIX KRITIS #2] Semua panggilan cariTglFaseBulan kini
+                // menyertakan batasBulan agar tidak melampaui bulan target
+                var tglFaseBaik = cariTglFaseBulan(tglAwalBulan, 3, 8, 0, best.bTanam);
+
+                // Fallback ke 7 hari kemudian jika belum di bulan yang tepat
                 if (tglFaseBaik.getMonth() !== best.bTanam) {
-                    tglFaseBaik = cariTglFaseBulan(tambahHari(tglAwalBulan, 7), 3, 8, 0);
+                    tglFaseBaik = cariTglFaseBulan(tambahHari(tglAwalBulan, 7), 3, 8, 0, best.bTanam);
                 }
+                // Fallback akhir: tanggal 10 bulan tersebut
                 if (tglFaseBaik.getMonth() !== best.bTanam) {
                     tglFaseBaik = new Date(best.tahunTanam, best.bTanam, 10);
                 }
@@ -326,7 +423,7 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       KALKULASI RISIKO PER KEGIATAN
+       KALKULASI RISIKO PER KEGIATAN (tidak berubah dari v3.7)
     ────────────────────────────────────────────────────────── */
     function risikoOlah(skor) {
         if (skor < 25) return { level:'Kering', catatan:'Siapkan pompanisasi awal sebelum bajak.', warna:'#ef4444' };
@@ -380,7 +477,7 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       BANGUN DAFTAR KEGIATAN
+       BANGUN DAFTAR KEGIATAN (tidak berubah dari v3.7)
     ────────────────────────────────────────────────────────── */
     function bangunKegiatan(tglTanam, varietas, skorBulan) {
         var of = {
@@ -393,7 +490,7 @@
         var tglOlah   = tambahHari(tglTanam, -hariOlah);
         var tglBenih  = tambahHari(tglTanam, -of.benih);
         var tglTBS    = tambahHari(tglTanam, -7);
-        var tglTikusA = cariTglFaseBulan(tglTanam, 26, 29.5, -10);
+        var tglTikusA = cariTglFaseBulan(tglTanam, 26, 29.5, -10, null);
         var tglP1     = tambahHari(tglTanam, of.p1);
         var tglP2     = tambahHari(tglTanam, of.p2);
         var tglP3     = tambahHari(tglTanam, of.p3);
@@ -528,7 +625,7 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       RENDER HTML OUTPUT
+       RENDER HTML OUTPUT (tidak berubah dari v3.7)
     ────────────────────────────────────────────────────────── */
     window._jtoToggle = function (headerEl) {
         var detail  = headerEl.parentElement.querySelector('.jto-detail');
@@ -597,23 +694,16 @@
         multiJadwal.forEach(function(jadwal) {
             var rek = jadwal.rekomendasi;
             var keg = jadwal.kegiatan;
-            
-            var kartuHTML = keg.map(function (k, i) {
-                return renderKartu(k, i + 1);
-            }).join('');
+            var kartuHTML = keg.map(function (k, i) { return renderKartu(k, i + 1); }).join('');
 
             html += '<div style="margin-top:20px;margin-bottom:10px;font-size:15px;font-weight:bold;color:#fff;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:6px;">🌾 ' + rek.musimNama.toUpperCase() + '</div>';
-
             html += '<div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;margin-bottom:12px;">' +
                         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">' +
                             '<div><span style="color:#64748b;">Waktu Tanam</span><br><strong style="color:#10b981;font-size:13px;">' + formatTglLengkap(rek.tglTanam) + '</strong></div>' +
                             '<div><span style="color:#64748b;">Varietas</span><br><strong style="color:#fff;font-size:13px;">' + rek.labelVar + '</strong></div>' +
                         '</div>' +
-                        '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);font-size:11px;color:#94a3b8;line-height:1.5;">' +
-                            '💡 ' + rek.alasan +
-                        '</div>' +
+                        '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);font-size:11px;color:#94a3b8;line-height:1.5;">💡 ' + rek.alasan + '</div>' +
                     '</div>';
-            
             html += kartuHTML;
         });
 
@@ -622,9 +712,7 @@
             'Sesuaikan dengan kondisi lapangan, ketersediaan air, dan pengamatan PHT mingguan. ' +
             'Sumber: NOAA ENSO/IOD, ZOM BMKG, siklus sinodis bulan.' +
         '</div>';
-
         html += '<button onclick="window._jtoKirimWA()" style="width:100%;margin-top:10px;padding:13px;background:#25D366;color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;">📲 Kirim Jadwal ke WhatsApp ↗</button>';
-
         html += '</div>';
         return html;
     }
@@ -635,9 +723,7 @@
     window._jtoKirimWA = function () {
         var dataArr = window._jtoData;
         if (!dataArr || !dataArr.length) return;
-        
         var baris = ['*KALENDER KEGIATAN TANI TAHUNAN*\n'];
-        
         dataArr.forEach(function(jadwal) {
             var r = jadwal.rekomendasi;
             baris.push('============================');
@@ -645,7 +731,6 @@
             baris.push('📅 Tgl Tanam: ' + formatTglLengkap(r.tglTanam));
             baris.push('🌱 Varietas: ' + r.labelVar);
             baris.push('💡 ' + r.alasan + '\n');
-            
             jadwal.kegiatan.forEach(function (k, i) {
                 baris.push((i + 1) + '. *' + k.ikon + ' ' + k.nama.toUpperCase() + '*');
                 baris.push('   Mulai: ' + formatTglLengkap(k.tglMulai));
@@ -653,7 +738,6 @@
                 baris.push('');
             });
         });
-        
         baris.push('_PPL Milenial Wajo — Smart Farming_');
         baris.push('_Sumber: NOAA ENSO/IOD + ZOM BMKG + Siklus Bulan_');
         window.open('https://wa.me/?text=' + encodeURIComponent(baris.join('\n')), '_blank');
@@ -679,9 +763,7 @@
             btnJTO.textContent = '🔄 MENGANALISIS IKLIM...';
         }
 
-        function setStatus(msg) {
-            if (statusEl) statusEl.innerHTML = msg;
-        }
+        function setStatus(msg) { if (statusEl) statusEl.innerHTML = msg; }
 
         setStatus('<span style="color:' + WARNA + ';">📡 Mengambil koordinat GPS...</span>');
 
@@ -708,9 +790,9 @@
             setStatus('<span style="color:' + WARNA + ';">🌐 Mengambil data ENSO/IOD & ZOM...</span>');
 
             var getENSO = typeof window.getENSOAnomaly === 'function' ? window.getENSOAnomaly() : Promise.resolve({ latestAnomaly: 0, status: 'Netral' });
-            var getIOD = typeof window.getIODAnomaly === 'function' ? window.getIODAnomaly() : Promise.resolve({ latestAnomaly: 0, status: 'Netral' });
+            var getIOD  = typeof window.getIODAnomaly  === 'function' ? window.getIODAnomaly()  : Promise.resolve({ latestAnomaly: 0, status: 'Netral' });
 
-            var results = await Promise.all([getENSO, getIOD, getDataZOM(lat, lon)]);
+            var results  = await Promise.all([getENSO, getIOD, getDataZOM(lat, lon)]);
             var ensoData = results[0], iodData = results[1], zonaInfo = results[2];
             var ensoVal  = ensoData.latestAnomaly || 0;
             var iodVal   = iodData.latestAnomaly  || 0;
@@ -721,9 +803,9 @@
                 return skorKelembapan(idx, zonaInfo.data, ensoVal, iodVal, lat, lon);
             });
 
-            // [FIX 3.7] Kirim DATA MENTAH (zonaInfo.data) ke fungsi rekomendasi
-            var rekomendasiArr = rekomendasiWindowTanam(skorBulan, zonaInfo.data);
-            
+            // [FIX] Teruskan zona ke rekomendasiWindowTanam untuk deteksi ekuatorial
+            var rekomendasiArr = rekomendasiWindowTanam(skorBulan, zonaInfo.data, zonaInfo.zona);
+
             var multiJadwal = rekomendasiArr.map(function(rek) {
                 return {
                     rekomendasi: rek,
@@ -757,19 +839,17 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       INJEKSI TAB DAN UI LAINNYA
+       INJEKSI TAB DAN UI
     ────────────────────────────────────────────────────────── */
     function injeksiTab() {
         if (document.getElementById('tabJadwalTanam')) return;
         var tabContainer = document.querySelector('.tab-container');
         if (!tabContainer) return;
-
         var btn = document.createElement('button');
-        btn.className  = 'tab-btn';
-        btn.id         = 'tabJadwalTanam';
+        btn.className   = 'tab-btn';
+        btn.id          = 'tabJadwalTanam';
         btn.textContent = 'JADWAL TANAM';
-        btn.onclick = function () { switchMode('jadwaltanam'); };
-
+        btn.onclick     = function () { switchMode('jadwaltanam'); };
         var tabKalender = document.getElementById('tabKalender');
         if (tabKalender && tabKalender.parentNode) {
             tabKalender.parentNode.insertBefore(btn, tabKalender.nextSibling);
@@ -782,11 +862,9 @@
         if (document.getElementById('boxJadwalTanam')) return;
         var card = document.querySelector('.card');
         if (!card) return;
-
         var box = document.createElement('div');
         box.id            = 'boxJadwalTanam';
         box.style.display = 'none';
-
         box.innerHTML =
             '<div style="background:rgba(6,182,212,0.07);border:1px solid rgba(6,182,212,0.2);border-left:4px solid ' + WARNA + ';border-radius:14px;padding:13px 15px;margin-bottom:16px;">' +
                 '<strong style="color:' + WARNA + ';display:block;margin-bottom:5px;">📅 Kalender Tani Dinamis Tahunan</strong>' +
@@ -797,13 +875,9 @@
             '<button id="btnJadwalOtomatis" class="jto-pulse" style="' +
                 'width:100%;padding:15px;background:linear-gradient(135deg,' + WARNA + ',#0891b2);' +
                 'color:#fff;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:0.5px;margin-bottom:16px;' +
-            '">' +
-                '🤖 ANALISIS & BUAT JADWAL OTOMATIS' +
-            '</button>' +
+            '">🤖 ANALISIS & BUAT JADWAL OTOMATIS</button>' +
             '<div id="jtoStatus" style="text-align:center;padding:4px 0 10px;font-size:13px;min-height:24px;"></div>' +
-            '<div id="jtoHasil" style="display:none;">' +
-                '<div id="jtoTeks"></div>' +
-            '</div>';
+            '<div id="jtoHasil" style="display:none;"><div id="jtoTeks"></div></div>';
 
         var boxKalender = document.getElementById('boxKalender');
         if (boxKalender && boxKalender.parentNode) {
@@ -811,7 +885,6 @@
         } else {
             card.appendChild(box);
         }
-
         document.getElementById('btnJadwalOtomatis').addEventListener('click', prosesJadwalOtomatis);
     }
 
@@ -836,14 +909,12 @@
 
     function resetStateBwdDanMalai() {
         if (typeof window.stopCamera === 'function') window.stopCamera();
-
         var bwdPrompt    = document.getElementById('bwdCameraPrompt');
         var camContainer = document.getElementById('cameraContainer');
         var btnCapture   = document.getElementById('btnCapture');
         var btnAktifkan  = document.getElementById('btnAktifkanKameraBWD');
         var previewImg   = document.getElementById('bwdPreviewImage');
         var focusBox     = document.getElementById('focusBox');
-
         if (bwdPrompt)    bwdPrompt.style.display    = 'block';
         if (camContainer) camContainer.style.display = 'none';
         if (btnCapture)   btnCapture.style.display   = 'none';
@@ -854,7 +925,6 @@
             btnAktifkan.disabled  = false;
             btnAktifkan.style.opacity = '1';
         }
-
         try { if (typeof hasilSampelBulir !== 'undefined') hasilSampelBulir = []; } catch (e) {}
         var listM = document.getElementById('listMalai');
         if (listM) listM.innerHTML = '';
@@ -865,37 +935,24 @@
         window.switchMode = function (mode) {
             var boxJTO = document.getElementById('boxJadwalTanam');
             var tabJTO = document.getElementById('tabJadwalTanam');
-
             if (mode === 'jadwaltanam') {
                 resetStateBwdDanMalai();
                 try { if (typeof currentMode !== 'undefined') currentMode = 'jadwaltanam'; } catch (e) {}
-
                 sembunyikanSemuaUntukJadwal();
-
                 if (boxJTO) boxJTO.style.display = 'block';
-
                 var titleEl = document.getElementById('modeTitle');
                 if (titleEl) { titleEl.innerText = '📅 Jadwal Kegiatan Tani'; titleEl.style.color = WARNA; }
-
                 var subEl = document.getElementById('tabSubtitleDisplay');
-                if (subEl) { subEl.innerText = ''; subEl.style.display = 'none'; }
-
+                if (subEl)  { subEl.innerText = ''; subEl.style.display = 'none'; }
                 document.querySelectorAll('.tab-btn').forEach(function (btn) { btn.classList.remove('active'); });
                 if (tabJTO) tabJTO.classList.add('active');
-
                 var hasilEl = document.getElementById('jtoHasil');
-                if (hasilEl && hasilEl.style.display === 'none') {
-                    prosesJadwalOtomatis();
-                }
+                if (hasilEl && hasilEl.style.display === 'none') prosesJadwalOtomatis();
                 return;
             }
-
             if (boxJTO) boxJTO.style.display = 'none';
             if (tabJTO) tabJTO.classList.remove('active');
-
-            if (typeof _asli === 'function') {
-                _asli.apply(this, arguments);
-            }
+            if (typeof _asli === 'function') _asli.apply(this, arguments);
         };
     }
 
@@ -908,8 +965,8 @@
             '#tabJadwalTanam:not(.active){color:#708099;}',
             '#btnJadwalOtomatis:hover{opacity:0.88;}',
             '#btnJadwalOtomatis:active{transform:scale(0.985);}',
-            '@keyframes jto-radar{ 0%{box-shadow:0 0 0 0 rgba(6,182,212,0.85);} 65%{box-shadow:0 0 0 20px rgba(6,182,212,0.00);} 100%{box-shadow:0 0 0 0 rgba(6,182,212,0.00);} }',
-            '#btnJadwalOtomatis.jto-pulse{animation: jto-radar 1.5s ease-out infinite; will-change: box-shadow;}',
+            '@keyframes jto-radar{0%{box-shadow:0 0 0 0 rgba(6,182,212,0.85);}65%{box-shadow:0 0 0 20px rgba(6,182,212,0.00);}100%{box-shadow:0 0 0 0 rgba(6,182,212,0.00);}}',
+            '#btnJadwalOtomatis.jto-pulse{animation:jto-radar 1.5s ease-out infinite;will-change:box-shadow;}',
             'body.light-mode #boxJadwalTanam{background:#fff;color:#0f172a;}'
         ].join('');
         document.head.appendChild(style);
@@ -920,7 +977,7 @@
         injeksiTab();
         injeksiBox();
         patchSwitchMode();
-        console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.7 aktif — Fix Kalibrasi Deteksi Musim ZOM Dinamis', 'color:' + WARNA + ';font-weight:bold;');
+        console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.8 aktif — Fix Tahun, Fase Bulan, Cache ZOM, Threshold, HST', 'color:' + WARNA + ';font-weight:bold;');
     }
 
     if (document.readyState === 'loading') {
