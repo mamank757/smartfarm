@@ -1,7 +1,45 @@
 /**
  * ============================================================
- *  patch_deteksi_musim_v2.0.js
- *  Versi: 2.0 — Rekonstruksi Logika Pemilihan Bulan Tanam
+ *  patch_deteksi_musim_v2.1.js
+ *  Versi: 2.1 — ENSO/IOD Kembali Dipakai dalam Analisis Jadwal
+ * ------------------------------------------------------------
+ *  PERBAIKAN v2.1 vs v2.0:
+ *
+ *  [LAPISAN 5 — ENSO/IOD DIAMBIL TAPI TIDAK PERNAH DIPAKAI]
+ *    rekomendasiWindowTanamV3() menerima parameter `ensoVal` dan
+ *    `iodVal` (dikirim oleh prosesJadwalOtomatis() dari hasil
+ *    getENSOAnomaly()/getIODAnomaly() — sumber NOAA CPC/PSL),
+ *    dan juga menerima `skorBulan` (skor ZOM yang SUDAH disesuaikan
+ *    ENSO/IOD oleh skorKelembapan() di patch_jadwal_tanam_otomatis).
+ *
+ *    NAMUN v2.0 membuang kedua hal tersebut total: `skorBulan`
+ *    hanya dipakai untuk console.log perbandingan, dan `skorZOM`
+ *    (skor yang benar-benar dipakai untuk seleksi & penilaian)
+ *    dihitung ULANG murni dari rawZOM (mm klimatologi mentah) via
+ *    skorZOMRegional() — tanpa jejak ensoVal/iodVal sama sekali.
+ *
+ *    Akibatnya: status El Niño/La Niña & IOD positif/negatif yang
+ *    ditampilkan di UI ("Sumber: NOAA ENSO/IOD") TIDAK berpengaruh
+ *    apa-apa terhadap bulan tanam, varietas, atau jendela onset
+ *    yang direkomendasikan — analisis jadi tidak akurat saat
+ *    terjadi anomali iklim kuat (mis. El Niño yang menggeser &
+ *    memendekkan musim hujan secara nyata).
+ *
+ *    [FIX] Tambah faktorPenyesuaianENSOIOD(bulanIdx, zonaIklim,
+ *    ensoVal, iodVal) — memakai tabel bobot korelasi BOBOT_IKLIM
+ *    (sama seperti skorKelembapan asli & hitungWetnessScore di
+ *    patch_risiko_iklim.js) untuk menghitung faktor pengali curah
+ *    hujan per bulan (0.4–1.6×). rawZOM disesuaikan PER BULAN
+ *    dengan faktor ini (→ rawZOMSesuai) SEBELUM dipakai untuk:
+ *      • skorZOMRegional()      (skor 0–100 per bulan)
+ *      • cariOnsetHujan()       (deteksi onset hujan efektif)
+ *      • gerbang syarat air bajak (mmTanam/mmBajak)
+ *
+ *    El Niño / IOD positif kuat → rawZOMSesuai turun (musim makin
+ *    kering/mundur). La Niña / IOD negatif kuat → rawZOMSesuai naik
+ *    (musim makin basah/maju). Nilai mm ASLI (rawZOM, klimatologi)
+ *    tetap ditampilkan di `alasan` untuk transparansi, ditambah
+ *    catatan persentase penyesuaian ENSO/IOD jika signifikan (>3%).
  * ------------------------------------------------------------
  *  LATAR BELAKANG
  *  Versi 1.x menghasilkan rekomendasi tanam yang terlalu awal
@@ -288,6 +326,51 @@
     }
 
     /* =========================================================
+       [FIX LAPISAN 5] FAKTOR PENYESUAIAN ENSO/IOD
+       Menghitung faktor pengali curah hujan bulanan dari anomali
+       ENSO (ONI) & IOD (DMI) terkini, memakai tabel bobot korelasi
+       BOBOT_IKLIM (Aldrian & Susanto 2003; Nur'utami & Hidayat 2016;
+       Boer & Faqih 2004) — sumber yang sama dengan skorKelembapan()
+       asli di patch_jadwal_tanam_otomatis.js & hitungWetnessScore()
+       di patch_risiko_iklim.js.
+
+       deltaIdx berada di skala indeks ZOM (-1.5..+1.5), sama seperti
+       pada skorKelembapan(). Setiap 1.0 unit deltaIdx ≈ ±35% perubahan
+       curah hujan bulanan terhadap klimatologi rawZOM. Faktor dibatasi
+       0.4–1.6× agar tetap masuk akal secara agronomis.
+
+       ENSO/IOD positif kuat (El Niño / IOD+) → faktor < 1
+         (musim makin kering & onset hujan mundur).
+       ENSO/IOD negatif kuat (La Niña / IOD−) → faktor > 1
+         (musim makin basah & onset hujan lebih cepat).
+    ========================================================= */
+    function faktorPenyesuaianENSOIOD(bulanIdx, zonaIklim, ensoVal, iodVal) {
+        var tabel = (typeof BOBOT_IKLIM !== 'undefined') ? BOBOT_IKLIM : null;
+        if (!tabel || (!ensoVal && !iodVal)) return 1;
+
+        var tz  = tabel[zonaIklim] || tabel.monsunal;
+        var wE  = tz.enso[bulanIdx];
+        var wI  = tz.iod[bulanIdx];
+        var tot = 1 + wE + wI;
+
+        var deltaIdx = -(ensoVal * wE / tot) - (iodVal * wI / tot);
+        var faktor   = 1 + (deltaIdx * 0.35);
+        return Math.max(0.4, Math.min(1.6, faktor));
+    }
+
+    /**
+     * [FIX LAPISAN 5] Terapkan faktor ENSO/IOD ke seluruh 12 bulan
+     * rawZOM → rawZOMSesuai. rawZOM asli TIDAK diubah (tetap dipakai
+     * untuk tampilan `alasan`); rawZOMSesuai dipakai untuk skor,
+     * onset, dan gerbang syarat air.
+     */
+    function terapkanPenyesuaianENSOIOD(rawZOM, zonaIklim, ensoVal, iodVal) {
+        return rawZOM.map(function (mm, idx) {
+            return mm * faktorPenyesuaianENSOIOD(idx, zonaIklim, ensoVal, iodVal);
+        });
+    }
+
+    /* =========================================================
        FUNGSI UTAMA REKOMENDASI (rekonstruksi menyeluruh)
     ========================================================= */
     function rekomendasiWindowTanamV3(skorBulan, rawZOM, zona, ensoVal = 0, iodVal = 0) {
@@ -343,24 +426,51 @@
 
         var th = THRESHOLD_AIR[polaPuncak] || THRESHOLD_AIR.fallback;
 
-        /* ── [FIX LAPISAN 1] Hitung ulang skor ZOM berbasis threshold regional ── */
-        var skorZOM = rawZOM.map(function(mm) {
+        /* ── [FIX LAPISAN 5] Tentukan zona BOBOT_IKLIM (monsunal/ekuatorial/
+           peralihan/lokal) untuk bobot korelasi ENSO/IOD. Pakai
+           tentukanZonaIklim(lat,lon) — sama dengan skorKelembapan() asli —
+           dengan fallback pemetaan dari `polaPuncak` jika fungsi itu
+           tidak tersedia. ── */
+        var PEMETAAN_POLA_KE_ZONA_IKLIM = {
+            barat: 'monsunal',
+            timur: 'monsunal',
+            peralihan_sultra: 'peralihan',
+            ekuatorial_dua_puncak: 'ekuatorial'
+        };
+        var zonaIklim = (typeof window.tentukanZonaIklim === 'function')
+            ? window.tentukanZonaIklim(lat, lon)
+            : (PEMETAAN_POLA_KE_ZONA_IKLIM[polaPuncak] || 'monsunal');
+
+        /* ── [FIX LAPISAN 5] Sesuaikan rawZOM dengan anomali ENSO/IOD
+           SEBELUM dipakai untuk skor, onset, dan gerbang air. rawZOM
+           asli tetap dipakai utuh untuk tampilan `alasan`. ── */
+        var rawZOMSesuai = terapkanPenyesuaianENSOIOD(rawZOM, zonaIklim, ensoVal, iodVal);
+
+        /* ── [FIX LAPISAN 1] Hitung ulang skor ZOM berbasis threshold regional,
+           dari rawZOM yang sudah disesuaikan ENSO/IOD ── */
+        var skorZOM = rawZOMSesuai.map(function(mm) {
             return skorZOMRegional(mm, polaPuncak);
         });
 
         /* Log perbandingan skor lama vs baru untuk debugging lapangan */
-        console.log('[PatchMusim v2.0] Skor ZOM regional (vs skor lama dari skorBulan):');
+        console.log('[PatchMusim v2.1] Zona iklim ENSO/IOD: ' + zonaIklim +
+            ' | ENSO=' + ensoVal + ' | IOD=' + iodVal);
+        console.log('[PatchMusim v2.1] Skor ZOM regional (vs skor lama dari skorBulan):');
         var logBaris = [];
         for (var m = 0; m < 12; m++) {
+            var faktorLog = faktorPenyesuaianENSOIOD(m, zonaIklim, ensoVal, iodVal);
             logBaris.push(NAMA_BULAN[m].substring(0,3) + ':' +
-                rawZOM[m].toFixed(0) + 'mm→' + skorZOM[m] +
+                rawZOM[m].toFixed(0) + 'mm×' + faktorLog.toFixed(2) +
+                '=' + rawZOMSesuai[m].toFixed(0) + 'mm→' + skorZOM[m] +
                 '(lama:' + skorBulan[m] + ')');
         }
         console.log(logBaris.join(' | '));
 
-        /* ── [FIX LAPISAN 3] Deteksi onset hujan efektif ── */
-        var onsetRendeng = cariOnsetHujan(startRendeng, rawZOM, polaPuncak);
-        var onsetGadu    = cariOnsetHujan(startGadu,    rawZOM, polaPuncak);
+        /* ── [FIX LAPISAN 3] Deteksi onset hujan efektif, dari rawZOM
+           yang sudah disesuaikan ENSO/IOD (onset bisa mundur saat
+           El Niño/IOD+, atau lebih cepat saat La Niña/IOD−) ── */
+        var onsetRendeng = cariOnsetHujan(startRendeng, rawZOMSesuai, polaPuncak);
+        var onsetGadu    = cariOnsetHujan(startGadu,    rawZOMSesuai, polaPuncak);
 
         /* Bangun jendela 4 bulan dimulai dari onset (bukan dari startMusim kasar) */
         var rendengBulan = [onsetRendeng, (onsetRendeng+1)%12, (onsetRendeng+2)%12, (onsetRendeng+3)%12];
@@ -386,6 +496,13 @@
                 var mmTanam   = rawZOM[bTanam];
                 var mmBajak   = rawZOM[(bTanam - 1 + 12) % 12]; /* bulan pengolahan lahan */
 
+                /* [FIX LAPISAN 5] Versi yang sudah disesuaikan ENSO/IOD —
+                   dipakai untuk gerbang & penalti onset (kondisi aktual
+                   yang diperkirakan), sementara mmTanam/mmBajak (raw,
+                   klimatologi) tetap dipakai untuk tampilan `alasan`. */
+                var mmTanamSesuai = rawZOMSesuai[bTanam];
+                var mmBajakSesuai = rawZOMSesuai[(bTanam - 1 + 12) % 12];
+
                 /* ── [FIX LAPISAN 2] GERBANG SYARAT AIR MUTLAK ──────────────
                    Bulan tanam WAJIB memiliki curah hujan minimal thresholdBajak
                    DI BULAN PENGOLAHAN (bTanam−1) atau di bulan tanam itu sendiri.
@@ -393,11 +510,11 @@
                    bajak/garu sebelum atau saat tanam. Tanpa air bajak, tidak ada
                    kandidat dari bulan ini — tidak peduli nilai generatif/panen.
                 ──────────────────────────────────────────────────────────── */
-                var mmUntukBajak = Math.max(mmBajak, mmTanam);
+                var mmUntukBajak = Math.max(mmBajakSesuai, mmTanamSesuai);
                 if (mmUntukBajak < th.thresholdBajak) {
-                    console.log('[PatchMusim v2.0] Bulan ' + NAMA_BULAN[bTanam] +
+                    console.log('[PatchMusim v2.1] Bulan ' + NAMA_BULAN[bTanam] +
                         ' dilewati (bajak: ' + mmUntukBajak.toFixed(0) +
-                        'mm < threshold ' + th.thresholdBajak + 'mm)');
+                        'mm setelah penyesuaian ENSO/IOD < threshold ' + th.thresholdBajak + 'mm)');
                     return; /* skip — belum ada air untuk bajak */
                 }
 
@@ -443,9 +560,10 @@
                                      (nilaiGen   * 0.20) +
                                      (nilaiPanen * 0.15);
 
-                    /* Penalti: bulan tanam ada air tapi kurang dari onset stabil */
-                    if (mmTanam < th.thresholdOnset) {
-                        nilaiTotal -= (th.thresholdOnset - mmTanam) * 0.3;
+                    /* Penalti: bulan tanam ada air tapi kurang dari onset stabil
+                       [FIX LAPISAN 5] pakai mm yang sudah disesuaikan ENSO/IOD */
+                    if (mmTanamSesuai < th.thresholdOnset) {
+                        nilaiTotal -= (th.thresholdOnset - mmTanamSesuai) * 0.3;
                     }
 
                     /* Penalti: vegetatif sangat kering (anakan mati) */
@@ -464,6 +582,7 @@
                         nilaiTotal    : nilaiTotal,
                         skorTanam     : skorTanam,
                         mmTanam       : mmTanam,
+                        mmTanamSesuai : mmTanamSesuai,
                         mmBajak       : mmBajak,
                         skorGen       : skorGen,
                         skorPanen     : skorPanen,
@@ -475,11 +594,12 @@
 
             /* ── FALLBACK jika semua bulan di bawah threshold bajak ── */
             if (kandidatMusim.length === 0) {
-                /* Pilih bulan dengan mm tertinggi di jendela musim sebagai fallback */
+                /* Pilih bulan dengan mm (terkoreksi ENSO/IOD) tertinggi
+                   di jendela musim sebagai fallback [FIX LAPISAN 5] */
                 var bFallback  = musim.bulanTanam[0];
                 var mmMax      = -1;
                 musim.bulanTanam.forEach(function(b) {
-                    if (rawZOM[b] > mmMax) { mmMax = rawZOM[b]; bFallback = b; }
+                    if (rawZOMSesuai[b] > mmMax) { mmMax = rawZOMSesuai[b]; bFallback = b; }
                 });
 
                 var tglAwalFb  = tanggalDariBulanTahun(bFallback, tahunSekarang);
@@ -493,8 +613,10 @@
                     varietas   : 'sedang',
                     labelVar   : 'Sedang (95–115 HST)',
                     alasan     : 'Seluruh jendela tanam di bawah threshold air untuk bajak (' +
-                                 th.thresholdBajak + 'mm). Dipilih bulan dengan curah hujan tertinggi (' +
-                                 NAMA_BULAN[bFallback] + ', ' + mmMax.toFixed(0) + 'mm). ' +
+                                 th.thresholdBajak + 'mm) setelah penyesuaian ENSO/IOD. Dipilih bulan ' +
+                                 'dengan curah hujan tertinggi (' + NAMA_BULAN[bFallback] + ', ' +
+                                 rawZOM[bFallback].toFixed(0) + 'mm klimatologi → ' + mmMax.toFixed(0) +
+                                 'mm setelah penyesuaian). ' +
                                  'Pompanisasi penuh wajib disiapkan sebelum pengolahan lahan.',
                     isLewat    : statusFb.isLewat,
                     isBerjalan : statusFb.isBerjalan
@@ -532,12 +654,26 @@ if (!tglFaseBaik) {
                 var keteranganPanen = best.skorPanen > 65 ? 'basah — butuh dryer' :
                                       best.skorPanen < 20 ? 'kering ideal' : 'sedang — aman';
 
+                /* [FIX LAPISAN 5] Catatan penyesuaian ENSO/IOD jika signifikan (>3%) */
+                var catatanENSOIOD = '';
+                if (best.mmTanam > 0) {
+                    var persenSesuai = ((best.mmTanamSesuai - best.mmTanam) / best.mmTanam) * 100;
+                    if (Math.abs(persenSesuai) > 3) {
+                        catatanENSOIOD = ' 🌐 Curah hujan disesuaikan ' +
+                            (persenSesuai > 0 ? '+' : '') + persenSesuai.toFixed(0) +
+                            '% akibat anomali ENSO/IOD terkini (ONI ' +
+                            (ensoVal >= 0 ? '+' : '') + ensoVal.toFixed(2) + ', DMI ' +
+                            (iodVal >= 0 ? '+' : '') + iodVal.toFixed(2) + ').';
+                    }
+                }
+
                 var alasan =
                     'Curah hujan saat tanam: ' + best.mmTanam.toFixed(0) + 'mm' +
                     ' (skor regional ' + best.skorTanam + '/100). ' +
                     'Generatif di ' + best.namaBulanGen + ' (' + keteranganGen + '). ' +
                     'Panen di ' + best.namaBulanPanen + ' (' + keteranganPanen + ').' +
-                    (catatanOlah ? ' ⚠️ ' + catatanOlah : '');
+                    (catatanOlah ? ' ⚠️ ' + catatanOlah : '') +
+                    catatanENSOIOD;
 
                 hasilDuaMusim.push({
                     musimNama  : best.musimNama,
@@ -570,13 +706,17 @@ if (!tglFaseBaik) {
         window.tentukanKalenderMusimLokal = tentukanKalenderMusimLokal;
         window.statusWaktuTanam           = statusWaktuTanam;
         window._thresholdAirMusim         = THRESHOLD_AIR; /* expose untuk debugging */
+        window._faktorPenyesuaianENSOIOD  = faktorPenyesuaianENSOIOD; /* expose untuk debugging */
 
         console.log(
-            '%c✅ patch_deteksi_musim_v2.0.js aktif\n' +
+            '%c✅ patch_deteksi_musim_v2.1.js aktif\n' +
             '   Fix #1 (Lapisan 1): Skor ZOM dinormalisasi ulang per zona regional\n' +
             '   Fix #2 (Lapisan 2): Gerbang syarat air bajak berbasis mm aktual\n' +
             '   Fix #3 (Lapisan 3): Jendela kandidat dimulai dari onset hujan efektif\n' +
             '   Fix #4 (Lapisan 4): isLewat/isBerjalan sinkron dengan tglFaseBaik\n' +
+            '   Fix #5 (Lapisan 5): ENSO/IOD (NOAA) kini disesuaikan ke rawZOM sebelum\n' +
+            '                       dipakai untuk skor, onset, & gerbang air — sebelumnya\n' +
+            '                       diterima tapi diabaikan total\n' +
             '   Penalti skorOlah dihapus dari seleksi — dipindahkan ke field alasan',
             'color:#10b981; font-weight:bold;'
         );
