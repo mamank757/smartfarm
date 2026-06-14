@@ -65,7 +65,7 @@
         window.switchMode = function (mode) {
             var boxJTO = document.getElementById('boxJadwalTanam');
             var tabJTO = document.getElementById('tabJadwalTanam');
-            var WARNA  = '#06b6d4';
+            var WARNA  = ' #3b82f6';
 
             if (mode === 'jadwaltanam') {
                 /* Jalankan reset kamera/malai jika fungsinya tersedia */
@@ -141,7 +141,7 @@
         console.log(
             '%c✅ patch_jadwal_manual_trigger.js aktif ' +
             '— Analisis hanya berjalan saat tombol dipencet',
-            'color:#06b6d4; font-weight:bold;'
+            'color: #3b82f6; font-weight:bold;'
         );
     }
 
