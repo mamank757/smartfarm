@@ -906,12 +906,12 @@ var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona, 
         btn.id          = 'tabJadwalTanam';
         btn.textContent = 'JADWAL TANAM';
         btn.onclick     = function () { switchMode('jadwaltanam'); };
-        var tabKalender = document.getElementById('tabKalender');
-        if (tabKalender && tabKalender.parentNode) {
-            tabKalender.parentNode.insertBefore(btn, tabKalender.nextSibling);
-        } else {
-            tabContainer.appendChild(btn);
-        }
+        var tabPertama = tabContainer.firstElementChild;
+if (tabPertama) {
+    tabContainer.insertBefore(btn, tabPertama);
+} else {
+    tabContainer.appendChild(btn);
+}
     }
 
     function injeksiBox() {
