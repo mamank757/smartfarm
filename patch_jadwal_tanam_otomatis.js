@@ -1,33 +1,43 @@
 /**
  * ============================================================
  *  patch_jadwal_tanam_otomatis.js
- *  Versi: 3.9 — Blueprint Tahun Berjalan
+ *  Versi: 3.10 — Badge Status Musim Tersambung ke UI
  * ------------------------------------------------------------
- *  PERBAIKAN v3.9 vs v3.8:
+ *  PERBAIKAN v3.10 vs v3.9:
  *
- *  [UTAMA] Jadwal selalu dalam lingkup TAHUN BERJALAN.
- *    Bulan yang sudah lewat TIDAK digeser ke tahun depan,
- *    melainkan ditampilkan sebagai "Blueprint Proyeksi" —
- *    referensi retrospektif berbasis parameter iklim tahun
- *    berjalan (ENSO/IOD/ZOM aktual).
+ *  [FIX KRITIS] Di v3.9, flag `isLewat`/`isBerjalan` SUDAH
+ *    dihitung di rekomendasiWindowTanam(), tapi TIDAK PERNAH
+ *    dibaca oleh renderOutput()/renderKartu() — badge musim
+ *    "📋 Blueprint" / "🟢 Aktif" yang dijanjikan tidak pernah
+ *    muncul. [FIX] renderOutput() kini membaca rek.isLewat /
+ *    rek.isBerjalan dan menampilkan badge + opacity muted pada
+ *    header & box info musim, dan meneruskan rek.isLewat ke
+ *    renderKartu() sehingga setiap kartu kegiatan ikut ditandai.
  *
- *    Setiap item hasil rekomendasi kini membawa flag:
- *      isLewat  : true/false — apakah window tanam sudah lewat
- *      isBerjalan: true/false — apakah sedang dalam window tanam
+ *  [FIX KRITIS] Cara menghitung isLewat/isBerjalan diganti total.
+ *    v3.9 memakai heuristik kasar "bTanam < bulanSekarang ||
+ *    (bTanam === bulanSekarang && now.getDate() > 20)" — yang
+ *    tidak sinkron dengan tanggal tanam aktual hasil
+ *    cariTglFaseBulan() (fase bulan 3–8 bisa jatuh di tanggal
+ *    berapa pun tergantung siklus sinodis).
+ *    [FIX] Sekarang dihitung oleh statusWaktuTanam(tglTanam, now)
+ *    SETELAH tglFaseBaik/tglFaseFallback final didapat:
+ *      isLewat    : tglTanam < hari ini → "Blueprint Proyeksi"
+ *      isBerjalan : belum lewat & jatuh di bulan+tahun ini → "🟢 Aktif"
  *
  *    Tampilan UI:
- *      - Sudah lewat  → badge abu "📋 Blueprint" + opacity muted
+ *      - Sudah lewat     → badge abu "📋 Blueprint" + opacity muted
  *      - Sedang berjalan → badge hijau berkedip "🟢 Aktif"
- *      - Akan datang  → tampilan normal
+ *      - Akan datang     → tampilan normal
  *
  *    Kartu kegiatan yang sudah lewat juga diberi visual
  *    "Realisasi / Referensi" agar petani tahu ini adalah
  *    rekonstruksi proyeksi, bukan instruksi aktif.
  *
- *  [TETAP dari v3.8] Semua fix lainnya (cariTglFaseBulan
+ *  [TETAP dari v3.8/v3.9] Semua fix lainnya (cariTglFaseBulan
  *    dengan batasBulan, normalisasi 2 argumen, deteksi lembah
  *    ekuatorial, invalidasi cache ZOM, threshold 10, HST via
- *    tambahHari) tetap aktif.
+ *    tambahHari, tahun selalu berjalan) tetap aktif.
  * ============================================================
  */
 
@@ -71,6 +81,25 @@
     }
     function formatTglPendek(d) {
         return d.getDate() + ' ' + NAMA_BULAN_PENDEK[d.getMonth()] + ' ' + d.getFullYear();
+    }
+
+    /**
+     * [v3.10 FIX] Tentukan status waktu (Lewat / Berjalan / Akan Datang)
+     * berdasarkan TANGGAL TANAM FINAL (tglFaseBaik/tglFaseFallback) —
+     * bukan lagi dari bulan kasar + heuristik "tanggal > 20" yang tidak
+     * selalu sinkron dengan tanggal tanam aktual hasil cariTglFaseBulan().
+     *
+     *   isLewat    : tanggal tanam sudah lewat dari hari ini
+     *                → ditampilkan sebagai "Blueprint Proyeksi"
+     *   isBerjalan : belum lewat, dan jatuh di bulan & tahun yang sama
+     *                dengan sekarang → musim ini sedang aktif/berjalan
+     */
+    function statusWaktuTanam(tglTanam, now) {
+        var isLewat = tglTanam.getTime() < now.getTime();
+        var isBerjalan = !isLewat &&
+            tglTanam.getMonth() === now.getMonth() &&
+            tglTanam.getFullYear() === now.getFullYear();
+        return { isLewat: isLewat, isBerjalan: isBerjalan };
     }
 
     function hariFaseBulan(tgl) {
@@ -238,9 +267,8 @@
        MESIN REKOMENDASI TAHUNAN STATIS (DETEKSI MUSIM DINAMIS)
     ────────────────────────────────────────────────────────── */
     function rekomendasiWindowTanam(skorBulan, rawZOM, zona) {
-        var now          = new Date();
+        var now           = new Date();
         var tahunSekarang = now.getFullYear();
-        var bulanSekarang = now.getMonth();
 
         // 1. CARI BLOK 6 BULAN TERBASAH (DATA MENTAH mm)
         var maxSum = -Infinity;
@@ -295,17 +323,8 @@
 
             musim.bulanTanam.forEach(function (bTanam) {
 
-                // ── [v3.9] SELALU TAHUN BERJALAN ────────────────────────
-                // Tidak ada geser ke tahun depan. Semua bulan — lewat
-                // maupun belum — dihitung dalam tahun yang sama.
-                // Flag isLewat / isBerjalan ditentukan di sini dan dibawa
-                // sampai ke layer render untuk ditampilkan sebagai
-                // "Blueprint Proyeksi" jika window sudah terlewati.
-                var tahunTanam   = tahunSekarang;
-                var isLewat      = bTanam < bulanSekarang ||
-                                   (bTanam === bulanSekarang && now.getDate() > 20);
-                var isBerjalan   = bTanam === bulanSekarang && !isLewat;
-                // ────────────────────────────────────────────────────────
+                // [v3.9] SELALU TAHUN BERJALAN — tidak ada geser ke tahun depan.
+                var tahunTanam = tahunSekarang;
 
                 var skorTanam = skorBulan[bTanam];
                 if (skorTanam < 10) return;
@@ -346,20 +365,19 @@
                         skorGen     : skorGen,
                         skorPanen   : skorPanen,
                         namaBulanGen  : NAMA_BULAN[bGenIdx],
-                        namaBulanPanen: NAMA_BULAN[bPanenIdx],
-                        isLewat     : isLewat,
-                        isBerjalan  : isBerjalan
+                        namaBulanPanen: NAMA_BULAN[bPanenIdx]
                     });
                 });
             });
 
             if (kandidatMusim.length === 0) {
                 var bFallback       = musim.bulanTanam[0];
-                // [v3.9] Selalu tahun berjalan, tandai isLewat jika sudah lewat
+                // [v3.9] Selalu tahun berjalan
                 var tglAwalFallback = tanggalDariBulanTahun(bFallback, tahunSekarang);
                 var tglFaseFallback = cariTglFaseBulan(tglAwalFallback, 3, 8, 0, bFallback);
-                var fbLewat         = bFallback < bulanSekarang ||
-                                      (bFallback === bulanSekarang && now.getDate() > 20);
+
+                // [v3.10 FIX] Status waktu dihitung dari tanggal tanam FINAL
+                var statusFallback  = statusWaktuTanam(tglFaseFallback, now);
 
                 hasilDuaMusim.push({
                     musimNama  : musim.nama,
@@ -368,8 +386,8 @@
                     varietas   : 'sedang',
                     labelVar   : 'Sedang (95–115 HST)',
                     alasan     : 'Kondisi kering ekstrem di seluruh jendela tanam musim ini. Dipilih tanggal default fase bulan terbaik. Pompanisasi penuh mungkin diperlukan.',
-                    isLewat    : fbLewat,
-                    isBerjalan : false
+                    isLewat    : statusFallback.isLewat,
+                    isBerjalan : statusFallback.isBerjalan
                 });
             } else {
                 kandidatMusim.sort(function (a, b) { return b.nilaiTotal - a.nilaiTotal; });
@@ -389,6 +407,10 @@
                 if (tglFaseBaik.getMonth() !== best.bTanam) {
                     tglFaseBaik = new Date(best.tahunTanam, best.bTanam, 10);
                 }
+
+                // [v3.10 FIX] Status waktu dihitung dari tanggal tanam FINAL
+                // (tglFaseBaik), bukan dari bulan kasar + heuristik tanggal 20.
+                var statusBest = statusWaktuTanam(tglFaseBaik, now);
 
                 var keteranganSkorGen =
                     best.skorGen < 25 ? 'kering — risiko puso' :
@@ -414,8 +436,8 @@
                     varietas   : best.varietas,
                     labelVar   : best.labelVar,
                     alasan     : alasan,
-                    isLewat    : best.isLewat,
-                    isBerjalan : best.isBerjalan
+                    isLewat    : statusBest.isLewat,
+                    isBerjalan : statusBest.isBerjalan
                 });
             }
         });
@@ -640,7 +662,9 @@
     };
 
     /**
-     * [v3.9] renderKartu kini menerima flag isLewat.
+     * [v3.10] renderKartu menerima flag isLewat (kini benar-benar
+     * dikirim dari renderOutput sebagai rek.isLewat — di v3.9
+     * parameter ini selalu undefined karena tidak pernah diteruskan).
      * Kartu kegiatan yang sudah lewat ditampilkan dengan:
      *  - Opacity 0.55 (muted) pada seluruh kartu
      *  - Label "📋 Referensi" menggantikan badge status risiko
@@ -718,10 +742,21 @@
         multiJadwal.forEach(function(jadwal) {
             var rek = jadwal.rekomendasi;
             var keg = jadwal.kegiatan;
-            var kartuHTML = keg.map(function (k, i) { return renderKartu(k, i + 1); }).join('');
+            var kartuHTML = keg.map(function (k, i) { return renderKartu(k, i + 1, rek.isLewat); }).join('');
 
-            html += '<div style="margin-top:20px;margin-bottom:10px;font-size:15px;font-weight:bold;color:#fff;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:6px;">🌾 ' + rek.musimNama.toUpperCase() + '</div>';
-            html += '<div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;margin-bottom:12px;">' +
+            // [v3.10 FIX] Badge status musim — sebelumnya isLewat/isBerjalan
+            // dihitung tapi tidak pernah ditampilkan di sini.
+            var badgeMusim = '';
+            var opacityMusim = '1';
+            if (rek.isLewat) {
+                badgeMusim   = '<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;margin-left:10px;vertical-align:middle;white-space:nowrap;">📋 Blueprint</span>';
+                opacityMusim = '0.6';
+            } else if (rek.isBerjalan) {
+                badgeMusim   = '<span class="jto-aktif-badge" style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.4);margin-left:10px;vertical-align:middle;white-space:nowrap;">🟢 Aktif</span>';
+            }
+
+            html += '<div style="margin-top:20px;margin-bottom:10px;font-size:15px;font-weight:bold;color:#fff;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:6px;opacity:' + opacityMusim + ';">🌾 ' + rek.musimNama.toUpperCase() + badgeMusim + '</div>';
+            html += '<div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;margin-bottom:12px;opacity:' + opacityMusim + ';">' +
                         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">' +
                             '<div><span style="color:#64748b;">Waktu Tanam</span><br><strong style="color:#10b981;font-size:13px;">' + formatTglLengkap(rek.tglTanam) + '</strong></div>' +
                             '<div><span style="color:#64748b;">Varietas</span><br><strong style="color:#fff;font-size:13px;">' + rek.labelVar + '</strong></div>' +
@@ -730,6 +765,7 @@
                     '</div>';
             html += kartuHTML;
         });
+
 
         html += '<div style="margin-top:16px;background:rgba(100,116,139,0.1);border-radius:10px;padding:10px 12px;font-size:10px;color:#64748b;line-height:1.6;border:1px solid rgba(255,255,255,0.04);">' +
             '⚠️ Rekomendasi 2 musim di atas terdeteksi otomatis dari pemindaian DATA MENTAH (mm) ZOM lokal. ' +
@@ -992,6 +1028,8 @@ var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona);
             '#btnJadwalOtomatis:active{transform:scale(0.985);}',
             '@keyframes jto-radar{0%{box-shadow:0 0 0 0 rgba(6,182,212,0.85);}65%{box-shadow:0 0 0 20px rgba(6,182,212,0.00);}100%{box-shadow:0 0 0 0 rgba(6,182,212,0.00);}}',
             '#btnJadwalOtomatis.jto-pulse{animation:jto-radar 1.5s ease-out infinite;will-change:box-shadow;}',
+            '@keyframes jto-aktif-blink{0%,100%{opacity:1;}50%{opacity:0.45;}}',
+            '.jto-aktif-badge{animation:jto-aktif-blink 1.5s ease-in-out infinite;}',
             'body.light-mode #boxJadwalTanam{background:#fff;color:#0f172a;}'
         ].join('');
         document.head.appendChild(style);
