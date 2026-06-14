@@ -488,9 +488,10 @@
             dalam:  { benih:28, p1:7,  p2:35, p3:65, i1:30, i2:65, fung:75, panen:125 }
         }[varietas] || { benih:21, p1:7, p2:30, p3:55, i1:25, i2:55, fung:65, panen:110 };
 
-        var hariOlah  = of.benih + 7;
-        var tglOlah   = tambahHari(tglTanam, -hariOlah);
+        // PERBAIKAN TIMELINE AGRONOMI: Lahan utama dan bibit diproses paralel
         var tglBenih  = tambahHari(tglTanam, -of.benih);
+        var hariOlah  = 14; // Pengolahan lahan utama fix 2 minggu sebelum tanam
+        var tglOlah   = tambahHari(tglTanam, -hariOlah);
         var tglTBS    = tambahHari(tglTanam, -7);
         var tglTikusA = cariTglFaseBulan(tglTanam, 26, 29.5, -10, null);
         var tglP1     = tambahHari(tglTanam, of.p1);
@@ -517,7 +518,7 @@
                 tglMulai: tglOlah, tglSelesai: tambahHari(tglOlah, 7),
                 risiko: risikoOlah(sk(tglOlah)),
                 tips:[
-                    'Olah lahan ' + hariOlah + ' hari sebelum tanam — gulma terbenam & lahan mengendap.',
+                    'Olah lahan utama 14 hari sebelum tanam (biarkan gulma membusuk sementara bibit tumbuh di persemaian).',
                     'pH < 5,5 → tambahkan dolomit 500–1.000 kg/ha saat bajak pertama.'
                 ]
             },
