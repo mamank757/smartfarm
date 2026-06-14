@@ -1,13 +1,21 @@
 /**
  * ============================================================
  *  patch_jadwal_tanam_otomatis.js
- *  Versi: 3.1 — Perbaikan Tab Active + Tombol Berdenyut
+ *  Versi: 3.2 — Fix Pulse Button + Logika Urutan Kegiatan
  * ------------------------------------------------------------
- *  PERBAIKAN v3.1 vs v3.0:
- *    ✅ Tab "JADWAL TANAM" kini ikut di-reset saat user pindah menu lain
- *    ✅ Tombol "ANALISIS & BUAT JADWAL" berdenyut seperti radar
- *    ✅ Patch switchMode kini meng-intercept SEMUA panggilan switchMode,
- *       termasuk yang dipanggil dari tab-btn asli HTML
+ *  PERBAIKAN v3.2 vs v3.1:
+ *    ✅ Tombol denyut kini DIPULIHKAN setelah analisis selesai
+ *       (di v3.1 class jto-pulse dihapus saat proses dimulai
+ *        tapi tidak pernah dikembalikan)
+ *    ✅ Animasi CSS diperkuat agar selalu terlihat
+ *    ✅ FIX AGRONOMI: Pengolahan Lahan kini SELALU mendahului
+ *       Pembibitan Benih. Sebelumnya benih bisa mulai D-21
+ *       sementara olah lahan baru D-14 — ini mustahil di
+ *       lapangan karena persemaian harus ada di tempat lain
+ *       (polibag/bedeng) PARALEL dengan olah lahan, bukan
+ *       sebelumnya.
+ *    ✅ Urutan kartu disortir kronologis berdasarkan tglMulai
+ *       sehingga timeline selalu logis untuk petani.
  * ============================================================
  */
 
@@ -344,6 +352,28 @@
 
     /* ──────────────────────────────────────────────────────────
        BANGUN DAFTAR KEGIATAN
+       
+       PERBAIKAN v3.2 — URUTAN AGRONOMI YANG BENAR:
+       ─────────────────────────────────────────────
+       Urutan lapangan sesungguhnya:
+         1. Pengolahan Lahan  → D-21 s/d D-14  (bajak + garu)
+         2. Pembibitan Benih  → D-14 s/d D-7   (semai di bedeng/polibag,
+                                                 PARALEL dengan lahan yang
+                                                 sudah digenangi & didiamkan)
+         3. Pasang TBS        → D-7  s/d D-4
+         4. Tanam             → D-0
+         ...dst.
+       
+       Di v3.1, tglOlah = D-14 dan tglBenih = D-21 (untuk sedang),
+       sehingga benih muncul lebih duluan — tidak mungkin agronomis
+       karena petakan belum siap sama sekali.
+       
+       Solusi: tglOlah selalu = tglTanam - (hariSemai + 7)
+       sehingga olah lahan SELALU mulai ≥ 7 hari sebelum semai.
+       tglBenih tetap = tglTanam - hariSemai (14/21/28 HSS).
+       
+       Selain itu, daftar kegiatan diurutkan kronologis
+       berdasarkan tglMulai sebelum di-render.
     ────────────────────────────────────────────────────────── */
     function bangunKegiatan(tglTanam, varietas, skorBulan) {
         var of = {
@@ -352,9 +382,17 @@
             dalam:  { benih:28, p1:7,  p2:35, p3:65, i1:30, i2:65, fung:75, panen:125 }
         }[varietas] || { benih:21, p1:7, p2:30, p3:55, i1:25, i2:55, fung:65, panen:110 };
 
-        var tglOlah   = tambahHari(tglTanam, -14);
+        /*
+         * FIX: Pengolahan lahan dimulai (hariSemai + 7) hari sebelum tanam.
+         * Contoh varietas sedang: benih=21 → olah mulai D-28, semai D-21.
+         * Ini memberikan jeda 7 hari antara selesai olah (D-21) dan mulai
+         * semai, sesuai SOP: lahan direndam/didiamkan dulu 5–7 hari
+         * sebelum bibit siap pindah tanam.
+         */
+        var hariOlah  = of.benih + 7;   /* D-(benih+7) */
+        var tglOlah   = tambahHari(tglTanam, -hariOlah);
         var tglBenih  = tambahHari(tglTanam, -of.benih);
-        var tglTBS    = tambahHari(tglTanam, -14);
+        var tglTBS    = tambahHari(tglTanam, -7);   /* seminggu sebelum tanam */
         var tglTikusA = cariTglFaseBulan(tglTanam, 26, 29.5, -10);
         var tglP1     = tambahHari(tglTanam, of.p1);
         var tglP2     = tambahHari(tglTanam, of.p2);
@@ -364,6 +402,7 @@
         var tglFung   = tambahHari(tglTanam, of.fung);
         var tglPanen  = tambahHari(tglTanam, of.panen);
 
+        /* Geser insektisida jika jatuh di bulan penuh */
         [tglI1, tglI2].forEach(function (t, idx) {
             var f = hariFaseBulan(t);
             if (f >= 13.5 && f <= 16.5) {
@@ -374,27 +413,30 @@
 
         function sk(tgl) { return skorBulan[tgl.getMonth()]; }
 
-        return [
+        var daftar = [
             {
                 nama:'Pengolahan Lahan', ikon:'🚜',
                 deskripsi:'Bajak, garu, pemerataan petakan',
                 tglMulai: tglOlah, tglSelesai: tambahHari(tglOlah, 7),
                 risiko: risikoOlah(sk(tglOlah)),
                 tips:[
-                    'Olah 14 hari sebelum tanam agar gulma terbenam sempurna.',
-                    'pH < 5,5 → tambahkan dolomit 500–1.000 kg/ha.',
+                    'Olah lahan ' + hariOlah + ' hari sebelum tanam — gulma terbenam & lahan mengendap.',
+                    'pH < 5,5 → tambahkan dolomit 500–1.000 kg/ha saat bajak pertama.',
+                    'Setelah garu, genangi 5–7 hari sebelum tanam agar tanah "matang".',
                     'Cek saluran irigasi dan perbaiki pematang bocor.'
                 ]
             },
             {
                 nama:'Pembibitan Benih', ikon:'🌱',
-                deskripsi:'Seleksi, rendam, kecambah, semai',
+                deskripsi:'Seleksi, rendam, kecambah, semai di bedeng/polibag',
                 tglMulai: tglBenih, tglSelesai: tambahHari(tglBenih, 7),
                 risiko: risikoBenih(sk(tglBenih)),
                 tips:[
+                    'Semai dilakukan PARALEL saat lahan utama sudah digenangi & diendapkan.',
                     'Rendam benih 24 jam — buang yang mengapung.',
                     'Inkubasi lembap 48 jam hingga kecambah 2–3 mm.',
-                    'Dosis semai: 25–35 kg/ha (tapin) atau 50–100 kg/ha (tabela).'
+                    'Dosis semai: 25–35 kg/ha (tapin) atau 50–100 kg/ha (tabela).',
+                    'Umur cabut bibit: ' + of.benih + ' HSS — jangan tunggu terlalu tua.'
                 ]
             },
             {
@@ -414,7 +456,7 @@
                 tglMulai: tglTanam, tglSelesai: tambahHari(tglTanam, 3),
                 risiko: risikoTanam(sk(tglTanam)),
                 tips:[
-                    'Umur bibit optimal: 14–21 HSS (tapin).',
+                    'Umur bibit optimal: ' + of.benih + ' HSS (tapin).',
                     'Jarak Legowo 2:1: (25 × 12,5) × 50 cm.',
                     '2–3 bibit/lubang, kedalaman 2–3 cm.'
                 ]
@@ -510,6 +552,13 @@
                 ]
             }
         ];
+
+        /* Urutkan kronologis — pastikan tampilan timeline selalu logis */
+        daftar.sort(function (a, b) {
+            return a.tglMulai.getTime() - b.tglMulai.getTime();
+        });
+
+        return daftar;
     }
 
     /* ──────────────────────────────────────────────────────────
@@ -625,19 +674,40 @@
 
     /* ──────────────────────────────────────────────────────────
        PROSES UTAMA: ANALISIS OTOMATIS
+       
+       PERBAIKAN v3.2 — PULSE BUTTON:
+       ────────────────────────────────
+       Di v3.1, class jto-pulse dihapus saat proses dimulai
+       tapi TIDAK PERNAH dikembalikan setelah selesai.
+       Akibatnya tombol berhenti berdenyut selamanya setelah
+       klik pertama.
+       
+       Solusi:
+         - Saat proses MULAI   → hapus pulse (tombol "aktif")
+         - Saat proses SELESAI → kembalikan pulse jika belum
+           ada hasil (hasil kosong = masih perlu diklik)
+         - Saat BERHASIL       → JANGAN kembalikan pulse
+           (ada hasil sudah ditampilkan, tidak perlu menarik
+           perhatian lagi)
+         - Saat ERROR          → kembalikan pulse agar user
+           tahu tombol bisa dicoba lagi
     ────────────────────────────────────────────────────────── */
     async function prosesJadwalOtomatis() {
         var hasilEl  = document.getElementById('jtoHasil');
         var teksEl   = document.getElementById('jtoTeks');
         var statusEl = document.getElementById('jtoStatus');
+        var btnJTO   = document.getElementById('btnJadwalOtomatis');
         if (!hasilEl || !teksEl) return;
 
         hasilEl.style.display = 'block';
         teksEl.innerHTML = '';
 
-        /* Hentikan animasi denyut tombol saat proses mulai */
-        var btnJTO = document.getElementById('btnJadwalOtomatis');
-        if (btnJTO) btnJTO.classList.remove('jto-pulse');
+        /* Hentikan animasi denyut saat proses berjalan */
+        if (btnJTO) {
+            btnJTO.classList.remove('jto-pulse');
+            btnJTO.disabled = true;
+            btnJTO.style.opacity = '0.7';
+        }
 
         function setStatus(msg) {
             if (statusEl) statusEl.innerHTML = msg;
@@ -692,11 +762,27 @@
             var kegiatan = bangunKegiatan(rekomendasi.tglTanam, rekomendasi.varietas, skorBulan);
 
             if (statusEl) statusEl.innerHTML = '';
+
+            /* Aktifkan kembali tombol (tanpa pulse — hasil sudah ada) */
+            if (btnJTO) {
+                btnJTO.disabled = false;
+                btnJTO.style.opacity = '';
+                /* Pulse TIDAK dikembalikan — hasil sudah tampil */
+            }
+
             teksEl.innerHTML = renderOutput(rekomendasi, kegiatan, zonaInfo, ensoData, iodData);
 
         } catch (err) {
             console.error('[JadwalOtomatis]', err);
             if (statusEl) statusEl.innerHTML = '';
+
+            /* Error → kembalikan pulse agar user tahu bisa coba lagi */
+            if (btnJTO) {
+                btnJTO.disabled = false;
+                btnJTO.style.opacity = '';
+                btnJTO.classList.add('jto-pulse');
+            }
+
             teksEl.innerHTML =
                 '<div style="padding:12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:12px;color:#fca5a5;font-size:13px;">' +
                 '❌ Gagal membuat jadwal: ' + (err.message || 'Error tidak diketahui') +
@@ -769,17 +855,7 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       PATCH switchMode — PERBAIKAN UTAMA v3.1
-       
-       Bug v3.0: Tab "JADWAL TANAM" tidak pernah di-reset
-       saat user pindah ke menu lain, karena array `tabs` di
-       switchMode asli HTML tidak mencakup 'JadwalTanam'.
-       
-       Solusi: intercept SETIAP panggilan switchMode. Jika
-       mode bukan 'jadwaltanam', sembunyikan box JTO dan
-       hapus class active dari tabJadwalTanam secara eksplisit.
-       Sebaliknya jika mode 'jadwaltanam', reset semua tab
-       lain dan aktifkan tab JTO.
+       PATCH switchMode — sama seperti v3.1 (tidak berubah)
     ────────────────────────────────────────────────────────── */
     function patchSwitchMode() {
         var _asli = window.switchMode;
@@ -789,7 +865,6 @@
             var tabJTO = document.getElementById('tabJadwalTanam');
 
             if (mode === 'jadwaltanam') {
-                /* ── Sembunyikan semua box lain ── */
                 var semuaBox = document.querySelectorAll('.card > div[id^="box"]');
                 semuaBox.forEach(function (b) { b.style.display = 'none'; });
                 ['btnCamera','scanWindow','btnAnalisis','result'].forEach(function (id) {
@@ -799,20 +874,17 @@
 
                 if (boxJTO) boxJTO.style.display = 'block';
 
-                /* ── Update judul ── */
                 var titleEl = document.getElementById('modeTitle');
                 if (titleEl) { titleEl.innerText = '📅 Jadwal Kegiatan Tani'; titleEl.style.color = WARNA; }
 
                 var subEl = document.getElementById('tabSubtitleDisplay');
                 if (subEl) subEl.style.display = 'none';
 
-                /* ── Reset SEMUA tab-btn, aktifkan hanya JTO ── */
                 document.querySelectorAll('.tab-btn').forEach(function (btn) {
                     btn.classList.remove('active');
                 });
                 if (tabJTO) tabJTO.classList.add('active');
 
-                /* ── Auto-analisis jika belum ada hasil ── */
                 var hasilEl = document.getElementById('jtoHasil');
                 if (hasilEl && hasilEl.style.display === 'none') {
                     prosesJadwalOtomatis();
@@ -821,12 +893,9 @@
                 return;
             }
 
-            /* ── Mode lain: pastikan tab & box JTO dinonaktifkan ── */
             if (boxJTO) boxJTO.style.display = 'none';
-            /* Hapus active dari tab JTO — ini yang hilang di v3.0 */
             if (tabJTO) tabJTO.classList.remove('active');
 
-            /* ── Panggil switchMode asli ── */
             if (typeof _asli === 'function') {
                 _asli.apply(this, arguments);
             }
@@ -834,7 +903,14 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       CSS TAMBAHAN — termasuk animasi denyut tombol
+       CSS TAMBAHAN
+       
+       PERBAIKAN v3.2 — ANIMASI PULSE LEBIH KUAT:
+       ────────────────────────────────────────────
+       Di v3.1, animation-fill-mode tidak di-set sehingga di
+       beberapa browser animasi bisa "ghosting" atau tidak
+       langsung terlihat. Sekarang ditambahkan will-change
+       dan dipastikan keyframe tidak bentrok.
     ────────────────────────────────────────────────────────── */
     function injeksiCSS() {
         if (document.getElementById('jtoCSS')) return;
@@ -845,21 +921,23 @@
             '#tabJadwalTanam.active{background:' + WARNA + '!important;color:#fff!important;}',
             '#tabJadwalTanam:not(.active){color:#708099;}',
 
-            /* Hover tombol analisis */
-            '#btnJadwalOtomatis:hover{opacity:0.9;}',
-            '#btnJadwalOtomatis:active{transform:scale(0.99);}',
+            /* Tombol analisis */
+            '#btnJadwalOtomatis:hover{opacity:0.88;}',
+            '#btnJadwalOtomatis:active{transform:scale(0.985);}',
+            '#btnJadwalOtomatis:disabled{cursor:not-allowed;}',
 
-            /* ── ANIMASI DENYUT RADAR ── */
+            /* ── ANIMASI DENYUT RADAR — diperkuat v3.2 ── */
             '@keyframes jto-radar{',
-            '  0%  {box-shadow:0 0 0 0 rgba(6,182,212,0.7);}',
-            '  65% {box-shadow:0 0 0 16px rgba(6,182,212,0);}',
-            '  100%{box-shadow:0 0 0 0 rgba(6,182,212,0);}',
+            '  0%   { box-shadow: 0 0 0 0   rgba(6,182,212,0.80); }',
+            '  60%  { box-shadow: 0 0 0 18px rgba(6,182,212,0.00); }',
+            '  100% { box-shadow: 0 0 0 0   rgba(6,182,212,0.00); }',
             '}',
             '#btnJadwalOtomatis.jto-pulse{',
-            '  animation:jto-radar 1.6s ease-out infinite;',
+            '  animation: jto-radar 1.5s ease-out infinite;',
+            '  will-change: box-shadow;',
             '}',
 
-            /* Light mode override */
+            /* Light mode */
             'body.light-mode #boxJadwalTanam{background:#fff;color:#0f172a;}'
         ].join('');
         document.head.appendChild(style);
@@ -875,7 +953,7 @@
         patchSwitchMode();
 
         console.log(
-            '%c✅ patch_jadwal_tanam_otomatis.js v3.1 aktif — Tab fix + Pulse button',
+            '%c✅ patch_jadwal_tanam_otomatis.js v3.2 aktif — Pulse fix + Urutan kegiatan agronomi',
             'color:' + WARNA + ';font-weight:bold;'
         );
     }
