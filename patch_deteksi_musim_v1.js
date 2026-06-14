@@ -37,90 +37,68 @@
     'use strict';
 
     /* =========================================================
-       REFERENSI KALENDER MUSIM TANAM LOKAL
-       Sumber: BMKG Stasiun Meteorologi Regional, data pengamatan
-       lapangan PPL, dan pola ZOM historis per kabupaten.
-
-       Struktur per wilayah:
-         rendengMulai : indeks bulan awal musim tanam utama (0=Jan)
-         gaduMulai    : indeks bulan awal musim tanam kedua
-         namaRendeng  : label lokal untuk musim utama
-         namaGadu     : label lokal untuk musim kedua
-         polaPuncak   : 'barat' (DJF) atau 'timur' (JJA/SON)
+       REFERENSI KALENDER MUSIM TANAM LOKAL (Diperbaiki)
+       Sumber: BMKG, data ZOM, laporan petani, dan studi pola hujan Sulsel
     ========================================================= */
     var REFERENSI_MUSIM_REGIONAL = [
 
-        /* ── Sulsel Pantai Barat & Tengah ─────────────────────
-           Meliputi: Wajo, Bone barat, Soppeng, Sidrap, Pinrang,
-           Parepare, Barru, Pangkep, Maros, Gowa, Takalar,
-           Jeneponto, Bantaeng bagian barat
-           Pola: puncak hujan Nov–Mar (pengaruh monsun barat)
-           Referensi: BMKG Maros, ZOM Sulawesi Selatan Barat   */
+        /* ── Sulsel Pantai Barat & Tengah (Dominan) ─────────────
+           Makassar, Maros, Gowa, Takalar, Jeneponto barat, 
+           Pinrang, Sidrap, Soppeng, Wajo barat, Barru, Pangkep, Parepare
+           Pola klasik monsun barat: Puncak hujan Des–Feb */
         {
-            latMin: -6.0, latMaks: -2.0,
-            lonMin: 119.0, lonMaks: 121.0,
+            latMin: -6.0, latMaks: -2.5,
+            lonMin: 119.0, lonMaks: 120.8,
             polaPuncak: 'barat',
-            rendengMulai: 10,   // November
-            gaduMulai: 4,       // Mei
+            rendengMulai: 10, // November (MT I utama)
+            gaduMulai: 4,     // Mei
             namaRendeng: 'MT I — Musim Utama (Rendeng, Nov–Mar)',
             namaGadu: 'MT II — Musim Kedua (Gadu, Mei–Agu)'
         },
 
-        /* ── Sulsel Pantai Timur & Teluk Bone ─────────────────
-           Meliputi: Sinjai pesisir, Bone bagian timur, Bulukumba
-           pesisir, Selayar, bagian timur Jeneponto & Bantaeng
-           Pola: puncak hujan Apr–Sep (pengaruh angin tenggara
-           yang memantul dari daratan Sultra dan NTT)
-           Referensi: BMKG Bonebolango, data hujan Bone Timur,
-           ZOM Teluk Bone                                        */
+        /* ── Sulsel Pantai Timur & Teluk Bone (Pola Terbalik) ──
+           Sinjai, Bone timur, Bulukumba pesisir, Selayar, 
+           Jeneponto & Bantaeng timur
+           Puncak hujan April–Agustus (pengaruh angin tenggara) */
         {
             latMin: -6.0, latMaks: -3.0,
-            lonMin: 120.5, lonMaks: 122.5,
+            lonMin: 120.7, lonMaks: 122.8,
             polaPuncak: 'timur',
-            rendengMulai: 9,    // Oktober
-            gaduMulai: 3,       // April
-            namaRendeng: 'MT I — Musim Utama (Rendeng, Okt–Feb)',
-            namaGadu: 'MT II — Musim Kedua (Gadu, Apr–Agu)'
+            rendengMulai: 3,  // April (MT I lokal = Gadu nasional)
+            gaduMulai: 9,     // Oktober (MT II lokal = Rendeng nasional)
+            namaRendeng: 'MT I — Musim Utama Lokal (Gadu, Apr–Agu)',
+            namaGadu: 'MT II — Musim Kedua Lokal (Rendeng, Okt–Feb)'
         },
 
-        /* ── Sulawesi Tenggara ─────────────────────────────────
-           Meliputi: Kendari, Konawe, Kolaka, Bombana, Muna, Buton
-           Pola: peralihan — dua puncak hujan (Mar–Mei & Okt–Des)
-           Referensi: BMKG Kendari, ZOM Sulawesi Tenggara        */
+        /* ── Sulawesi Tenggara (Peralihan) ───────────────────── */
         {
             latMin: -5.5, latMaks: -2.5,
             lonMin: 121.5, lonMaks: 124.5,
             polaPuncak: 'peralihan_sultra',
-            rendengMulai: 2,    // Maret
-            gaduMulai: 9,       // Oktober
+            rendengMulai: 2,  // Maret
+            gaduMulai: 9,     // Oktober
             namaRendeng: 'MT I — Musim Utama (Mar–Jun)',
             namaGadu: 'MT II — Musim Kedua (Okt–Jan)'
         },
 
-        /* ── Sulawesi Barat ────────────────────────────────────
-           Meliputi: Mamuju, Majene, Polewali Mandar, Pasangkayu
-           Pola: mirip Sulsel barat, puncak Des–Feb
-           Referensi: BMKG Mamuju                                */
+        /* ── Sulawesi Barat (Mamuju dkk) ─────────────────────── */
         {
             latMin: -3.5, latMaks: -0.5,
             lonMin: 118.5, lonMaks: 120.5,
             polaPuncak: 'barat',
-            rendengMulai: 11,   // Desember
-            gaduMulai: 5,       // Juni
+            rendengMulai: 11, // Desember
+            gaduMulai: 5,     // Juni
             namaRendeng: 'MT I — Musim Utama (Rendeng, Des–Mar)',
             namaGadu: 'MT II — Musim Kedua (Gadu, Jun–Sep)'
         },
 
-        /* ── Sulawesi Tengah Selatan (Palu, Donggala, Sigi) ───
-           Pola: sangat kering (bayangan hujan), puncak Jan–Feb
-           dan Jul–Sep (dua puncak lemah)
-           Referensi: BMKG Palu                                  */
+        /* ── Sulawesi Tengah Selatan (Palu dll) ──────────────── */
         {
             latMin: -2.5, latMaks: 0.0,
             lonMin: 119.5, lonMaks: 122.0,
             polaPuncak: 'ekuatorial_dua_puncak',
-            rendengMulai: 0,    // Januari
-            gaduMulai: 6,       // Juli
+            rendengMulai: 0,
+            gaduMulai: 6,
             namaRendeng: 'MT I — Musim Tanam (Jan–Apr)',
             namaGadu: 'MT II — Musim Tanam (Jul–Sep)'
         }
@@ -146,88 +124,50 @@
             }
         }
 
-        /* Langkah 2: Analisis distribusi ZOM untuk verifikasi
-           Cari bulan dengan curah hujan tertinggi dan terendah */
+        // Analisis ZOM (sama seperti sebelumnya, tapi lebih toleran)
         var bulanTertinggi = 0, nilaiMax = -Infinity;
-        var bulanTerendah  = 0, nilaiMin = Infinity;
         for (var i = 0; i < 12; i++) {
-            if (rawZOM[i] > nilaiMax) { nilaiMax = rawZOM[i]; bulanTertinggi = i; }
-            if (rawZOM[i] < nilaiMin) { nilaiMin = rawZOM[i]; bulanTerendah  = i; }
+            if (rawZOM[i] > nilaiMax) {
+                nilaiMax = rawZOM[i];
+                bulanTertinggi = i;
+            }
         }
 
-        /* Deteksi tipe pola dari ZOM aktual:
-           - Jika puncak ZOM di bulan 10–2 (Okt–Feb) → pola barat
-           - Jika puncak ZOM di bulan 3–9 (Mar–Sep) → pola timur/selatan
-           - Jika pola tidak jelas (selisih min-max kecil) → ekuatorial */
-        var polaDariZOM;
-        var bulanPolaBarat  = [10, 11, 0, 1, 2]; // Okt–Feb
-        var bulanPolaTimur  = [3, 4, 5, 6, 7, 8, 9]; // Mar–Sep
-        var selisihMinMax   = nilaiMax - nilaiMin;
-
-        if (selisihMinMax < 0.4) {
-            polaDariZOM = 'ekuatorial';
-        } else if (bulanPolaBarat.indexOf(bulanTertinggi) !== -1) {
-            polaDariZOM = 'barat';
-        } else {
-            polaDariZOM = 'timur';
-        }
-
-        /* Langkah 3: Tentukan kalender musim final
-           Prioritas: referensi regional > ZOM > default zona iklim */
+        var polaDariZOM = 'barat';
+        if (nilaiMax < 0.4) polaDariZOM = 'ekuatorial';
+        else if (bulanTertinggi >= 3 && bulanTertinggi <= 8) polaDariZOM = 'timur';
 
         if (refRegional) {
-            /* Verifikasi silang: apakah pola ZOM konsisten dengan referensi?
-               Jika tidak konsisten, log peringatan tapi tetap pakai referensi
-               regional karena lebih dapat dipercaya untuk penentuan nama musim */
-            if (refRegional.polaPuncak !== 'peralihan_sultra' &&
+            // Verifikasi silang tetap ada
+            if (refRegional.polaPuncak !== 'peralihan_sultra' && 
                 refRegional.polaPuncak !== 'ekuatorial_dua_puncak' &&
                 refRegional.polaPuncak !== polaDariZOM) {
-                console.warn(
-                    '[PatchMusim] Perhatian: Pola ZOM (' + polaDariZOM +
-                    ') tidak konsisten dengan referensi regional (' +
-                    refRegional.polaPuncak + ') untuk koordinat [' +
-                    lat.toFixed(3) + ', ' + lon.toFixed(3) + ']. ' +
-                    'Menggunakan referensi regional sebagai acuan utama.'
-                );
+                console.warn(`[PatchMusim] Pola ZOM (${polaDariZOM}) ≠ referensi regional (${refRegional.polaPuncak}) di [${lat.toFixed(3)}, ${lon.toFixed(3)}]`);
             }
-            return {
-                rendengMulai: refRegional.rendengMulai,
-                gaduMulai   : refRegional.gaduMulai,
-                namaRendeng : refRegional.namaRendeng,
-                namaGadu    : refRegional.namaGadu,
-                sumber      : 'referensi-regional',
-                polaDideteksi: refRegional.polaPuncak
-            };
+            return { ...refRegional, sumber: 'referensi-regional', polaDideteksi: refRegional.polaPuncak };
         }
 
-        /* Fallback berbasis pola ZOM jika tidak ada referensi regional */
+        // Fallback logic (diperbaiki)
         if (polaDariZOM === 'timur') {
-            /* Pola puncak hujan di bulan kering monsun barat
-               → Rendeng lokal = sekitar bulan puncak hujan ZOM */
-            var rendengFallbackTimur = (bulanTertinggi - 1 + 12) % 12;
-            var gaduFallbackTimur    = (bulanTertinggi + 5) % 12;
             return {
-                rendengMulai: rendengFallbackTimur,
-                gaduMulai   : gaduFallbackTimur,
-                namaRendeng : 'MT I — Musim Utama (Puncak Hujan Lokal)',
-                namaGadu    : 'MT II — Musim Kedua (Hujan Menurun)',
-                sumber      : 'zom-pola-timur',
+                rendengMulai: (bulanTertinggi + 11) % 12, // mundur sedikit
+                gaduMulai: (bulanTertinggi + 5) % 12,
+                namaRendeng: 'MT I — Musim Utama Lokal (Puncak Hujan)',
+                namaGadu: 'MT II — Musim Kedua Lokal',
+                sumber: 'zom-pola-timur',
                 polaDideteksi: 'timur'
             };
         }
 
-        if (polaDariZOM === 'ekuatorial') {
-            /* Dua puncak hujan → gunakan deteksi lembah dari patch v3.8 */
-            return null; // Kembalikan null → biarkan logika ekuatorial lama berjalan
-        }
+        if (polaDariZOM === 'ekuatorial') return null;
 
-        /* Fallback terakhir: pola barat default (Nov = mulai rendeng) */
+        // Default barat
         return {
             rendengMulai: 10,
-            gaduMulai   : 4,
-            namaRendeng : 'MT I — Musim Utama (Rendeng)',
-            namaGadu    : 'MT II — Musim Kedua (Gadu)',
-            sumber      : 'fallback-pola-barat',
+            gaduMulai: 4,
+            namaRendeng: 'MT I — Musim Utama (Rendeng)',
+            namaGadu: 'MT II — Musim Kedua (Gadu)',
+            sumber: 'fallback-pola-barat',
             polaDideteksi: 'barat'
         };
     }
@@ -470,19 +410,14 @@
         window.rekomendasiWindowTanam = rekomendasiWindowTanamV2;
         window.tentukanKalenderMusimLokal = tentukanKalenderMusimLokal;
 
-        console.log(
-            '%c✅ patch_deteksi_musim_v1.js aktif ' +
-            '— Deteksi Musim Berbasis Koordinat GPS + ZOM',
-            'color:#06b6d4; font-weight:bold;'
-        );
+        console.log('%c✅ patch_deteksi_musim_v1.js v1.1 aktif — Deteksi Musim Lokal lebih akurat', 
+                   'color:#06b6d4; font-weight:bold;');
     }
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', injeksiOverride);
     } else {
-        /* Tunggu sebentar agar patch_jadwal_tanam_otomatis.js selesai
-           mendefinisikan rekomendasiWindowTanam terlebih dahulu */
-        setTimeout(injeksiOverride, 50);
+        setTimeout(injeksiOverride, 100);
     }
 
 })();
