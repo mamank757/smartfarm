@@ -505,14 +505,16 @@
                 var best = kandidatMusim[0];
 
                 var tglAwalBulan = tanggalDariBulanTahun(best.bTanam, best.tahunTanam);
-                var tglFaseBaik  = cariTglFaseBulan(tglAwalBulan, 3, 8, 0, best.bTanam);
-                if (tglFaseBaik.getMonth() !== best.bTanam) {
-                    tglFaseBaik = cariTglFaseBulan(tambahHari(tglAwalBulan, 7), 3, 8, 0, best.bTanam);
-                }
-                if (tglFaseBaik.getMonth() !== best.bTanam) {
-                    tglFaseBaik = new Date(best.tahunTanam, best.bTanam, 10);
-                }
+var tglFaseBaik  = cariTglFaseBulan(tglAwalBulan, 3, 8, 0, best.bTanam);
 
+// Tangkap null dari kegagalan fungsi di atas
+if (!tglFaseBaik) {
+    tglFaseBaik = cariTglFaseBulan(tambahHari(tglAwalBulan, 7), 3, 8, 0, best.bTanam);
+}
+// Fallback pamungkas
+if (!tglFaseBaik) {
+    tglFaseBaik = new Date(best.tahunTanam, best.bTanam, 10);
+}
                 /* [FIX LAPISAN 4] isLewat dari tanggal FINAL, bukan heuristik */
                 var statusBest = statusWaktuTanam(tglFaseBaik, now);
 
