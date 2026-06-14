@@ -779,11 +779,11 @@
         hasilEl.style.display = 'block';
         teksEl.innerHTML = '';
 
-        var teksAsliBtn = '🤖 ANALISIS & BUAT JADWAL OTOMATIS';
+        var teksAsliBtn = 'ANALISIS & BUAT JADWAL OTOMATIS';
         if (btnJTO) {
             btnJTO.disabled = true;
             btnJTO.style.opacity = '0.75';
-            btnJTO.textContent = '🔄 MENGANALISIS IKLIM...';
+            btnJTO.textContent = 'MENGANALISIS IKLIM...';
         }
 
         function setStatus(msg) { if (statusEl) statusEl.innerHTML = msg; }
