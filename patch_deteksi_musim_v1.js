@@ -18,12 +18,17 @@
     /* =========================================================
        REFERENSI KALENDER MUSIM TANAM LOKAL
     ========================================================= */
+    /* =========================================================
+       REFERENSI KALENDER MUSIM TANAM LOKAL
+       (Telah diperbaiki: Tidak ada overlap, pemisahan Barat/Timur di Lon 120.0)
+    ========================================================= */
     var REFERENSI_MUSIM_REGIONAL = [
 
-        /* ── Pantai Barat & Barat Daya (Pola Monsun Barat Klasik) ───── */
+        /* ── Pantai Barat & Barat Daya Sulsel (Pola Monsun Barat Klasik) ─────
+              Makassar, Maros, Pangkep, Barru, Parepare, Takalar, Gowa */
         {
-            latMin: -6.0, latMaks: -2.5,
-            lonMin: 119.0, lonMaks: 120.6,
+            latMin: -6.0, latMaks: -3.5,
+            lonMin: 119.0, lonMaks: 119.99, // < 120.0 adalah sebelum pegunungan tengah
             polaPuncak: 'barat',
             rendengMulai: 10, // November
             gaduMulai: 4,     // Mei
@@ -32,10 +37,10 @@
         },
 
         /* ── Pantai Timur & Tengah Sulsel (Pola Terbalik - Mayoritas) ──
-           Bone, Wajo, Soppeng, Sinjai, Bulukumba, Selayar, Bantaeng timur, dll. */
+              Bone, Wajo, Soppeng, Sinjai, Bulukumba, Selayar, Bantaeng timur */
         {
-            latMin: -6.0, latMaks: -3.0,
-            lonMin: 120.6, lonMaks: 122.8,
+            latMin: -6.0, latMaks: -3.5,
+            lonMin: 120.0, lonMaks: 120.79, // 120.0 ke timur sampai pesisir Teluk Bone
             polaPuncak: 'timur',
             rendengMulai: 3,  // April
             gaduMulai: 9,     // Oktober
@@ -43,10 +48,11 @@
             namaGadu: 'MT II — Musim Kedua Lokal (Gadu, Okt–Feb)'
         },
 
-        /* ── Sulawesi Tenggara (Peralihan) ───────────────────── */
+        /* ── Sulawesi Tenggara (Peralihan) ─────────────────────
+              Kendari, Kolaka, Bombana, Muna, Buton */
         {
-            latMin: -5.5, latMaks: -2.5,
-            lonMin: 121.5, lonMaks: 124.5,
+            latMin: -6.0, latMaks: -2.5,
+            lonMin: 120.8, lonMaks: 124.5, // > 120.8 menyeberang Teluk Bone (Sultra)
             polaPuncak: 'peralihan_sultra',
             rendengMulai: 2,
             gaduMulai: 9,
@@ -54,10 +60,11 @@
             namaGadu: 'MT II — Musim Kedua (Okt–Jan)'
         },
 
-        /* ── Sulawesi Barat ──────────────────────────────────── */
+        /* ── Sulawesi Barat ────────────────────────────────────
+              Polman, Majene, Mamuju (Di atas lintang -3.5) */
         {
-            latMin: -3.5, latMaks: -0.5,
-            lonMin: 118.5, lonMaks: 120.5,
+            latMin: -3.49, latMaks: -0.5,
+            lonMin: 118.5, lonMaks: 119.79, 
             polaPuncak: 'barat',
             rendengMulai: 11,
             gaduMulai: 5,
@@ -65,10 +72,11 @@
             namaGadu: 'MT II — Musim Kedua (Gadu, Jun–Sep)'
         },
 
-        /* ── Sulawesi Tengah Selatan (Ekuatorial) ────────────── */
+        /* ── Sulawesi Tengah Selatan & Luwu Raya (Ekuatorial) ──────────────
+              Tana Toraja, Luwu, Palopo, Luwu Utara, Luwu Timur, Morowali */
         {
-            latMin: -2.5, latMaks: 0.0,
-            lonMin: 119.5, lonMaks: 122.0,
+            latMin: -3.49, latMaks: 0.0,
+            lonMin: 119.8, lonMaks: 122.5, // Bagian utara Sulsel yang menyambung ke Sulteng
             polaPuncak: 'ekuatorial_dua_puncak',
             rendengMulai: 0,
             gaduMulai: 6,
