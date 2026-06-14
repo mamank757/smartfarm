@@ -842,7 +842,7 @@
        ────────────────────────────────────
        ✅ Saat KLIK      → pulse TETAP (tidak dihapus sama sekali)
                            Tombol disabled + teks berubah jadi
-                           "🔄 MENGANALISIS IKLIM..."
+                           "MENGANALISIS IKLIM..."
        ✅ Saat LOADING   → pulse tetap berjalan sebagai sinyal
                            sistem sedang bekerja
        ✅ Saat BERHASIL  → hapus pulse (hasil sudah tampil,
@@ -962,7 +962,7 @@
         var btn = document.createElement('button');
         btn.className  = 'tab-btn';
         btn.id         = 'tabJadwalTanam';
-        btn.textContent = 'JADWAL TANAM';
+        btn.textContent = 'KLNDR TNM';
         btn.onclick = function () { switchMode('jadwaltanam'); };
 
         var tabKalender = document.getElementById('tabKalender');
