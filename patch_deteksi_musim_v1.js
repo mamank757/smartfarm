@@ -40,6 +40,23 @@
  *    (musim makin basah/maju). Nilai mm ASLI (rawZOM, klimatologi)
  *    tetap ditampilkan di `alasan` untuk transparansi, ditambah
  *    catatan persentase penyesuaian ENSO/IOD jika signifikan (>3%).
+ *
+ *  [LAPISAN 5b — ZONA BOBOT_IKLIM TIDAK KONSISTEN DI PANTAI TIMUR SULSEL]
+ *    Implementasi awal Lapisan 5 memakai window.tentukanZonaIklim(lat,lon)
+ *    (fungsi generik nasional di patch_risiko_iklim.js) sebagai sumber
+ *    utama zona BOBOT_IKLIM. Fungsi itu memakai batas lintang kasar
+ *    `lat >= -4` untuk zona 'peralihan' (didokumentasikan untuk Sulawesi
+ *    Tengah/Tenggara). Akibatnya, untuk zona musim 'timur' (Pantai Timur
+ *    Sulsel: Wajo/Bone/Sinjai, lon 120.0–120.79, lat -6.0..-3.5) — SATU
+ *    pola musim yang sama — bagian utara (lat -4.0..-3.5) mendapat bobot
+ *    'peralihan', sementara bagian selatan (lat <-4) mendapat 'monsunal'.
+ *    Padahal seluruh Sulawesi Selatan menurut dokumentasi BOBOT_IKLIM
+ *    sendiri = 'monsunal'. Hasilnya: penyesuaian ENSO/IOD bisa "lompat"
+ *    nilainya hanya karena selisih lintang 0,1–0,2°.
+ *    [FIX] PEMETAAN_POLA_KE_ZONA_IKLIM (dari `polaPuncak`, yang sudah
+ *    spesifik per-zona Sulawesi via REFERENSI_MUSIM_REGIONAL) kini jadi
+ *    sumber UTAMA; tentukanZonaIklim(lat,lon) hanya fallback jika
+ *    polaPuncak tidak dikenali.
  * ------------------------------------------------------------
  *  LATAR BELAKANG
  *  Versi 1.x menghasilkan rekomendasi tanam yang terlalu awal
@@ -427,19 +444,38 @@
         var th = THRESHOLD_AIR[polaPuncak] || THRESHOLD_AIR.fallback;
 
         /* ── [FIX LAPISAN 5] Tentukan zona BOBOT_IKLIM (monsunal/ekuatorial/
-           peralihan/lokal) untuk bobot korelasi ENSO/IOD. Pakai
-           tentukanZonaIklim(lat,lon) — sama dengan skorKelembapan() asli —
-           dengan fallback pemetaan dari `polaPuncak` jika fungsi itu
-           tidak tersedia. ── */
+           peralihan/lokal) untuk bobot korelasi ENSO/IOD.
+
+           [FIX LAPISAN 5b] PRIORITASKAN pemetaan dari `polaPuncak` —
+           yang sudah ditentukan secara spesifik untuk Sulawesi via
+           REFERENSI_MUSIM_REGIONAL — DI ATAS tentukanZonaIklim(lat,lon)
+           (fungsi generik nasional di patch_risiko_iklim.js).
+
+           Alasan: tentukanZonaIklim() memakai batas lintang kasar
+           `lat >= -4` untuk zona 'peralihan' (didokumentasikan untuk
+           Sulawesi Tengah/Tenggara). Untuk zona 'timur' (Pantai Timur
+           Sulsel: Wajo/Bone/Sinjai, lon 120.0–120.79, lat -6.0..-3.5),
+           bagian UTARA-nya (lat -4.0..-3.5, msl. Wajo bagian utara)
+           jatuh ke 'peralihan', sementara bagian SELATAN-nya (lat <-4,
+           msl. Sengkang/Watampone/Sinjai) jatuh ke 'monsunal' — padahal
+           keduanya satu pola musim ('timur') & satu provinsi (Sulsel,
+           yang menurut dokumentasi BOBOT_IKLIM sendiri = 'monsunal').
+           Pemetaan via polaPuncak menjaga konsistensi bobot ENSO/IOD
+           di seluruh wilayah zona 'timur', tidak "lompat" hanya karena
+           selisih lintang 0.1–0.2°.
+
+           tentukanZonaIklim(lat,lon) tetap dipakai sebagai fallback
+           jika polaPuncak tidak dikenali (di luar 4 nilai standar). ── */
         var PEMETAAN_POLA_KE_ZONA_IKLIM = {
             barat: 'monsunal',
             timur: 'monsunal',
             peralihan_sultra: 'peralihan',
             ekuatorial_dua_puncak: 'ekuatorial'
         };
-        var zonaIklim = (typeof window.tentukanZonaIklim === 'function')
-            ? window.tentukanZonaIklim(lat, lon)
-            : (PEMETAAN_POLA_KE_ZONA_IKLIM[polaPuncak] || 'monsunal');
+        var zonaIklim = PEMETAAN_POLA_KE_ZONA_IKLIM[polaPuncak] ||
+            ((typeof window.tentukanZonaIklim === 'function')
+                ? window.tentukanZonaIklim(lat, lon)
+                : 'monsunal');
 
         /* ── [FIX LAPISAN 5] Sesuaikan rawZOM dengan anomali ENSO/IOD
            SEBELUM dipakai untuk skor, onset, dan gerbang air. rawZOM
@@ -717,6 +753,8 @@ if (!tglFaseBaik) {
             '   Fix #5 (Lapisan 5): ENSO/IOD (NOAA) kini disesuaikan ke rawZOM sebelum\n' +
             '                       dipakai untuk skor, onset, & gerbang air — sebelumnya\n' +
             '                       diterima tapi diabaikan total\n' +
+            '   Fix #5b: Zona BOBOT_IKLIM untuk ENSO/IOD kini konsisten di seluruh\n' +
+            '            Pantai Timur Sulsel (polaPuncak -> zona, bukan lat/lon mentah)\n' +
             '   Penalti skorOlah dihapus dari seleksi — dipindahkan ke field alasan',
             'color:#10b981; font-weight:bold;'
         );
