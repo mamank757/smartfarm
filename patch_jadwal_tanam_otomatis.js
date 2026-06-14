@@ -904,7 +904,7 @@ var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona, 
         var btn = document.createElement('button');
         btn.className   = 'tab-btn';
         btn.id          = 'tabJadwalTanam';
-        btn.textContent = 'JADWAL TANAM';
+        btn.textContent = 'KALENDER TNM';
         btn.onclick     = function () { switchMode('jadwaltanam'); };
         var tabPertama = tabContainer.firstElementChild;
 if (tabPertama) {
