@@ -1,41 +1,13 @@
 /**
  * ============================================================
  *  patch_jadwal_tanam_otomatis.js
- *  Versi: 3.0 — Jadwal Tanam Berbasis Kalender Iklim (Bukan Offset Hari)
+ *  Versi: 3.1 — Perbaikan Tab Active + Tombol Berdenyut
  * ------------------------------------------------------------
- *  PERBAIKAN UTAMA v3.0 vs v2.0:
- *    ❌ v2.0: Scan offset 7–90 hari dari hari ini → SALAH SECARA LOGIKA IKLIM
- *    ✅ v3.0: Scan 12 bulan penuh → pilih BULAN TANAM terbaik secara iklim,
- *             lalu tetapkan tanggal tanam di dalam bulan itu berdasarkan
- *             fase bulan yang menguntungkan.
- *
- *    Alasan: Kondisi iklim tidak peduli kapan petani membuka aplikasi.
- *    Yang relevan adalah BULAN berapa padi akan memasuki fase generatif
- *    dan BULAN berapa panen berlangsung — karena fase itulah yang
- *    menentukan risiko gagal panen, bukan jarak hari dari hari ini.
- *
- *  MENGGANTIKAN:
- *    - patch_kalender_tanam_cerdas.js
- *    - patch_kalender_menu_mandiri.js
- *    - patch_jadwal_tanam_otomatis.js v2.0
- *
- *  Cara pakai:
- *    Letakkan SETELAH patch_enso_iod_noaa.js:
- *    <script src="patch_jadwal_tanam_otomatis.js"></script>
- *
- *  Dependensi (harus dimuat lebih dulu):
- *    - getENSOAnomaly()        (patch_enso_iod_noaa.js)
- *    - getIODAnomaly()         (patch_enso_iod_noaa.js)
- *    - normalisasiCurahHujan() (HTML utama)
- *    - hitungJarakHaversine()  (HTML utama)
- *    - getFallbackSST()        (HTML utama)
- *    - URL_ZOM_LOKAL           (HTML utama)
- *
- *  Referensi ilmiah:
- *    - BB Padi (2019): kalender tanam berbasis iklim
- *    - BMKG (2023): ZOM zona iklim
- *    - Baehaki & Mejaya (2014): siklus hama vs fase bulan
- *    - Untung (2006): PHT & jadwal penyemprotan
+ *  PERBAIKAN v3.1 vs v3.0:
+ *    ✅ Tab "JADWAL TANAM" kini ikut di-reset saat user pindah menu lain
+ *    ✅ Tombol "ANALISIS & BUAT JADWAL" berdenyut seperti radar
+ *    ✅ Patch switchMode kini meng-intercept SEMUA panggilan switchMode,
+ *       termasuk yang dipanggil dari tab-btn asli HTML
  * ============================================================
  */
 
@@ -64,7 +36,6 @@
         return h;
     }
     function tanggalDariBulanTahun(bulanIdx, tahun) {
-        // Kembalikan tanggal 1 dari bulan & tahun tertentu
         return new Date(tahun, bulanIdx, 1);
     }
     function formatTglLengkap(d) {
@@ -154,10 +125,6 @@
         return fallback;
     }
 
-    /**
-     * Hitung skor kelembapan bulanan (0–100, makin tinggi makin basah)
-     * berdasarkan baseline ZOM + anomali ENSO/IOD
-     */
     function skorKelembapan(bulanIdx, baselineArr, ensoVal, iodVal) {
         var norm = window.normalisasiCurahHujan || function (v) {
             return v < 30 ? -1.5 : v < 75 ? -0.8 : v < 150 ? 0.0 : v < 250 ? 0.8 : 1.5;
@@ -177,119 +144,53 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       MESIN REKOMENDASI WINDOW TANAM — BERBASIS 2 MUSIM TANAM
-       
-       LOGIKA v3.1 — Mengikuti siklus musim tanam padi Indonesia:
-       ─────────────────────────────────────────────────────────
-       Indonesia mengenal 2 musim tanam padi per tahun:
-         • MT I  "Rendeng" (musim hujan)  — tanam Okt–Jan, panen Feb–Apr
-         • MT II "Gadu"    (musim kemarau) — tanam Apr–Jul, panen Agu–Okt
-       
-       Setiap musim tanam dibagi dalam window 6 bulan (bukan 12),
-       karena menanam di luar window musim yang tepat berarti fase
-       generatif/panen akan jatuh di bulan yang berlawanan dengan
-       pola air/irigasi lokal — dan itu tidak masuk akal secara agronomis.
-       
-       Cara kerja:
-         1. Tentukan petani sedang di MT I atau MT II berdasarkan bulan sekarang
-         2. Scan 6 bulan window MT tersebut (bulan tanam valid di MT itu)
-         3. Evaluasi tiap bulan tanam × varietas berdasarkan skor iklim
-            di BULAN GENERATIF dan BULAN PANEN (bukan offset hari)
-         4. Pilih kombinasi terbaik, lalu tetapkan tanggal konkret
-            berdasarkan fase bulan menguntungkan di bulan itu
-         5. Jika MT sekarang sudah terlewat (> 5 bulan berjalan),
-            rekomendasikan MT berikutnya
+       MESIN REKOMENDASI WINDOW TANAM
     ────────────────────────────────────────────────────────── */
     function rekomendasiWindowTanam(skorBulan) {
         var now = new Date();
-        var bulanSekarang = now.getMonth();  // 0=Jan … 11=Des
+        var bulanSekarang = now.getMonth();
         var tahunSekarang = now.getFullYear();
 
-        /*
-         * Definisi 2 musim tanam padi Indonesia
-         * (indeks bulan 0-based: 0=Jan, 9=Okt, dst.)
-         *
-         * MT I  Rendeng : tanam Okt–Jan  (bulan 9,10,11,0)
-         * MT II Gadu    : tanam Apr–Jul  (bulan 3,4,5,6)
-         *
-         * Catatan: window tanam sengaja dibatasi 4 bulan per MT
-         * karena tanam di luar window itu berarti padi memasuki
-         * fase generatif di bulan yang salah (terlalu kering atau
-         * terlalu basah) untuk iklim monsunal Sulawesi Selatan.
-         */
         var MUSIM = [
             {
                 nama  : 'MT I — Rendeng (Musim Hujan)',
                 kode  : 'rendeng',
-                // Bulan-bulan valid untuk tanam MT I (indeks 0-based)
-                bulanTanam: [9, 10, 11, 0]   // Okt, Nov, Des, Jan
+                bulanTanam: [9, 10, 11, 0]
             },
             {
                 nama  : 'MT II — Gadu (Musim Kemarau)',
                 kode  : 'gadu',
-                bulanTanam: [3, 4, 5, 6]      // Apr, Mei, Jun, Jul
+                bulanTanam: [3, 4, 5, 6]
             }
         ];
 
-        // ── Definisi varietas ──
         var varianArr = [
             { kode:'genjah', label:'Genjah (< 95 HST)',  panen:90,  persenGen:0.55 },
             { kode:'sedang', label:'Sedang (95–115 HST)', panen:110, persenGen:0.55 },
             { kode:'dalam',  label:'Dalam (≥ 116 HST)',  panen:125, persenGen:0.55 }
         ];
 
-        /*
-         * Tentukan musim tanam yang relevan untuk petani saat ini.
-         * Aturan:
-         *   - Jika bulan sekarang ada di window tanam suatu MT → gunakan MT itu
-         *   - Jika sedang di antara 2 MT → gunakan MT yang lebih dekat ke depan
-         *   - Selalu evaluasi KEDUA MT, lalu pilih yang nilainya lebih tinggi
-         *     (agar petani tahu pilihan terbaik, bahkan jika MT sekarang buruk)
-         */
         var kandidat = [];
 
         MUSIM.forEach(function (musim) {
             musim.bulanTanam.forEach(function (bTanam) {
-                /*
-                 * Hitung tahun tanam untuk bulan ini.
-                 * Logika: jika bulan tanam sudah lewat di tahun ini,
-                 * artinya musim ini baru akan datang tahun depan.
-                 * Contoh: sekarang Agustus (8), bulan tanam MT I = Okt (9)
-                 *   → tahun tanam = tahun sekarang (belum lewat)
-                 * Contoh: sekarang Februari (1), bulan tanam MT II = Apr (3)
-                 *   → tahun tanam = tahun sekarang (belum lewat)
-                 * Contoh: sekarang Februari (1), bulan tanam MT I = Okt (9)
-                 *   → tahun tanam = tahun sekarang + 1 (sudah lewat)
-                 *
-                 * Untuk MT I yang melintasi pergantian tahun (Des/Jan),
-                 * bulan 0 (Jan) harus diperlakukan sebagai tahun berikutnya
-                 * jika sekarang masih di bulan 9–11.
-                 */
                 var tahunTanam;
                 if (bTanam >= bulanSekarang) {
                     tahunTanam = tahunSekarang;
                 } else {
-                    // Bulan tanam sudah lewat tahun ini → tahun depan
                     tahunTanam = tahunSekarang + 1;
                 }
 
-                // Khusus MT I: bulan 0 (Jan) selalu +1 tahun jika sekarang Okt–Des
-                // karena MT I dimulai Okt tahun ini, berakhir Jan TAHUN BERIKUTNYA
                 if (musim.kode === 'rendeng' && bTanam === 0) {
-                    // Jan selalu jatuh setelah Okt–Des dalam satu siklus MT I
                     if (bulanSekarang >= 9) {
                         tahunTanam = tahunSekarang + 1;
                     }
                 }
 
                 var skorTanam = skorBulan[bTanam];
-
-                // Skip bulan kering ekstrem — tidak ada air untuk olah lahan
                 if (skorTanam < 15) return;
 
                 varianArr.forEach(function (v) {
-                    // Bulan generatif dan panen dihitung berbasis kalender
-                    // (30 hari/bulan = aproksimasi cukup untuk resolusi bulanan)
                     var hariGen   = Math.floor(v.panen * v.persenGen);
                     var bGenIdx   = (bTanam + Math.floor(hariGen  / 30)) % 12;
                     var bPanenIdx = (bTanam + Math.floor(v.panen  / 30)) % 12;
@@ -297,27 +198,14 @@
                     var skorGen   = skorBulan[bGenIdx];
                     var skorPanen = skorBulan[bPanenIdx];
 
-                    /*
-                     * Fungsi nilai per fase:
-                     *   Generatif : ideal skor 30–50 (ada air, tidak terlalu lembap)
-                     *               > 70 → Blast, penyerbukan terganggu
-                     *               < 20 → puso (hampa massal)
-                     *   Panen     : semakin kering semakin baik
-                     *               > 65 → padi rebah, gabah tumbuh, dryer mahal
-                     */
-                    var nilaiGen   = 100 - Math.abs(skorGen - 40); // puncak di skor 40
+                    var nilaiGen   = 100 - Math.abs(skorGen - 40);
                     var nilaiPanen = 100 - skorPanen;
-
-                    // Bobot: generatif (55%) lebih kritis dari panen (45%)
                     var nilaiTotal = (nilaiGen * 0.55) + (nilaiPanen * 0.45);
 
-                    // Penalti: vegetatif awal (bulan tanam+1) sangat kering
                     var bVeg1 = (bTanam + 1) % 12;
                     if (skorBulan[bVeg1] < 20) nilaiTotal -= 15;
 
-                    // Hitung jarak bulan dari sekarang (untuk info user)
                     var offsetBulan = (bTanam - bulanSekarang + 12) % 12;
-                    // Koreksi: jika tahun tanam sudah tahun depan dan offset < 6
                     if (tahunTanam > tahunSekarang && offsetBulan < 6) {
                         offsetBulan += 12;
                     }
@@ -342,7 +230,6 @@
             });
         });
 
-        // Fallback jika semua bulan di kedua MT kering ekstrem
         if (!kandidat.length) {
             var tglFallback = tambahHari(now, 14);
             return {
@@ -354,16 +241,9 @@
             };
         }
 
-        // Urutkan descending → ambil terbaik
         kandidat.sort(function (a, b) { return b.nilaiTotal - a.nilaiTotal; });
         var best = kandidat[0];
 
-        /*
-         * Tentukan tanggal konkret di dalam bulan tanam terpilih.
-         * Cari fase bulan sabit muda (hari 3–8 siklus sinodis) —
-         * waktu tradisional tanam padi di Sulawesi.
-         * Jika tidak ditemukan di bulan yang sama, pakai tanggal 10.
-         */
         var tglAwalBulan = tanggalDariBulanTahun(best.bTanam, best.tahunTanam);
         var tglFaseBaik  = cariTglFaseBulan(tglAwalBulan, 3, 8, 0);
 
@@ -374,7 +254,6 @@
             tglFaseBaik = new Date(best.tahunTanam, best.bTanam, 10);
         }
 
-        // Keterangan skor iklim untuk ditampilkan ke petani
         var keteranganSkorGen =
             best.skorGen < 25 ? 'kering — risiko puso jika tidak ada irigasi' :
             best.skorGen > 70 ? 'basah — waspada Blast dan penyerbukan terganggu' :
@@ -395,7 +274,6 @@
             ' (skor: ' + best.skorPanen + '/100 — ' + keteranganSkorPanen + '). ' +
             'Nilai iklim gabungan: ' + best.nilaiTotal.toFixed(0) + '/100.';
 
-        // Peringatan jika musim terbaik ada di MT lain (> 2 bulan ke depan)
         if (best.offsetBulan > 2) {
             alasan += ' ⚠️ Waktu tanam optimal masih ' + best.offsetBulan +
                       ' bulan ke depan. Pertimbangkan palawija (jagung/kedelai) ' +
@@ -486,7 +364,6 @@
         var tglFung   = tambahHari(tglTanam, of.fung);
         var tglPanen  = tambahHari(tglTanam, of.panen);
 
-        // Koreksi insektisida: geser dari bulan penuh
         [tglI1, tglI2].forEach(function (t, idx) {
             var f = hariFaseBulan(t);
             if (f >= 13.5 && f <= 16.5) {
@@ -758,6 +635,10 @@
         hasilEl.style.display = 'block';
         teksEl.innerHTML = '';
 
+        /* Hentikan animasi denyut tombol saat proses mulai */
+        var btnJTO = document.getElementById('btnJadwalOtomatis');
+        if (btnJTO) btnJTO.classList.remove('jto-pulse');
+
         function setStatus(msg) {
             if (statusEl) statusEl.innerHTML = msg;
         }
@@ -807,9 +688,7 @@
                 return skorKelembapan(idx, zonaInfo.data, ensoVal, iodVal);
             });
 
-            // v3.0: rekomendasi berbasis scan kalender penuh, bukan offset hari
             var rekomendasi = rekomendasiWindowTanam(skorBulan);
-
             var kegiatan = bangunKegiatan(rekomendasi.tglTanam, rekomendasi.varietas, skorBulan);
 
             if (statusEl) statusEl.innerHTML = '';
@@ -866,7 +745,7 @@
                 '</span>' +
             '</div>' +
 
-            '<button id="btnJadwalOtomatis" style="' +
+            '<button id="btnJadwalOtomatis" class="jto-pulse" style="' +
                 'width:100%;padding:15px;background:linear-gradient(135deg,' + WARNA + ',#0891b2);' +
                 'color:#fff;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:0.5px;margin-bottom:16px;' +
             '">' +
@@ -890,15 +769,27 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       PATCH switchMode
+       PATCH switchMode — PERBAIKAN UTAMA v3.1
+       
+       Bug v3.0: Tab "JADWAL TANAM" tidak pernah di-reset
+       saat user pindah ke menu lain, karena array `tabs` di
+       switchMode asli HTML tidak mencakup 'JadwalTanam'.
+       
+       Solusi: intercept SETIAP panggilan switchMode. Jika
+       mode bukan 'jadwaltanam', sembunyikan box JTO dan
+       hapus class active dari tabJadwalTanam secara eksplisit.
+       Sebaliknya jika mode 'jadwaltanam', reset semua tab
+       lain dan aktifkan tab JTO.
     ────────────────────────────────────────────────────────── */
     function patchSwitchMode() {
         var _asli = window.switchMode;
 
         window.switchMode = function (mode) {
             var boxJTO = document.getElementById('boxJadwalTanam');
+            var tabJTO = document.getElementById('tabJadwalTanam');
 
             if (mode === 'jadwaltanam') {
+                /* ── Sembunyikan semua box lain ── */
                 var semuaBox = document.querySelectorAll('.card > div[id^="box"]');
                 semuaBox.forEach(function (b) { b.style.display = 'none'; });
                 ['btnCamera','scanWindow','btnAnalisis','result'].forEach(function (id) {
@@ -908,18 +799,20 @@
 
                 if (boxJTO) boxJTO.style.display = 'block';
 
+                /* ── Update judul ── */
                 var titleEl = document.getElementById('modeTitle');
                 if (titleEl) { titleEl.innerText = '📅 Jadwal Kegiatan Tani'; titleEl.style.color = WARNA; }
 
                 var subEl = document.getElementById('tabSubtitleDisplay');
                 if (subEl) subEl.style.display = 'none';
 
+                /* ── Reset SEMUA tab-btn, aktifkan hanya JTO ── */
                 document.querySelectorAll('.tab-btn').forEach(function (btn) {
                     btn.classList.remove('active');
                 });
-                var tabJTO = document.getElementById('tabJadwalTanam');
                 if (tabJTO) tabJTO.classList.add('active');
 
+                /* ── Auto-analisis jika belum ada hasil ── */
                 var hasilEl = document.getElementById('jtoHasil');
                 if (hasilEl && hasilEl.style.display === 'none') {
                     prosesJadwalOtomatis();
@@ -928,8 +821,12 @@
                 return;
             }
 
+            /* ── Mode lain: pastikan tab & box JTO dinonaktifkan ── */
             if (boxJTO) boxJTO.style.display = 'none';
+            /* Hapus active dari tab JTO — ini yang hilang di v3.0 */
+            if (tabJTO) tabJTO.classList.remove('active');
 
+            /* ── Panggil switchMode asli ── */
             if (typeof _asli === 'function') {
                 _asli.apply(this, arguments);
             }
@@ -937,18 +834,34 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       CSS TAMBAHAN
+       CSS TAMBAHAN — termasuk animasi denyut tombol
     ────────────────────────────────────────────────────────── */
     function injeksiCSS() {
         if (document.getElementById('jtoCSS')) return;
         var style = document.createElement('style');
         style.id = 'jtoCSS';
-        style.textContent =
-            '#tabJadwalTanam.active{background:' + WARNA + '!important;color:#fff!important;}' +
-            '#tabJadwalTanam:not(.active){color:#708099;}' +
-            '#btnJadwalOtomatis:hover{opacity:0.9;}' +
-            '#btnJadwalOtomatis:active{transform:scale(0.99);}' +
-            'body.light-mode #boxJadwalTanam{background:#fff;color:#0f172a;}';
+        style.textContent = [
+            /* Tab aktif */
+            '#tabJadwalTanam.active{background:' + WARNA + '!important;color:#fff!important;}',
+            '#tabJadwalTanam:not(.active){color:#708099;}',
+
+            /* Hover tombol analisis */
+            '#btnJadwalOtomatis:hover{opacity:0.9;}',
+            '#btnJadwalOtomatis:active{transform:scale(0.99);}',
+
+            /* ── ANIMASI DENYUT RADAR ── */
+            '@keyframes jto-radar{',
+            '  0%  {box-shadow:0 0 0 0 rgba(6,182,212,0.7);}',
+            '  65% {box-shadow:0 0 0 16px rgba(6,182,212,0);}',
+            '  100%{box-shadow:0 0 0 0 rgba(6,182,212,0);}',
+            '}',
+            '#btnJadwalOtomatis.jto-pulse{',
+            '  animation:jto-radar 1.6s ease-out infinite;',
+            '}',
+
+            /* Light mode override */
+            'body.light-mode #boxJadwalTanam{background:#fff;color:#0f172a;}'
+        ].join('');
         document.head.appendChild(style);
     }
 
@@ -962,7 +875,7 @@
         patchSwitchMode();
 
         console.log(
-            '%c✅ patch_jadwal_tanam_otomatis.js v3.0 aktif — Scan 12 Bulan Kalender Iklim',
+            '%c✅ patch_jadwal_tanam_otomatis.js v3.1 aktif — Tab fix + Pulse button',
             'color:' + WARNA + ';font-weight:bold;'
         );
     }
