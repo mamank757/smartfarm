@@ -865,7 +865,7 @@
 
             // [FIX] Panggil dari 'window' agar override dari patch_deteksi_musim (regional Pantai Timur) bisa terbaca!
 var fungsiRekomendasi = window.rekomendasiWindowTanam || rekomendasiWindowTanam;
-var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona);
+var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona, ensoVal, iodVal);
 
             var multiJadwal = rekomendasiArr.map(function(rek) {
                 return {
