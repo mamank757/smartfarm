@@ -281,21 +281,28 @@
                     var skorPanen = skorBulan[bPanenIdx];
 
                     // 1. Fase Tanam & Vegetatif: Semakin basah data aktual bulan ini, semakin bagus (100% mengikuti skor iklim)
-var nilaiTanam = skorTanam;
+// Cek bulan PENGOLAHAN (1 bulan sebelum jadwal tanam)
+var bOlah = (bTanam - 1 + 12) % 12; 
+var skorOlah = skorBulan[bOlah];
+
 var bVeg1 = (bTanam + 1) % 12;
 var skorVeg1 = skorBulan[bVeg1];
 
-// 2. Fase Generatif: Butuh air cukup, tetapi hindari ekstrem basah/kering
+var nilaiTanam = skorTanam;
 var nilaiGen = 100 - Math.abs(skorGen - 50);
-
-// 3. Fase Panen: Toleransi dinaikkan. Penalti untuk panen di bulan basah didiskon 50%
 var nilaiPanen = 100 - (skorPanen * 0.5);
 
-// PEMBOBOTAN BARU (Berbasis Data Iklim Terkini):
-// 40% Prioritas Air Tanam + 40% Air Generatif + 20% Toleransi Panen
 var nilaiTotal = (nilaiTanam * 0.40) + (nilaiGen * 0.40) + (nilaiPanen * 0.20);
 
-// Penalti dinamis HANYA JIKA bulan tersebut secara data riil (ENSO/IOD) memang kering
+/* ========================================================
+   PENALTI AGRONOMI: SYARAT MUTLAK AIR BAJAK/GARU
+======================================================== */
+// Jika bulan pengolahan (sebelum tanam) belum ada hujan (< 35), tanah keras & traktor tidak bisa turun.
+if (skorOlah < 35) {
+    nilaiTotal -= (35 - skorOlah) * 3; // Penalti sangat berat agar jadwal tergeser ke bulan berikutnya!
+}
+
+// Penalti jika saat tanam dan masa vegetatif tiba-tiba kering
 if (skorTanam < 30) nilaiTotal -= (30 - skorTanam) * 1.5;
 if (skorVeg1 < 30) nilaiTotal -= (30 - skorVeg1) * 1.5;
 /* ========================================================
