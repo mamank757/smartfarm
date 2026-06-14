@@ -51,7 +51,7 @@
 (function () {
     'use strict';
 
-    var WARNA = '#06b6d4';
+    var WARNA = '#3b82f6';
 
     /**
      * [FIX KRITIS] Implementasi mandiri pengganti window._jtoResetState
