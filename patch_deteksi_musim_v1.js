@@ -326,7 +326,7 @@
     /* =========================================================
        FUNGSI UTAMA
     ========================================================= */
-    function rekomendasiWindowTanamV3(skorBulan, rawZOM, zona, ensoVal = 0, iodVal = 0) {
+    function rekomendasiWindowTanamV3(skorBulan, rawZOM, zona) {
         var now           = new Date();
         var tahunSekarang = now.getFullYear();
 
