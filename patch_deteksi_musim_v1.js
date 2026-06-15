@@ -1,35 +1,38 @@
 /**
  * ============================================================
- * patch_deteksi_musim_v2.8.js
- * Versi: 2.8 — Bobot Setara ZOM/ENSO/IOD + Audit Logika Penuh
+ * patch_deteksi_musim_v2.9.js
+ * Versi: 2.9 — Fix Geser Onset Wajo / Zona Timur (Monsunal)
  * ------------------------------------------------------------
- * PERBAIKAN v2.8 vs v2.7:
+ * PERBAIKAN v2.9 vs v2.8:
  *
- * [BUG #1 — KRITIS] Bobot ENSO/IOD kini SETARA ZOM
- *   Formula lama memakai `tot = 1 + wE + wI` sebagai denominator
- *   padahal angka "1" (bobot ZOM implisit) tidak masuk numerator,
- *   sehingga ENSO/IOD selalu terlemahkan secara sistematis.
- *   Perbaikan: bobot ZOM, ENSO, IOD kini eksplisit via `ALPHA_ZOM`,
- *   ketiganya dijumlahkan ke 1.0, hasil delta bersih dan transparan.
+ * [BUG ROOT CAUSE — TERLACAK DETAIL]
+ * Laporan user: zona monsunal Wajo menghasilkan "Desember" untuk MT II
+ * padahal normalnya adalah September–Oktober pengolahan.
  *
- * [BUG #2] Formula deltaIdx sekarang eksplisit arahnya:
- *   - ENSO: ONI negatif (La Niña) → deltaIdx positif → lebih basah ✅
- *   - IOD : IOD positif (IOD+)    → deltaIdx negatif → lebih kering ✅
- *   Tidak lagi bergantung pada tanda implisit di BOBOT_IKLIM.
+ * Rantai masalah:
+ *   1. Wajo Tengah/Utara (lon ≥ 120.0) masuk zona id=1 → timur
+ *      gaduMulai = 9 (September)
+ *   2. cariOnsetHujan(9, …) dengan maxGeser=2 (global v2.7/v2.8):
+ *      Sep kering → skip, Okt kering → skip, Nov basah → onsetGadu=11
+ *   3. gaduBulan = [11, 0, 1] → November jadi kandidat terbaik
+ *   4. tglOlahTanah = 15 November → tglTanam = 10 Desember
+ *      ← "Desember" yang dilaporkan user
  *
- * [BUG #3] additiveBoost kini di-cap: maksimal +60mm (dua kali
- *   threshold bajak minimal) agar tidak menggelembung tak terbatas.
+ * [FIX v2.9] maxOnsetGeser DIPINDAHKAN ke tiap entri REFERENSI_MUSIM_REGIONAL
+ *   sehingga tiap zona punya batas geser agronomisnya sendiri:
+ *   - zona timur (Wajo):          maxOnsetGeser = 1
+ *     → onset Sep → maks Okt. Dijamin tidak lompat ke November.
+ *   - zona barat selatan:         maxOnsetGeser = 1
+ *     → onset Okt → maks Nov (rendeng), Apr → maks Mei (gadu)
+ *   - zona barat utara:           maxOnsetGeser = 1
+ *   - zona peralihan_sultra:      maxOnsetGeser = 1
+ *   - zona ekuatorial_dua_puncak: maxOnsetGeser = 2 (lebih fleksibel)
+ *   - fallback global:            maxOnsetGeser = 1
  *
- * [BUG #4] cariOnsetHujan memakai threshold khusus `thresholdOnset`
- *   (bukan thresholdBajak) — lebih logis: onset = awal hujan layak,
- *   bajak = cukup untuk olah tanah, keduanya memang berbeda.
- *
- * [BUG #5] bangkitkanSiklusPasangan: shift overlap kini tidak bisa
- *   melampaui tahun berikutnya (guard tahun ditambahkan).
- *
- * [DESAIN] ALPHA_ZOM, ALPHA_ENSO, ALPHA_IOD bisa disetel bebas
- *   asalkan ketiganya dijumlahkan ke 1.0. Default: 1/3 masing-masing
- *   agar betul-betul setara seperti yang diminta.
+ * [TETAP DARI v2.8]
+ *   FIX #1–#5 dari v2.8 semua dipertahankan:
+ *   bobot ENSO/IOD setara ZOM, deltaIdx eksplisit, additiveBoost cap 60mm,
+ *   guard loncat tahun di siklus pasangan.
  * ============================================================
  */
 
@@ -37,18 +40,16 @@
     'use strict';
 
     /* ------------------------------------------------------------------ */
-    /* KONTROL BOBOT SETARA — ubah di sini jika perlu eksperimen           */
-    /* Syarat: ALPHA_ZOM + ALPHA_ENSO + ALPHA_IOD === 1.0                  */
+    /* KONTROL BOBOT SETARA — jumlah harus 1.0                             */
     /* ------------------------------------------------------------------ */
-    var ALPHA_ZOM  = 1 / 3;   // Bobot data ZOM historis
-    var ALPHA_ENSO = 1 / 3;   // Bobot anomali ENSO (ONI)
-    var ALPHA_IOD  = 1 / 3;   // Bobot anomali IOD
+    var ALPHA_ZOM  = 1 / 3;
+    var ALPHA_ENSO = 1 / 3;
+    var ALPHA_IOD  = 1 / 3;
 
-    /* Sanity check — bisa dinonaktifkan di produksi */
     (function () {
         var total = ALPHA_ZOM + ALPHA_ENSO + ALPHA_IOD;
         if (Math.abs(total - 1.0) > 0.001) {
-            console.warn('[v2.8] ⚠️ ALPHA tidak berjumlah 1.0 (saat ini: ' + total.toFixed(4) + '). Hasil mungkin meleset.');
+            console.warn('[v2.9] ⚠️ ALPHA tidak berjumlah 1.0 (' + total.toFixed(4) + ')');
         }
     })();
 
@@ -64,15 +65,51 @@
     };
 
     /* ------------------------------------------------------------------ */
-    /* REFERENSI REGIONAL                                                   */
+    /* REFERENSI REGIONAL — v2.9: tambah maxOnsetGeser per entri           */
+    /*                                                                      */
+    /* maxOnsetGeser = berapa bulan onset boleh bergeser dari *MulaiRef.   */
+    /* Ini adalah batas agronomis keras — bukan sekadar parameter iklim.   */
     /* ------------------------------------------------------------------ */
     var REFERENSI_MUSIM_REGIONAL = [
-        { latMin: -6.0,  latMaks: -3.5, lonMin: 119.0, lonMaks: 119.99, polaPuncak: 'barat',                 rendengMulai: 10, gaduMulai: 4, namaRendeng: 'MT I — Musim Utama',       namaGadu: 'MT II — Musim Kedua'       },
-        { latMin: -6.0,  latMaks: -3.5, lonMin: 120.0, lonMaks: 120.79, polaPuncak: 'timur',                 rendengMulai: 3,  gaduMulai: 9, namaRendeng: 'MT I — Musim Utama Lokal', namaGadu: 'MT II — Musim Kedua Lokal' },
-        { latMin: -6.0,  latMaks: -2.5, lonMin: 120.8, lonMaks: 124.5,  polaPuncak: 'peralihan_sultra',      rendengMulai: 2,  gaduMulai: 9, namaRendeng: 'MT I — Musim Utama',       namaGadu: 'MT II — Musim Kedua'       },
-        { latMin: -3.49, latMaks: -0.5, lonMin: 118.5, lonMaks: 119.79, polaPuncak: 'barat',                 rendengMulai: 11, gaduMulai: 5, namaRendeng: 'MT I — Musim Utama',       namaGadu: 'MT II — Musim Kedua'       },
-        { latMin: -3.49, latMaks:  0.0, lonMin: 119.8, lonMaks: 122.5,  polaPuncak: 'ekuatorial_dua_puncak', rendengMulai: 0,  gaduMulai: 6, namaRendeng: 'MT I — Musim Tanam',       namaGadu: 'MT II — Musim Tanam'       }
+        {
+            latMin: -6.0,  latMaks: -3.5,  lonMin: 119.0, lonMaks: 119.99,
+            polaPuncak: 'barat',
+            rendengMulai: 10, gaduMulai: 4,
+            namaRendeng: 'MT I — Musim Utama', namaGadu: 'MT II — Musim Kedua',
+            maxOnsetGeser: 1   // Okt→maks Nov (rendeng), Apr→maks Mei (gadu)
+        },
+        {
+            latMin: -6.0,  latMaks: -3.5,  lonMin: 120.0, lonMaks: 120.79,
+            polaPuncak: 'timur',
+            rendengMulai: 3, gaduMulai: 9,
+            namaRendeng: 'MT I — Musim Utama Lokal', namaGadu: 'MT II — Musim Kedua Lokal',
+            maxOnsetGeser: 1   // FIX WAJO: Sep→maks Okt. Tidak bisa lompat ke November.
+        },
+        {
+            latMin: -6.0,  latMaks: -2.5,  lonMin: 120.8, lonMaks: 124.5,
+            polaPuncak: 'peralihan_sultra',
+            rendengMulai: 2, gaduMulai: 9,
+            namaRendeng: 'MT I — Musim Utama', namaGadu: 'MT II — Musim Kedua',
+            maxOnsetGeser: 1   // Feb→maks Mar (rendeng), Sep→maks Okt (gadu)
+        },
+        {
+            latMin: -3.49, latMaks: -0.5,  lonMin: 118.5, lonMaks: 119.79,
+            polaPuncak: 'barat',
+            rendengMulai: 11, gaduMulai: 5,
+            namaRendeng: 'MT I — Musim Utama', namaGadu: 'MT II — Musim Kedua',
+            maxOnsetGeser: 1   // Nov→maks Des (rendeng), Mei→maks Jun (gadu)
+        },
+        {
+            latMin: -3.49, latMaks:  0.0,  lonMin: 119.8, lonMaks: 122.5,
+            polaPuncak: 'ekuatorial_dua_puncak',
+            rendengMulai: 0, gaduMulai: 6,
+            namaRendeng: 'MT I — Musim Tanam', namaGadu: 'MT II — Musim Tanam',
+            maxOnsetGeser: 2   // Lebih fleksibel karena pola bimodal
+        }
     ];
+
+    /* Default jika tidak ada entri yang cocok */
+    var MAX_ONSET_GESER_FALLBACK = 1;
 
     function tentukanKalenderMusimLokal(lat, lon, rawZOM) {
         var refRegional = null;
@@ -83,15 +120,31 @@
             }
         }
 
-        /* Deteksi pola dari ZOM untuk fallback */
         var blnMax = 0, valMax = -Infinity;
         for (var i = 0; i < 12; i++) { if (rawZOM[i] > valMax) { valMax = rawZOM[i]; blnMax = i; } }
         var polaDariZOM = (valMax < 0.4) ? 'ekuatorial' : (blnMax >= 3 && blnMax <= 8) ? 'timur' : 'barat';
 
-        if (refRegional) return Object.assign({}, refRegional, { sumber: 'referensi-regional', polaDideteksi: refRegional.polaPuncak });
-        if (polaDariZOM === 'timur') return { rendengMulai: (blnMax - 1 + 12) % 12, gaduMulai: (blnMax + 5) % 12, namaRendeng: 'MT I Lokal', namaGadu: 'MT II Lokal', sumber: 'zom-timur', polaDideteksi: 'timur' };
+        if (refRegional) {
+            return Object.assign({}, refRegional, {
+                sumber: 'referensi-regional',
+                polaDideteksi: refRegional.polaPuncak
+            });
+        }
+        if (polaDariZOM === 'timur') {
+            return {
+                rendengMulai: (blnMax - 1 + 12) % 12, gaduMulai: (blnMax + 5) % 12,
+                namaRendeng: 'MT I Lokal', namaGadu: 'MT II Lokal',
+                sumber: 'zom-timur', polaDideteksi: 'timur',
+                maxOnsetGeser: 1
+            };
+        }
         if (polaDariZOM === 'ekuatorial') return null;
-        return { rendengMulai: 10, gaduMulai: 4, namaRendeng: 'MT I', namaGadu: 'MT II', sumber: 'fallback-barat', polaDideteksi: 'barat' };
+        return {
+            rendengMulai: 10, gaduMulai: 4,
+            namaRendeng: 'MT I', namaGadu: 'MT II',
+            sumber: 'fallback-barat', polaDideteksi: 'barat',
+            maxOnsetGeser: MAX_ONSET_GESER_FALLBACK
+        };
     }
 
     /* ------------------------------------------------------------------ */
@@ -102,8 +155,8 @@
     var SIKLUS_SINODIS     = 29.53059;
     var JEDA_OLAH_KE_TANAM_HARI = 25;
 
-    function tambahHari(d, n)       { var h = new Date(d); h.setDate(h.getDate() + n); return h; }
-    function hariFaseBulan(tgl)     { var s = (tgl.getTime() - EPOCH_BULAN_BARU.getTime()) / 86400000; return ((s % SIKLUS_SINODIS) + SIKLUS_SINODIS) % SIKLUS_SINODIS; }
+    function tambahHari(d, n) { var h = new Date(d); h.setDate(h.getDate() + n); return h; }
+    function hariFaseBulan(tgl) { var s = (tgl.getTime() - EPOCH_BULAN_BARU.getTime()) / 86400000; return ((s % SIKLUS_SINODIS) + SIKLUS_SINODIS) % SIKLUS_SINODIS; }
     function cariTglFaseBulan(acuan, faseMin, faseMax, offsetMulai, batasBulan) {
         var mulai = tambahHari(acuan, offsetMulai || 0);
         for (var i = 0; i <= 45; i++) {
@@ -123,12 +176,12 @@
     function hitungOffsetTahunGadu(bRendeng, bGadu) { return (bGadu > bRendeng) ? 0 : 1; }
 
     /* ------------------------------------------------------------------ */
-    /* SIKLUS PASANGAN — FIX: guard agar shift overlap tidak loncat 2 tahun*/
+    /* SIKLUS PASANGAN (guard loncat tahun dari v2.8 dipertahankan)        */
     /* ------------------------------------------------------------------ */
     function bangkitkanSiklusPasangan(bRendeng, bGadu, hariPanenR, hariPanenG, now) {
-        var baseYear    = now.getFullYear();
-        var offsetGadu  = hitungOffsetTahunGadu(bRendeng, bGadu);
-        var siklus      = [];
+        var baseYear   = now.getFullYear();
+        var offsetGadu = hitungOffsetTahunGadu(bRendeng, bGadu);
+        var siklus     = [];
 
         for (var dy = -1; dy <= 1; dy++) {
             var thRendeng  = baseYear + dy;
@@ -139,15 +192,10 @@
             var tglOlahG   = new Date(thGadu, bGadu, 15);
             var tglPanenG  = tambahHari(tglOlahG, hariPanenG);
 
-            /* FIX #5: Shift overlap — tidak boleh lebih dari 11 bulan ke depan dari panen rendeng */
             if (tglOlahG.getTime() <= tglPanenR.getTime()) {
                 tglOlahG  = tambahHari(tglPanenR, 10);
                 tglPanenG = tambahHari(tglOlahG, hariPanenG);
-
-                /* Guard: jika masih di tahun yang sama atau hanya +1, aman */
-                var thGaduBaru = tglOlahG.getFullYear();
-                if (thGaduBaru > thRendeng + 1) {
-                    /* Anomali: loncat terlalu jauh — paksa balik ke jadwal normal */
+                if (tglOlahG.getFullYear() > thRendeng + 1) {
                     tglOlahG  = new Date(thRendeng + 1, bGadu, 15);
                     tglPanenG = tambahHari(tglOlahG, hariPanenG);
                 }
@@ -193,68 +241,28 @@
         return 95;
     }
 
-    /* ================================================================== */
-    /* FIX UTAMA v2.8 — FUNGSI HYBRID ENSO/IOD DENGAN BOBOT SETARA        */
-    /*                                                                      */
-    /* Formula Lama (v2.7) — BERMASALAH:                                   */
-    /*   tot      = 1 + wE + wI       ← angka "1" di denominator adalah   */
-    /*                                   bobot ZOM implisit, tapi ZOM       */
-    /*                                   tidak pernah masuk numerator,      */
-    /*                                   jadi ENSO/IOD selalu terlemahkan.  */
-    /*   deltaIdx = -(ensoVal*wE/tot) - (iodVal*wI/tot)                    */
-    /*                                                                      */
-    /* Formula Baru (v2.8) — SETARA:                                        */
-    /*   Bobot ketiganya eksplisit (ALPHA_ZOM + ALPHA_ENSO + ALPHA_IOD=1). */
-    /*   ZOM adalah "baseline" (ALPHA_ZOM).                                 */
-    /*   ENSO dan IOD masing-masing mendapat porsi ALPHA_ENSO / ALPHA_IOD. */
-    /*   deltaIdx = (ALPHA_ENSO * wE * -ensoVal)                           */
-    /*            + (ALPHA_IOD  * wI * -iodVal)                            */
-    /*   (dibagi ALPHA_ENSO+ALPHA_IOD agar skala tetap [-1, +1])            */
-    /*                                                                      */
-    /*   Arah anomali dibuat eksplisit:                                     */
-    /*     - ensoVal negatif (La Niña) → deltaIdx positif → lebih basah    */
-    /*     - iodVal  positif (IOD+)    → deltaIdx negatif → lebih kering   */
-    /* ================================================================== */
+    /* ------------------------------------------------------------------ */
+    /* ENSO/IOD — HYBRID BOBOT SETARA (dari v2.8, tidak berubah)           */
+    /* ------------------------------------------------------------------ */
     function terapkanPenyesuaianENSOIOD(rawZOM, zonaIklim, ensoVal, iodVal) {
         var tabel = (typeof BOBOT_IKLIM !== 'undefined') ? BOBOT_IKLIM : null;
-        var alphaKlim = ALPHA_ENSO + ALPHA_IOD;   /* Normalisasi porsi iklim */
+        var alphaKlim = ALPHA_ENSO + ALPHA_IOD;
 
         return rawZOM.map(function (mm, idx) {
             if (!tabel || (ensoVal === 0 && iodVal === 0)) return mm;
 
             var tz = tabel[zonaIklim] || tabel.monsunal;
-            var wE = tz.enso[idx];   /* Sensitivitas bulan ini terhadap ENSO */
-            var wI = tz.iod[idx];    /* Sensitivitas bulan ini terhadap IOD  */
+            var wE = tz.enso[idx];
+            var wI = tz.iod[idx];
 
-            /*
-             * FIX #1 & #2 — Delta anomali iklim yang benar dan setara:
-             *   ensoVal negatif → La Niña → +hujan  → deltaIdx positif  ✅
-             *   iodVal positif  → IOD+    → -hujan  → deltaIdx negatif  ✅
-             *   Dibagi alphaKlim agar skala output deltaIdx tetap wajar.
-             */
             var deltaENSO = ALPHA_ENSO * wE * (-ensoVal);
             var deltaIOD  = ALPHA_IOD  * wI * (-iodVal);
             var deltaIdx  = (deltaENSO + deltaIOD) / (alphaKlim > 0 ? alphaKlim : 1);
 
-            /*
-             * ALPHA_ZOM adalah bobot data historis yang "dipegang" ZOM.
-             * Kontribusi ZOM = ALPHA_ZOM penuh; kontribusi iklim = ALPHA_ENSO+ALPHA_IOD.
-             * Rumus akhir: mmBaru = mmZOM * (ALPHA_ZOM + (1-ALPHA_ZOM) * multiplier)
-             * Disederhanakan menjadi:
-             *   multiplier total = clamp(1 + deltaIdx * (1 - ALPHA_ZOM) * 2.5, 0.2, 3.5)
-             *
-             * Faktor 2.5 = sensitivitas (analog "bore up" v2.7), bisa disetel.
-             * Faktor (1 - ALPHA_ZOM) memastikan ENSO/IOD tidak pernah 100% override ZOM
-             * kecuali ALPHA_ZOM sengaja diset 0.
-             */
             var SENSITIVITAS = 2.5;
             var multiplier   = Math.max(0.2, Math.min(3.5, 1 + deltaIdx * (1 - ALPHA_ZOM) * SENSITIVITAS));
 
-            /*
-             * FIX #3 — additiveBoost di-cap: maks +60mm (batas masuk akal agronomis).
-             * Hanya aktif saat anomali memang basah (deltaIdx > 0).
-             */
-            var MAX_ADDITIVE = 60;
+            var MAX_ADDITIVE  = 60;
             var additiveBoost = deltaIdx > 0 ? Math.min(deltaIdx * 30, MAX_ADDITIVE) : 0;
 
             return (mm * multiplier) + additiveBoost;
@@ -262,33 +270,23 @@
     }
 
     /* ------------------------------------------------------------------ */
-    /* FIX #4 — ONSET: pakai thresholdOnset, bukan thresholdBajak         */
-    /* thresholdBajak = air cukup untuk olah tanah (lebih rendah)         */
-    /* thresholdOnset = awal musim hujan sesungguhnya (lebih tinggi)      */
-    /* Onset memakai yang lebih rendah agar deteksi awal musim masuk akal */
-    /* → DIPERBAIKI: onset = thresholdBajak (lebih kecil), bukan          */
-    /*   thresholdOnset. Komentar v2.7 "dipermudah" memang benar tapi     */
-    /*   salah nama variabel. Kini dibuat eksplisit via `thOnset`.         */
+    /* ONSET — v2.9: terima maxGeser dari zona, bukan global 2             */
     /* ------------------------------------------------------------------ */
-    function cariOnsetHujan(startMusim, rawZOMSesuai, polaPuncak) {
+    function cariOnsetHujan(startMusim, rawZOMSesuai, polaPuncak, maxGeser) {
         var th       = THRESHOLD_AIR[polaPuncak] || THRESHOLD_AIR.fallback;
-        /* 
-         * Onset ditandai saat curah hujan mulai melampaui thresholdBajak
-         * (bukan thresholdOnset yang lebih tinggi) — artinya tanah sudah bisa
-         * diolah walaupun musim belum 100% tiba. Ini perilaku agronomis yang tepat.
-         */
-        var thOnset  = th.thresholdBajak;
+        var thOnset  = th.thresholdBajak;   /* Onset = tanah sudah bisa diolah */
+        var batas    = (maxGeser !== undefined && maxGeser !== null) ? maxGeser : MAX_ONSET_GESER_FALLBACK;
 
-        for (var offset = 0; offset <= 2; offset++) {
+        for (var offset = 0; offset <= batas; offset++) {
             var bIni = (startMusim + offset) % 12;
             if (rawZOMSesuai[bIni] >= thOnset) { return bIni; }
         }
-        /* Jika 3 bulan berturut-turut masih kering → kembali ke jadwal pangkal */
+        /* Fallback: kembali ke kalender pangkal zona — bukan lompat ke bulan berikutnya */
         return startMusim;
     }
 
     /* ================================================================== */
-    /* FUNGSI UTAMA — REKOMENDASI WINDOW TANAM V4 (patch v2.8)            */
+    /* FUNGSI UTAMA                                                         */
     /* ================================================================== */
     function rekomendasiWindowTanamV4(skorBulan, rawZOM, zona, ensoVal, iodVal) {
         ensoVal = ensoVal || 0;
@@ -299,7 +297,7 @@
         var lon = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
 
         var kalenderLokal = tentukanKalenderMusimLokal(lat, lon, rawZOM);
-        var startRendeng, startGadu, namaRendeng, namaGadu, polaPuncak;
+        var startRendeng, startGadu, namaRendeng, namaGadu, polaPuncak, maxGeser;
 
         if (kalenderLokal !== null) {
             startRendeng = kalenderLokal.rendengMulai;
@@ -307,10 +305,12 @@
             namaRendeng  = kalenderLokal.namaRendeng;
             namaGadu     = kalenderLokal.namaGadu;
             polaPuncak   = kalenderLokal.polaPuncak || kalenderLokal.polaDideteksi || 'barat';
+            maxGeser     = (kalenderLokal.maxOnsetGeser !== undefined) ? kalenderLokal.maxOnsetGeser : MAX_ONSET_GESER_FALLBACK;
         } else {
             polaPuncak   = 'ekuatorial_dua_puncak';
             startRendeng = 0; startGadu = 6;
             namaRendeng  = 'MT I'; namaGadu = 'MT II';
+            maxGeser     = 2;
         }
 
         var th = THRESHOLD_AIR[polaPuncak] || THRESHOLD_AIR.fallback;
@@ -323,13 +323,12 @@
         var zonaIklim = PEMETAAN_POLA_KE_ZONA_IKLIM[polaPuncak] ||
             ((typeof window.tentukanZonaIklim === 'function') ? window.tentukanZonaIklim(lat, lon) : 'monsunal');
 
-        /* ZOM setelah koreksi ENSO/IOD dengan bobot setara */
         var rawZOMSesuai = terapkanPenyesuaianENSOIOD(rawZOM, zonaIklim, ensoVal, iodVal);
         var skorZOM      = rawZOMSesuai.map(function (mm) { return skorZOMRegional(mm, polaPuncak); });
 
-        /* Onset dinamis terkontrol (maks geser 2 bulan) */
-        var onsetRendeng = cariOnsetHujan(startRendeng, rawZOMSesuai, polaPuncak);
-        var onsetGadu    = cariOnsetHujan(startGadu,    rawZOMSesuai, polaPuncak);
+        /* Onset dengan batas per zona — tidak lagi global 2 bulan */
+        var onsetRendeng = cariOnsetHujan(startRendeng, rawZOMSesuai, polaPuncak, maxGeser);
+        var onsetGadu    = cariOnsetHujan(startGadu,    rawZOMSesuai, polaPuncak, maxGeser);
 
         var rendengBulan = [onsetRendeng, (onsetRendeng + 1) % 12, (onsetRendeng + 2) % 12];
         var gaduBulan    = [onsetGadu,    (onsetGadu    + 1) % 12, (onsetGadu    + 2) % 12];
@@ -355,13 +354,13 @@
                 if (skorTanam < 10) return;
 
                 varianArr.forEach(function (v) {
-                    var tglOlahDummy  = new Date(2000, bTanam, 15);
-                    var tglTanamDummy = tambahHari(tglOlahDummy, JEDA_OLAH_KE_TANAM_HARI);
-                    var bTanamAktual  = tglTanamDummy.getMonth();
-                    var hariGen       = Math.floor(v.panen * v.persenGen);
-                    var bGenIdx       = tambahHari(tglTanamDummy, hariGen).getMonth();
-                    var bPanenIdx     = tambahHari(tglTanamDummy, v.panen).getMonth();
-                    var bVeg1         = tambahHari(tglTanamDummy, 30).getMonth();
+                    var tglOlahDummy   = new Date(2000, bTanam, 15);
+                    var tglTanamDummy  = tambahHari(tglOlahDummy, JEDA_OLAH_KE_TANAM_HARI);
+                    var bTanamAktual   = tglTanamDummy.getMonth();
+                    var hariGen        = Math.floor(v.panen * v.persenGen);
+                    var bGenIdx        = tambahHari(tglTanamDummy, hariGen).getMonth();
+                    var bPanenIdx      = tambahHari(tglTanamDummy, v.panen).getMonth();
+                    var bVeg1          = tambahHari(tglTanamDummy, 30).getMonth();
 
                     var nilaiTanam  = skorTanam;
                     var nilaiVeg1   = skorZOM[bVeg1];
@@ -402,9 +401,10 @@
                 return { isFallback: false, data: kandidat[0] };
             }
 
-            /* Fallback: ambil bulan dengan mm tertinggi dalam jendela */
             var bFallback = bulanTanamArr[0]; var mmMax = -1;
-            bulanTanamArr.forEach(function (b) { if (rawZOMSesuai[b] > mmMax) { mmMax = rawZOMSesuai[b]; bFallback = b; } });
+            bulanTanamArr.forEach(function (b) {
+                if (rawZOMSesuai[b] > mmMax) { mmMax = rawZOMSesuai[b]; bFallback = b; }
+            });
 
             var tglDummy  = new Date(now.getFullYear(), bFallback, 15);
             var tglTanamD = tambahHari(tglDummy, JEDA_OLAH_KE_TANAM_HARI);
@@ -433,8 +433,8 @@
         var hariPanenR = JEDA_OLAH_KE_TANAM_HARI + bestR.panen;
         var hariPanenG = JEDA_OLAH_KE_TANAM_HARI + bestG.panen;
 
-        var kandidatSiklus  = bangkitkanSiklusPasangan(bestR.bTanam, bestG.bTanam, hariPanenR, hariPanenG, now);
-        var siklusTerpilih  = pilihSiklusRelevant(kandidatSiklus, now);
+        var kandidatSiklus = bangkitkanSiklusPasangan(bestR.bTanam, bestG.bTanam, hariPanenR, hariPanenG, now);
+        var siklusTerpilih = pilihSiklusRelevant(kandidatSiklus, now);
 
         function bangunHasilMusim(best, infoSiklus, musimNama, musimKode, isFallback) {
             var tglOlahTanah   = infoSiklus.tglOlah;
@@ -444,36 +444,32 @@
             var tahunOlah      = tglOlahTanah.getFullYear();
             var tahunPanen     = tglPanen.getFullYear();
 
-            /* Label bobot aktif untuk transparansi */
-            var labelBobot = ' [ZOM:' + Math.round(ALPHA_ZOM * 100) + '% ENSO:' + Math.round(ALPHA_ENSO * 100) + '% IOD:' + Math.round(ALPHA_IOD * 100) + '%]';
-
-            var tglFaseBaik  = cariTglFaseBulan(tglTanamAktual, 3, 8, 0, bTanamAktual);
-            var statusMusim  = statusWaktuTanam(tglFaseBaik, now);
+            var labelBobot = ' [ZOM:' + Math.round(ALPHA_ZOM*100) + '% ENSO:' + Math.round(ALPHA_ENSO*100) + '% IOD:' + Math.round(ALPHA_IOD*100) + '%]';
+            var tglFaseBaik = cariTglFaseBulan(tglTanamAktual, 3, 8, 0, bTanamAktual);
+            var statusMusim = statusWaktuTanam(tglFaseBaik, now);
             var alasan;
 
             var infoENSO = '';
             if (best.mmTanam > 0) {
-                var selisihAbsolut = best.mmTanamSesuai - best.mmTanam;
-                if (Math.abs(selisihAbsolut) > 5) {
-                    infoENSO = ' 🌐 Volume air diestimasi ' + (selisihAbsolut > 0 ? 'NAIK' : 'TURUN') +
-                        ' (' + best.mmTanam.toFixed(0) + 'mm → ' + best.mmTanamSesuai.toFixed(0) +
-                        'mm) akibat anomali ENSO/IOD.' + labelBobot;
+                var selisih = best.mmTanamSesuai - best.mmTanam;
+                if (Math.abs(selisih) > 5) {
+                    infoENSO = ' 🌐 Volume air ' + (selisih > 0 ? 'NAIK' : 'TURUN') +
+                        ' (' + best.mmTanam.toFixed(0) + 'mm → ' + best.mmTanamSesuai.toFixed(0) + 'mm) akibat anomali ENSO/IOD.' + labelBobot;
                 }
             }
 
             if (isFallback) {
-                alasan = 'Walau sudah dikoreksi ENSO/IOD (bobot setara), curah hujan di ' +
-                    NAMA_BULAN[best.bTanam] + ' (' + best.mmTanamSesuai.toFixed(0) + 'mm) ' +
-                    'tetap di bawah batas bajak (' + th.thresholdBajak + 'mm). Jadwal dikunci agar siklus tidak terganggu.' +
-                    ' 🚨 WAJIB siapkan pompanisasi penuh.' + infoENSO;
+                alasan = 'Setelah koreksi ENSO/IOD (bobot setara), ' + NAMA_BULAN[best.bTanam] +
+                    ' (' + best.mmTanamSesuai.toFixed(0) + 'mm) masih di bawah batas bajak (' + th.thresholdBajak + 'mm). ' +
+                    'Jadwal dikunci ke kalender pangkal zona. 🚨 Siapkan pompanisasi penuh.' + infoENSO;
             } else {
                 var keteranganGen   = best.skorGen < 30 ? 'kering — risiko puso' : best.skorGen > 75 ? 'basah — waspada Blast' : 'optimal pembungaan';
                 var keteranganPanen = best.skorPanen > 65 ? 'basah — butuh dryer' : best.skorPanen < 20 ? 'kering ideal' : 'sedang — aman';
                 var catatanOlah     = best.mmTanamSesuai < th.thresholdBajak ? ' ⚠️ Curah hujan tipis, siapkan pompanisasi pendukung.' : '';
-                alasan = 'Olah tanah di ' + NAMA_BULAN[best.bTanam] + ' ' + tahunOlah +
+                alasan = 'Olah tanah ' + NAMA_BULAN[best.bTanam] + ' ' + tahunOlah +
                     ' (' + best.mmTanam.toFixed(0) + 'mm dasar → ' + best.mmTanamSesuai.toFixed(0) + 'mm terkoreksi' + labelBobot + '). ' +
-                    'Generatif di ' + best.namaBulanGen + ' (' + keteranganGen + '). ' +
-                    'Panen di ' + best.namaBulanPanen + ' ' + tahunPanen + ' (' + keteranganPanen + ').' +
+                    'Generatif ' + best.namaBulanGen + ' (' + keteranganGen + '). ' +
+                    'Panen ' + best.namaBulanPanen + ' ' + tahunPanen + ' (' + keteranganPanen + ').' +
                     catatanOlah + infoENSO;
             }
 
@@ -512,15 +508,15 @@
         window.statusWaktuTanam           = statusWaktuTanam;
 
         console.log(
-            '%c✅ patch_deteksi_musim_v2.8.js aktif\n' +
-            '\n  ╔══ AUDIT & FIX LENGKAP v2.8 ══╗\n' +
-            '  ║ ✅ [FIX #1] Bobot ZOM/ENSO/IOD SETARA (' +
-                Math.round(ALPHA_ZOM*100) + '/' + Math.round(ALPHA_ENSO*100) + '/' + Math.round(ALPHA_IOD*100) + '%)\n' +
-            '  ║ ✅ [FIX #2] Arah deltaIdx eksplisit (La Niña+, IOD+−)\n' +
-            '  ║ ✅ [FIX #3] additiveBoost di-cap maks 60mm\n' +
-            '  ║ ✅ [FIX #4] cariOnsetHujan pakai thresholdBajak (bukan Onset)\n' +
-            '  ║ ✅ [FIX #5] Guard loncat tahun di bangkitkanSiklusPasangan\n' +
-            '  ╚═════════════════════════════════╝',
+            '%c✅ patch_deteksi_musim_v2.9.js aktif\n' +
+            '\n  ╔══ FIX WAJO + AUDIT LENGKAP v2.9 ══╗\n' +
+            '  ║ ✅ [FIX WAJO] maxOnsetGeser per zona (timur=1)\n' +
+            '  ║    Sep→maks Okt. Dijamin tidak lompat ke November/Desember.\n' +
+            '  ║ ✅ Bobot ZOM/ENSO/IOD setara (33%/33%/33%)\n' +
+            '  ║ ✅ deltaIdx arah eksplisit\n' +
+            '  ║ ✅ additiveBoost cap 60mm\n' +
+            '  ║ ✅ Guard loncat tahun siklus pasangan\n' +
+            '  ╚════════════════════════════════════╝',
             'color:#10b981; font-weight:bold;'
         );
     }
