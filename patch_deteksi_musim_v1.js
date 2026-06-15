@@ -42,9 +42,9 @@
     /* ------------------------------------------------------------------ */
     /* KONTROL BOBOT SETARA — jumlah harus 1.0                             */
     /* ------------------------------------------------------------------ */
-    var ALPHA_ZOM  = 1 / 3;
-    var ALPHA_ENSO = 1 / 3;
-    var ALPHA_IOD  = 1 / 3;
+    var ALPHA_ZOM  = 2 / 6;
+    var ALPHA_ENSO = 3 / 6;
+    var ALPHA_IOD  = 1 / 6;
 
     (function () {
         var total = ALPHA_ZOM + ALPHA_ENSO + ALPHA_IOD;
