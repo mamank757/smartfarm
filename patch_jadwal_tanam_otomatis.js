@@ -689,8 +689,7 @@
                   '<div style="font-size:12px;color:#cbd5e1;">' + k.risiko.catatan + '</div>' +
               '</div>';
 
-        return '<div style="background:#1b273a;border:0.5px solid ' + (kegLewat ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)') + ';border-radius:16px;margin-bottom:9px;overflow:hidden;opacity:' + (kegLewat ? '0.55' : '1') + ';">' +
-            '<div style="padding:12px 14px;display:flex;align-items:flex-start;gap:12px;cursor:pointer;border-left:3px solid ' + w + ';" onclick="window._jtoToggle(this)">' +
+        return '<div style="background:#1b273a;border:0.5px solid ' + (kegLewat ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)') + ';border-radius:16px;margin-bottom:9px;overflow:hidden;opacity:1;">' +            '<div style="padding:12px 14px;display:flex;align-items:flex-start;gap:12px;cursor:pointer;border-left:3px solid ' + w + ';" onclick="window._jtoToggle(this)">' +
                 '<div style="width:34px;height:34px;border-radius:50%;background:#111c2e;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">' + k.ikon + '</div>' +
                 '<div style="flex:1;min-width:0;">' +
                     '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
@@ -745,7 +744,7 @@
             var opacityMusim = '1';
             if (rek.isLewat) {
                 badgeMusim   = '<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;margin-left:10px;vertical-align:middle;white-space:nowrap;">📋 Blueprint</span>';
-                opacityMusim = '0.6';
+                opacityMusim = '1';
             } else if (rek.isBerjalan) {
                 badgeMusim   = '<span class="jto-aktif-badge" style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.4);margin-left:10px;vertical-align:middle;white-space:nowrap;">🟢 Aktif</span>';
             }
