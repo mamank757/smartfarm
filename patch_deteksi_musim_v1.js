@@ -512,7 +512,7 @@
             '\n  ╔══ FIX WAJO + AUDIT LENGKAP v2.9 ══╗\n' +
             '  ║ ✅ [FIX WAJO] maxOnsetGeser per zona (timur=1)\n' +
             '  ║    Sep→maks Okt. Dijamin tidak lompat ke November/Desember.\n' +
-            '  ║ ✅ Bobot ZOM/ENSO/IOD setara (33%/33%/33%)\n' +
+            '  ║ ✅ Bobot ZOM/ENSO/IOD setara (25%/50%/25%)\n' +
             '  ║ ✅ deltaIdx arah eksplisit\n' +
             '  ║ ✅ additiveBoost cap 60mm\n' +
             '  ║ ✅ Guard loncat tahun siklus pasangan\n' +
