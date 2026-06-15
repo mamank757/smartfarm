@@ -498,19 +498,20 @@
     /* ──────────────────────────────────────────────────────────
        BANGUN DAFTAR KEGIATAN (tidak berubah dari v3.7)
     ────────────────────────────────────────────────────────── */
-    function bangunKegiatan(tglTanam, varietas, skorBulan) {
+    function bangunKegiatan(rek, skorBulan) {
+        // Ekstrak data dari Otak v3.0
+        var tglTanam = rek.tglTanam;
+        var varietas = rek.varietas;
+        var tglOlah  = rek.tglOlahTanah; // Pakai jadwal bajak asli
+        var jt       = rek.jadwalTikus;  // Pakai jadwal tikus asli
+
         var of = {
             genjah: { benih:14, p1:7,  p2:28, p3:45, i1:20, i2:45, fung:55, panen:90  },
             sedang: { benih:21, p1:7,  p2:30, p3:55, i1:25, i2:55, fung:65, panen:110 },
             dalam:  { benih:28, p1:7,  p2:35, p3:65, i1:30, i2:65, fung:75, panen:125 }
         }[varietas] || { benih:21, p1:7, p2:30, p3:55, i1:25, i2:55, fung:65, panen:110 };
 
-        // PERBAIKAN TIMELINE AGRONOMI: Lahan utama dan bibit diproses paralel
         var tglBenih  = tambahHari(tglTanam, -of.benih);
-        var hariOlah  = 14; // Pengolahan lahan utama fix 2 minggu sebelum tanam
-        var tglOlah   = tambahHari(tglTanam, -hariOlah);
-        var tglTBS    = tambahHari(tglTanam, -7);
-        var tglTikusA = cariTglFaseBulan(tglTanam, 26, 29.5, -10, null);
         var tglP1     = tambahHari(tglTanam, of.p1);
         var tglP2     = tambahHari(tglTanam, of.p2);
         var tglP3     = tambahHari(tglTanam, of.p3);
@@ -518,6 +519,12 @@
         var tglI2     = tambahHari(tglTanam, of.i2);
         var tglFung   = tambahHari(tglTanam, of.fung);
         var tglPanen  = tambahHari(tglTanam, of.panen);
+
+        // Ambil sinkronisasi tanggal tikus v3.0, kasih fallback jika gagal
+        var tglGropyokM = jt ? jt.gropyokan.tglMulai : tambahHari(tglOlah, -14);
+        var tglGropyokS = jt ? jt.gropyokan.tglSelesai : tambahHari(tglOlah, -3);
+        var tglRacunM   = jt ? jt.umpanRacun.tglMulai : tambahHari(tglTanam, 1);
+        var tglRacunS   = jt ? jt.umpanRacun.tglSelesai : tambahHari(tglTanam, 21);
 
         [tglI1, tglI2].forEach(function (t, idx) {
             var f = hariFaseBulan(t);
@@ -532,7 +539,7 @@
         var daftar = [
             {
                 nama:'Pengolahan Lahan', ikon:'🚜', deskripsi:'Bajak, garu, pemerataan petakan',
-                tglMulai: tglOlah, tglSelesai: tambahHari(tglOlah, 7),
+                tglMulai: tglOlah, tglSelesai: tambahHari(tglOlah, 7), // Terkunci ke Olah Tanah asli
                 risiko: risikoOlah(sk(tglOlah)),
                 tips:[
                     'Olah lahan utama 14 hari sebelum tanam (biarkan gulma membusuk sementara bibit tumbuh di persemaian).',
@@ -550,8 +557,8 @@
             },
             {
                 nama:'Pasang TBS & Gropyokan', ikon:'🐀', deskripsi:'Trap Barrier System + gropyokan massal',
-                tglMulai: tglTBS, tglSelesai: tambahHari(tglTBS, 3),
-                risiko: risikoTikus(hariFaseBulan(tglTikusA)),
+                tglMulai: tglGropyokM, tglSelesai: tglGropyokS, // Otomatis mundur ke bulan bera!
+                risiko: risikoTikus(hariFaseBulan(tglGropyokM)),
                 tips:[
                     'Pasang TBS di sudut petakan — plastik setinggi 60 cm.',
                     'Gropyokan minimal 3 petani (efek pengusir massal).'
@@ -568,8 +575,8 @@
             },
             {
                 nama:'Umpan Racun Tikus', ikon:'☠️', deskripsi:'Rodentisida antikoagulan di liang aktif',
-                tglMulai: tglTikusA, tglSelesai: tambahHari(tglTikusA, 5),
-                risiko: risikoTikus(hariFaseBulan(tglTikusA)),
+                tglMulai: tglRacunM, tglSelesai: tglRacunS, // Otomatis maju ke HST kanopi terbuka!
+                risiko: risikoTikus(hariFaseBulan(tglRacunM)),
                 tips:[
                     'Gunakan Brodifacoum / Bromadiolon (antikoagulan).',
                     'Tempatkan dalam bait station di mulut liang.'
@@ -864,7 +871,7 @@ var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona, 
             var multiJadwal = rekomendasiArr.map(function(rek) {
                 return {
                     rekomendasi: rek,
-                    kegiatan: bangunKegiatan(rek.tglTanam, rek.varietas, skorBulan)
+                    kegiatan: bangunKegiatan(rek, skorBulan) // BENAR: Kirim seluruh objek rek!
                 };
             });
 
