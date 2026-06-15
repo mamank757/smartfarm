@@ -586,10 +586,11 @@
             /* Hitung jadwal tikus dari acuan BENAR:                        */
             /*   gropyokan & sanitasi → sebelum tglOlahTanah (lahan bera)  */
             /*   umpan racun & TBS    → awal HST sesudah tglTanam           */
-            var jadwalTikus = hitungJadwalTikus(tglOlahTanah, tglTanamAktual);
+            
 
             var labelBobot = ' [ZOM:' + Math.round(ALPHA_ZOM*100) + '% ENSO:' + Math.round(ALPHA_ENSO*100) + '% IOD:' + Math.round(ALPHA_IOD*100) + '%]';
             var tglFaseBaik = cariTglFaseBulan(tglTanamAktual, 3, 8, 0, bTanamAktual);
+            var jadwalTikus = hitungJadwalTikus(tglOlahTanah, tglTanamAktual);
             var statusMusim = statusWaktuTanam(tglFaseBaik, now);
             var alasan;
 
