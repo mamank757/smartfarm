@@ -58,7 +58,7 @@
     /* ------------------------------------------------------------------ */
     var THRESHOLD_AIR = {
         barat:                 { thresholdBajak: 70,  thresholdOnset: 90, thresholdLayak: 110 },
-        timur:                 { thresholdBajak: 40,  thresholdOnset: 60,  thresholdLayak: 80 },
+        timur:                 { thresholdBajak: 50,  thresholdOnset: 65,  thresholdLayak: 85 },
         peralihan_sultra:      { thresholdBajak: 50,  thresholdOnset: 70,  thresholdLayak: 90 },
         ekuatorial_dua_puncak: { thresholdBajak: 60,  thresholdOnset: 80,  thresholdLayak: 100 },
         fallback:              { thresholdBajak: 70,  thresholdOnset: 90, thresholdLayak: 110 }
