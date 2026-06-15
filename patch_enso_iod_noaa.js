@@ -204,7 +204,7 @@ async function getENSOViaOpenMeteo() {
     const promises = [];
     for (let i = 5; i >= 0; i--) {
         const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-        promises.push(getNOAASST(0, -145, d)); // Titik Nino3.4
+        promises.push(getNOAASST(0, -144.5, d)); // Titik Nino3.4
     }
     const hasil = await Promise.all(promises);
     const anomali = hasil.map(s => parseFloat(((s ?? BASELINE_NINO34) - BASELINE_NINO34).toFixed(2)));
