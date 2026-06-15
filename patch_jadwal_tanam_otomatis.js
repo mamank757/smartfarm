@@ -511,6 +511,9 @@
             dalam:  { benih:28, p1:7,  p2:35, p3:65, i1:30, i2:65, fung:75, panen:125 }
         }[varietas] || { benih:21, p1:7, p2:30, p3:55, i1:25, i2:55, fung:65, panen:110 };
 
+        // -------------------------------------------------------------
+        // VARIABEL TANGGAL KEGIATAN UMUM
+        // -------------------------------------------------------------
         var tglBenih  = tambahHari(tglTanam, -of.benih);
         var tglP1     = tambahHari(tglTanam, of.p1);
         var tglP2     = tambahHari(tglTanam, of.p2);
@@ -520,9 +523,18 @@
         var tglFung   = tambahHari(tglTanam, of.fung);
         var tglPanen  = tambahHari(tglTanam, of.panen);
 
-        // Ambil sinkronisasi tanggal tikus v3.0, kasih fallback jika gagal
+        // -------------------------------------------------------------
+        // SINKRONISASI TANGGAL TIKUS DARI "OTAK" v3.0
+        // -------------------------------------------------------------
+        // 1. Gropyokan & Sanitasi (Fase Bera / Pra-Olah)
         var tglGropyokM = jt ? jt.gropyokan.tglMulai : tambahHari(tglOlah, -14);
-        var tglGropyokS = jt ? jt.gropyokan.tglSelesai : tambahHari(tglOlah, -3);
+        var tglGropyokS = jt ? jt.sanitasiPematang.tglSelesai : tambahHari(tglOlah, -1);
+        
+        // 2. TBS (Dipasang saat tanam, dimonitor sampai vegetatif akhir)
+        var tglTBSM = jt ? jt.pasangTBS.tglMulai : tglTanam;
+        var tglTBSS = jt ? jt.monitorTBS.tglSelesai : tambahHari(tglTanam, 30);
+
+        // 3. Umpan Racun (Mulai H+1 Tanam sampai kanopi menutup)
         var tglRacunM   = jt ? jt.umpanRacun.tglMulai : tambahHari(tglTanam, 1);
         var tglRacunS   = jt ? jt.umpanRacun.tglSelesai : tambahHari(tglTanam, 21);
 
@@ -536,10 +548,22 @@
 
         function sk(tgl) { return skorBulan[tgl.getMonth()]; }
 
+        // -------------------------------------------------------------
+        // SUSUNAN KARTU UI BERDASARKAN URUTAN KRONOLOGIS AGRONOMI
+        // -------------------------------------------------------------
         var daftar = [
             {
+                nama:'Gropyokan & Sanitasi', ikon:'🐀', deskripsi:'Gropyokan massal & bersihkan pematang',
+                tglMulai: tglGropyokM, tglSelesai: tglGropyokS, 
+                risiko: risikoTikus(hariFaseBulan(tglGropyokM)),
+                tips:[
+                    'Lakukan saat lahan masih bera/kosong sebelum traktor turun.',
+                    'Bersihkan gulma pematang dan tutup lubang sarang tikus aktif.'
+                ]
+            },
+            {
                 nama:'Pengolahan Lahan', ikon:'🚜', deskripsi:'Bajak, garu, pemerataan petakan',
-                tglMulai: tglOlah, tglSelesai: tambahHari(tglOlah, 7), // Terkunci ke Olah Tanah asli
+                tglMulai: tglOlah, tglSelesai: tambahHari(tglOlah, 7), 
                 risiko: risikoOlah(sk(tglOlah)),
                 tips:[
                     'Olah lahan utama 14 hari sebelum tanam (biarkan gulma membusuk sementara bibit tumbuh di persemaian).',
@@ -556,15 +580,6 @@
                 ]
             },
             {
-                nama:'Pasang TBS & Gropyokan', ikon:'🐀', deskripsi:'Trap Barrier System + gropyokan massal',
-                tglMulai: tglGropyokM, tglSelesai: tglGropyokS, // Otomatis mundur ke bulan bera!
-                risiko: risikoTikus(hariFaseBulan(tglGropyokM)),
-                tips:[
-                    'Pasang TBS di sudut petakan — plastik setinggi 60 cm.',
-                    'Gropyokan minimal 3 petani (efek pengusir massal).'
-                ]
-            },
-            {
                 nama:'Tanam Pindah / Tabela', ikon:'🌾', deskripsi:'Penanaman bibit ke lahan utama',
                 tglMulai: tglTanam, tglSelesai: tambahHari(tglTanam, 3),
                 risiko: risikoTanam(sk(tglTanam)),
@@ -574,12 +589,21 @@
                 ]
             },
             {
+                nama:'Pasang & Monitor TBS', ikon:'🚧', deskripsi:'Trap Barrier System untuk tangkal tikus',
+                tglMulai: tglTBSM, tglSelesai: tglTBSS, 
+                risiko: risikoTikus(hariFaseBulan(tglTBSM)),
+                tips:[
+                    'Pasang TBS di sudut petakan (plastik setinggi 60 cm) bersamaan dengan waktu tanam.',
+                    'Periksa bubu perangkap setiap 3-5 hari.'
+                ]
+            },
+            {
                 nama:'Umpan Racun Tikus', ikon:'☠️', deskripsi:'Rodentisida antikoagulan di liang aktif',
-                tglMulai: tglRacunM, tglSelesai: tglRacunS, // Otomatis maju ke HST kanopi terbuka!
+                tglMulai: tglRacunM, tglSelesai: tglRacunS, 
                 risiko: risikoTikus(hariFaseBulan(tglRacunM)),
                 tips:[
                     'Gunakan Brodifacoum / Bromadiolon (antikoagulan).',
-                    'Tempatkan dalam bait station di mulut liang.'
+                    'Aman dilakukan karena kanopi padi belum menutup rapat.'
                 ]
             },
             {
@@ -646,7 +670,6 @@
                 ]
             }
         ];
-
         daftar.sort(function (a, b) { return a.tglMulai.getTime() - b.tglMulai.getTime(); });
         return daftar;
     }
