@@ -584,13 +584,17 @@
             var tahunPanen     = tglPanen.getFullYear();
 
             /* Hitung jadwal tikus dari acuan BENAR:                        */
-            /*   gropyokan & sanitasi → sebelum tglOlahTanah (lahan bera)  */
-            /*   umpan racun & TBS    → awal HST sesudah tglTanam           */
-            
+            /* gropyokan & sanitasi → sebelum tglOlahTanah (lahan bera)   */
+            /* umpan racun & TBS    → awal HST sesudah tglTanam           */
 
             var labelBobot = ' [ZOM:' + Math.round(ALPHA_ZOM*100) + '% ENSO:' + Math.round(ALPHA_ENSO*100) + '% IOD:' + Math.round(ALPHA_IOD*100) + '%]';
+            
+            // 1. Dapatkan tanggal tanam final (fase bulan)
             var tglFaseBaik = cariTglFaseBulan(tglTanamAktual, 3, 8, 0, bTanamAktual);
-            var jadwalTikus = hitungJadwalTikus(tglOlahTanah, tglTanamAktual);
+            
+            // 2. Masukkan tglFaseBaik ke dalam rumus tikus
+            var jadwalTikus = hitungJadwalTikus(tglOlahTanah, tglFaseBaik);
+            
             var statusMusim = statusWaktuTanam(tglFaseBaik, now);
             var alasan;
 
