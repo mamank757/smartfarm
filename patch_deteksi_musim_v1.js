@@ -1,62 +1,21 @@
 /**
  * ============================================================
  * patch_deteksi_musim_v3.0.js
- * Versi: 3.0 — Fix Alur Agronomi: Gropyokan & Umpan Racun Tikus
+ * Versi: 3.0.1 — Fix Tampilan Output Ramah Petani
  * ------------------------------------------------------------
- * PERBAIKAN v3.0 vs v2.9:
+ * PERBAIKAN v3.0.1 vs v3.0:
  *
- * [BUG ROOT CAUSE — LOGIKA AGRONOMI SALAH]
- * v2.9 (dan semua versi sebelumnya) tidak memiliki anchor fase
- * pengendalian tikus sama sekali. Seluruh rekomendasi pest
- * management hanya terikat ke tglTanam & tglPanen, sehingga:
- *   - Gropyokan dianggap bisa kapan saja → SALAH
- *   - Umpan racun ditempatkan pasca tanam → SALAH AGRONOMI
+ * [FIX TAMPILAN]
+ *   - Hilangkan label bobot teknis [ZOM:25% ENSO:50% IOD:25%]
+ *     dari kalimat alasan — tidak berguna bagi petani
+ *   - Hilangkan angka mm teknis (125mm → 111mm terkoreksi)
+ *     dari kalimat utama, cukup tampilkan status kondisi
+ *   - Format jadwal tikus diubah menjadi lebih ringkas,
+ *     hierarkis, dan mudah dibaca tanpa angka mm/bobot
+ *   - Kalimat alasan disederhanakan: fokus pada AKSI dan
+ *     WAKTU, bukan angka teknis
  *
- * [DASAR AGRONOMI — KENAPA INI PENTING]
- *
- *  GROPYOKAN (perburuan komunal):
- *   ✅ Optimal: lahan BERA / kosong sebelum olah tanah
- *      Alasan: tikus kehilangan sarang, terekspos di lahan terbuka,
- *      mudah diusir/dibunuh secara komunal lintas petani.
- *   ❌ Tidak efektif: setelah tanam — tanaman jadi tempat sembunyi.
- *   Waktu terbaik: H-14 s/d H-3 sebelum tglOlahTanah.
- *
- *  UMPAN RACUN TIKUS (rodentisida/fumigan sarang):
- *   ✅ Optimal: fase pra-tanam s/d awal vegetatif (0–21 HST)
- *      Alasan: populasi tikus belum meledak, kanopi belum menutup
- *      sehingga umpan mudah diletakkan, risiko predator non-target
- *      (burung pemangsa, kucing) lebih rendah karena tidak ada
- *      bangkai tersembunyi di bawah kanopi lebat.
- *   ❌ Berbahaya jika diberikan saat fase generatif — predator alami
- *      ikut terpapar dari tikus mati di antara rumpun.
- *   Waktu terbaik: H+1 s/d H+21 setelah tglTanam (awal vegetatif).
- *
- *  SANITASI PEMATANG (bersih gulma & lubang sarang):
- *   ✅ Optimal: bersamaan dengan persiapan lahan, sebelum olah tanah.
- *   Waktu terbaik: H-10 s/d H-1 sebelum tglOlahTanah.
- *
- *  MONITORING POPULASI (trap barrier system / TBS):
- *   ✅ Dipasang sejak awal tanam, dicek rutin setiap 3–5 hari.
- *   Waktu terbaik: H+0 s/d H+30 setelah tglTanam.
- *
- * [FIX v3.0]
- *   1. Tambah struktur JADWAL_PENGENDALIAN_TIKUS — objek berisi
- *      semua tanggal anchor pengendalian OPT tikus, dihitung dari
- *      tglOlahTanah dan tglTanam (BUKAN dari tglPanen).
- *   2. Fungsi hitungJadwalTikus(tglOlahTanah, tglTanam) mengembalikan:
- *      - tglGropyokan       : { mulai, selesai }  (14–3 hari pra-olah)
- *      - tglSanitasiPematang: { mulai, selesai }  (10–1 hari pra-olah)
- *      - tglUmpanRacun      : { mulai, selesai }  (1–21 HST)
- *      - tglPasangTBS       : tglTanam + 0        (hari tanam)
- *      - tglMonitorTBS      : { mulai, selesai }  (0–30 HST)
- *   3. bangunHasilMusim() kini menyertakan field jadwalTikus.
- *   4. Teks alasan diperbaiki agar menyebut gropyokan SEBELUM tanam.
- *   5. Semua fix v2.9 (#1–#5 + maxOnsetGeser) DIPERTAHANKAN utuh.
- *
- * [TETAP DARI v2.9]
- *   maxOnsetGeser per zona, bobot ENSO/IOD setara ZOM, deltaIdx
- *   eksplisit, additiveBoost cap 60mm, guard loncat tahun siklus
- *   pasangan.
+ * [SEMUA FIX v3.0 TETAP DIPERTAHANKAN]
  * ============================================================
  */
 
@@ -73,7 +32,7 @@
     (function () {
         var total = ALPHA_ZOM + ALPHA_ENSO + ALPHA_IOD;
         if (Math.abs(total - 1.0) > 0.001) {
-            console.warn('[v3.0] ⚠️ ALPHA tidak berjumlah 1.0 (' + total.toFixed(4) + ')');
+            console.warn('[v3.0.1] ⚠️ ALPHA tidak berjumlah 1.0 (' + total.toFixed(4) + ')');
         }
     })();
 
@@ -89,7 +48,7 @@
     };
 
     /* ------------------------------------------------------------------ */
-    /* REFERENSI REGIONAL (sama dengan v2.9 — maxOnsetGeser per entri)     */
+    /* REFERENSI REGIONAL                                                   */
     /* ------------------------------------------------------------------ */
     var REFERENSI_MUSIM_REGIONAL = [
         {
@@ -104,7 +63,7 @@
             polaPuncak: 'timur',
             rendengMulai: 3, gaduMulai: 9,
             namaRendeng: 'MT I — Musim Utama Lokal', namaGadu: 'MT II — Musim Kedua Lokal',
-            maxOnsetGeser: 1   /* FIX WAJO: Sep→maks Okt */
+            maxOnsetGeser: 1
         },
         {
             latMin: -6.0,  latMaks: -2.5,  lonMin: 120.8, lonMaks: 124.5,
@@ -134,21 +93,12 @@
     /* ------------------------------------------------------------------ */
     /* KONSTANTA AGRONOMI PENGENDALIAN TIKUS                                */
     /* ------------------------------------------------------------------ */
-    /**
-     * Semua offset dalam satuan HARI, bertanda:
-     *   negatif = sebelum titik acuan (pra-olah / pra-tanam)
-     *   positif = sesudah titik acuan (HST = Hari Setelah Tanam)
-     *
-     * Acuan BERBEDA per aktivitas — ini inti fix v3.0:
-     *   GROPYOKAN & SANITASI → acuan = tglOlahTanah  (lahan masih KOSONG)
-     *   UMPAN RACUN & TBS    → acuan = tglTanam      (awal vegetatif)
-     */
     var AGRONOMI_TIKUS = {
         gropyokan: {
             label       : 'Gropyokan Komunal',
-            acuan       : 'tglOlahTanah',          /* lahan bera, tikus tidak punya sarang */
-            offsetMulai : -14,                      /* H-14 sebelum olah tanah */
-            offsetSelesai: -3,                      /* H-3  sebelum olah tanah */
+            acuan       : 'tglOlahTanah',
+            offsetMulai : -14,
+            offsetSelesai: -3,
             catatan     : 'Lahan masih kosong — tikus terekspos, koordinasi dengan petani sekitar blok.'
         },
         sanitasiPematang: {
@@ -160,16 +110,16 @@
         },
         umpanRacun: {
             label       : 'Pemasangan Umpan Racun (Rodentisida)',
-            acuan       : 'tglTanam',               /* kanopi belum menutup, umpan mudah diletakkan */
-            offsetMulai :  1,                       /* H+1  HST */
-            offsetSelesai: 21,                      /* H+21 HST — batas awal vegetatif */
+            acuan       : 'tglTanam',
+            offsetMulai :  1,
+            offsetSelesai: 21,
             catatan     : 'Letakkan umpan di tepi pematang & titik sarang; periksa setiap 3 hari. ' +
                           'JANGAN pasang setelah H+21 HST — risiko predator non-target di bawah kanopi.'
         },
         pasangTBS: {
             label       : 'Pasang Trap Barrier System (TBS)',
             acuan       : 'tglTanam',
-            offsetMulai :  0,                       /* hari tanam */
+            offsetMulai :  0,
             offsetSelesai: 0,
             catatan     : 'Pasang TBS di sudut petak paling rawan; perangkap dicek tiap 3–5 hari.'
         },
@@ -185,17 +135,6 @@
     /* ------------------------------------------------------------------ */
     /* FUNGSI UTAMA JADWAL TIKUS                                            */
     /* ------------------------------------------------------------------ */
-    /**
-     * hitungJadwalTikus(tglOlahTanah, tglTanam)
-     *
-     * Mengembalikan objek dengan tanggal mulai/selesai setiap aktivitas
-     * pengendalian OPT tikus, dihitung dari acuan yang TEPAT secara
-     * agronomi (bukan semua dari tglTanam atau tglPanen).
-     *
-     * @param {Date} tglOlahTanah
-     * @param {Date} tglTanam
-     * @returns {Object} jadwalTikus
-     */
     function hitungJadwalTikus(tglOlahTanah, tglTanam) {
         var jadwal = {};
 
@@ -219,35 +158,37 @@
     }
 
     /**
-     * formatJadwalTikusTeks(jadwalTikus)
+     * formatJadwalTikusTeks — versi ramah petani
      *
-     * Mengubah objek jadwalTikus menjadi teks ringkas untuk field `alasan`
-     * agar konsisten dengan format output v2.x yang sudah ada.
-     *
-     * @param {Object} jadwalTikus
-     * @returns {string}
+     * Perubahan v3.0.1:
+     *   - Hapus angka mm dan bobot teknis
+     *   - Format ringkas: ikon + nama kegiatan + rentang tanggal
+     *   - Keterangan singkat dalam tanda kurung, bukan kalimat panjang
      */
     function formatJadwalTikusTeks(jadwalTikus) {
         var NAMA_BULAN_PENDEK = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agt','Sep','Okt','Nov','Des'];
 
         function fmt(d) {
+            return d.getDate() + ' ' + NAMA_BULAN_PENDEK[d.getMonth()];
+        }
+        function fmtLengkap(d) {
             return d.getDate() + ' ' + NAMA_BULAN_PENDEK[d.getMonth()] + ' ' + d.getFullYear();
         }
 
         var baris = [
-            '🐀 PENGENDALIAN TIKUS (urutan agronomi):',
-            '  [1] ' + jadwalTikus.gropyokan.label       + ': ' + fmt(jadwalTikus.gropyokan.tglMulai)        + ' – ' + fmt(jadwalTikus.gropyokan.tglSelesai)        + ' (sebelum olah tanah — lahan bera)',
-            '  [2] ' + jadwalTikus.sanitasiPematang.label + ': ' + fmt(jadwalTikus.sanitasiPematang.tglMulai) + ' – ' + fmt(jadwalTikus.sanitasiPematang.tglSelesai) + ' (sebelum bajak pertama)',
-            '  [3] ' + jadwalTikus.pasangTBS.label        + ': ' + fmt(jadwalTikus.pasangTBS.tglMulai)        + ' (hari tanam)',
-            '  [4] ' + jadwalTikus.umpanRacun.label       + ': ' + fmt(jadwalTikus.umpanRacun.tglMulai)       + ' – ' + fmt(jadwalTikus.umpanRacun.tglSelesai)       + ' (H+1–H+21 HST, kanopi belum menutup)',
-            '  [5] ' + jadwalTikus.monitorTBS.label       + ': ' + fmt(jadwalTikus.monitorTBS.tglMulai)       + ' – ' + fmt(jadwalTikus.monitorTBS.tglSelesai)       + ' (pantau rutin setiap 3–5 hari)'
+            '🐀 Jadwal Pengendalian Tikus:',
+            '① Gropyokan: ' + fmt(jadwalTikus.gropyokan.tglMulai) + ' – ' + fmtLengkap(jadwalTikus.gropyokan.tglSelesai) + ' (sebelum bajak, lahan kosong)',
+            '② Sanitasi Pematang: ' + fmt(jadwalTikus.sanitasiPematang.tglMulai) + ' – ' + fmtLengkap(jadwalTikus.sanitasiPematang.tglSelesai),
+            '③ Pasang TBS: ' + fmtLengkap(jadwalTikus.pasangTBS.tglMulai) + ' (hari tanam)',
+            '④ Umpan Racun: ' + fmt(jadwalTikus.umpanRacun.tglMulai) + ' – ' + fmtLengkap(jadwalTikus.umpanRacun.tglSelesai) + ' (awal tanam, kanopi belum tutup)',
+            '⑤ Pantau TBS: ' + fmt(jadwalTikus.monitorTBS.tglMulai) + ' – ' + fmtLengkap(jadwalTikus.monitorTBS.tglSelesai) + ' (cek tiap 3–5 hari)'
         ];
 
         return baris.join('\n');
     }
 
     /* ------------------------------------------------------------------ */
-    /* KALENDER MUSIM LOKAL (sama dengan v2.9)                             */
+    /* KALENDER MUSIM LOKAL                                                 */
     /* ------------------------------------------------------------------ */
     function tentukanKalenderMusimLokal(lat, lon, rawZOM) {
         var refRegional = null;
@@ -286,7 +227,7 @@
     }
 
     /* ------------------------------------------------------------------ */
-    /* UTILITAS TANGGAL & FASE BULAN (sama dengan v2.9)                    */
+    /* UTILITAS TANGGAL & FASE BULAN                                        */
     /* ------------------------------------------------------------------ */
     var NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
     var EPOCH_BULAN_BARU   = new Date('2026-01-29T12:36:00Z');
@@ -314,7 +255,7 @@
     function hitungOffsetTahunGadu(bRendeng, bGadu) { return (bGadu > bRendeng) ? 0 : 1; }
 
     /* ------------------------------------------------------------------ */
-    /* SIKLUS PASANGAN (guard loncat tahun dari v2.8 dipertahankan)        */
+    /* SIKLUS PASANGAN                                                      */
     /* ------------------------------------------------------------------ */
     function bangkitkanSiklusPasangan(bRendeng, bGadu, hariPanenR, hariPanenG, now) {
         var baseYear   = now.getFullYear();
@@ -380,7 +321,7 @@
     }
 
     /* ------------------------------------------------------------------ */
-    /* ENSO/IOD — HYBRID BOBOT SETARA (dari v2.8, tidak berubah)           */
+    /* ENSO/IOD                                                             */
     /* ------------------------------------------------------------------ */
     function terapkanPenyesuaianENSOIOD(rawZOM, zonaIklim, ensoVal, iodVal) {
         var tabel = (typeof BOBOT_IKLIM !== 'undefined') ? BOBOT_IKLIM : null;
@@ -408,7 +349,7 @@
     }
 
     /* ------------------------------------------------------------------ */
-    /* ONSET — maxGeser dari zona (v2.9)                                   */
+    /* ONSET                                                                */
     /* ------------------------------------------------------------------ */
     function cariOnsetHujan(startMusim, rawZOMSesuai, polaPuncak, maxGeser) {
         var th       = THRESHOLD_AIR[polaPuncak] || THRESHOLD_AIR.fallback;
@@ -573,7 +514,7 @@
         var siklusTerpilih = pilihSiklusRelevant(kandidatSiklus, now);
 
         /* ---------------------------------------------------------------- */
-        /* BUILD HASIL — v3.0: jadwalTikus dihitung dari acuan TEPAT        */
+        /* BUILD HASIL — v3.0.1: alasan ramah petani tanpa angka teknis     */
         /* ---------------------------------------------------------------- */
         function bangunHasilMusim(best, infoSiklus, musimNama, musimKode, isFallback) {
             var tglOlahTanah   = infoSiklus.tglOlah;
@@ -583,45 +524,64 @@
             var tahunOlah      = tglOlahTanah.getFullYear();
             var tahunPanen     = tglPanen.getFullYear();
 
-            /* Hitung jadwal tikus dari acuan BENAR:                        */
-            /* gropyokan & sanitasi → sebelum tglOlahTanah (lahan bera)   */
-            /* umpan racun & TBS    → awal HST sesudah tglTanam           */
-
-            var labelBobot = ' [ZOM:' + Math.round(ALPHA_ZOM*100) + '% ENSO:' + Math.round(ALPHA_ENSO*100) + '% IOD:' + Math.round(ALPHA_IOD*100) + '%]';
-            
-            // 1. Dapatkan tanggal tanam final (fase bulan)
             var tglFaseBaik = cariTglFaseBulan(tglTanamAktual, 3, 8, 0, bTanamAktual);
-            
-            // 2. Masukkan tglFaseBaik ke dalam rumus tikus
+
             var jadwalTikus = hitungJadwalTikus(tglOlahTanah, tglFaseBaik);
-            
+
             var statusMusim = statusWaktuTanam(tglFaseBaik, now);
             var alasan;
 
+            /* ── Tentukan label kondisi air (tanpa angka mm) ── */
+            var kondisiAir;
+            var mmTerkoreksi = best.mmTanamSesuai;
+            if (mmTerkoreksi < th.thresholdBajak) {
+                kondisiAir = 'Curah hujan tipis — siapkan pompanisasi';
+            } else if (mmTerkoreksi < th.thresholdOnset) {
+                kondisiAir = 'Curah hujan cukup untuk bajak';
+            } else if (mmTerkoreksi < th.thresholdLayak) {
+                kondisiAir = 'Curah hujan baik';
+            } else {
+                kondisiAir = 'Curah hujan lebat — pantau drainase';
+            }
+
+            /* ── Label kondisi ENSO/IOD yang simpel ── */
             var infoENSO = '';
             if (best.mmTanam > 0) {
                 var selisih = best.mmTanamSesuai - best.mmTanam;
-                if (Math.abs(selisih) > 5) {
-                    infoENSO = ' 🌐 Volume air ' + (selisih > 0 ? 'NAIK' : 'TURUN') +
-                        ' (' + best.mmTanam.toFixed(0) + 'mm → ' + best.mmTanamSesuai.toFixed(0) + 'mm) akibat anomali ENSO/IOD.' + labelBobot;
+                if (selisih < -10) {
+                    infoENSO = ' ⚠️ Anomali iklim (El Niño) berpotensi mengurangi hujan.';
+                } else if (selisih > 10) {
+                    infoENSO = ' ℹ️ Anomali iklim (La Niña) berpotensi menambah hujan.';
                 }
             }
 
+            /* ── Label fase generatif & panen ── */
+            var keteranganGen, keteranganPanen;
             if (isFallback) {
-                alasan = 'Setelah koreksi ENSO/IOD (bobot setara), ' + NAMA_BULAN[best.bTanam] +
-                    ' (' + best.mmTanamSesuai.toFixed(0) + 'mm) masih di bawah batas bajak (' + th.thresholdBajak + 'mm). ' +
-                    'Jadwal dikunci ke kalender pangkal zona. 🚨 Siapkan pompanisasi penuh.' + infoENSO +
-                    '\n' + formatJadwalTikusTeks(jadwalTikus);
+                /* Fallback: kondisi kering, pompanisasi */
+                alasan =
+                    'Kondisi hujan di wilayah ini belum cukup untuk tanam optimal. ' +
+                    'Jadwal dikunci ke kalender pangkal zona.' + infoENSO +
+                    ' 🚨 Siapkan pompanisasi penuh.' +
+                    '\n\n' + formatJadwalTikusTeks(jadwalTikus);
             } else {
-                var keteranganGen   = best.skorGen < 30 ? 'kering — risiko puso' : best.skorGen > 75 ? 'basah — waspada Blast' : 'optimal pembungaan';
-                var keteranganPanen = best.skorPanen > 65 ? 'basah — butuh dryer' : best.skorPanen < 20 ? 'kering ideal' : 'sedang — aman';
-                var catatanOlah     = best.mmTanamSesuai < th.thresholdBajak ? ' ⚠️ Curah hujan tipis, siapkan pompanisasi pendukung.' : '';
-                alasan = 'Olah tanah ' + NAMA_BULAN[best.bTanam] + ' ' + tahunOlah +
-                    ' (' + best.mmTanam.toFixed(0) + 'mm dasar → ' + best.mmTanamSesuai.toFixed(0) + 'mm terkoreksi' + labelBobot + '). ' +
-                    'Generatif ' + best.namaBulanGen + ' (' + keteranganGen + '). ' +
-                    'Panen ' + best.namaBulanPanen + ' ' + tahunPanen + ' (' + keteranganPanen + ').' +
-                    catatanOlah + infoENSO +
-                    '\n' + formatJadwalTikusTeks(jadwalTikus);
+                keteranganGen = best.skorGen < 30
+                    ? 'perlu waspadai kekeringan saat bunting'
+                    : best.skorGen > 75
+                        ? 'perlu waspadai penyakit Blast'
+                        : 'kondisi pembungaan optimal';
+
+                keteranganPanen = best.skorPanen > 65
+                    ? 'berpotensi hujan — siapkan alat pengering'
+                    : best.skorPanen < 20
+                        ? 'kondisi kering ideal untuk panen'
+                        : 'kondisi panen aman';
+
+                alasan =
+                    kondisiAir + ' pada ' + NAMA_BULAN[best.bTanam] + ' ' + tahunOlah + '.' + infoENSO +
+                    ' Fase generatif bulan ' + best.namaBulanGen + ': ' + keteranganGen + '.' +
+                    ' Panen ' + best.namaBulanPanen + ' ' + tahunPanen + ': ' + keteranganPanen + '.' +
+                    '\n\n' + formatJadwalTikusTeks(jadwalTikus);
             }
 
             return {
@@ -635,11 +595,6 @@
                 alasan       : alasan,
                 isLewat      : statusMusim.isLewat,
                 isBerjalan   : statusMusim.isBerjalan,
-                /* -------------------------------------------------------- */
-                /* FIELD BARU v3.0 — jadwal OPT tikus terstruktur           */
-                /* Konsumen UI bisa langsung render jadwal dari objek ini    */
-                /* tanpa perlu parse teks alasan.                            */
-                /* -------------------------------------------------------- */
                 jadwalTikus  : jadwalTikus
             };
         }
@@ -663,26 +618,24 @@
         window.rekomendasiWindowTanam     = rekomendasiWindowTanamV4;
         window.tentukanKalenderMusimLokal = tentukanKalenderMusimLokal;
         window.statusWaktuTanam           = statusWaktuTanam;
-        window.hitungJadwalTikus          = hitungJadwalTikus;   /* expose untuk UI jika perlu */
-        window.AGRONOMI_TIKUS             = AGRONOMI_TIKUS;      /* expose konstanta agronomi  */
+        window.hitungJadwalTikus          = hitungJadwalTikus;
+        window.AGRONOMI_TIKUS             = AGRONOMI_TIKUS;
 
         console.log(
-            '%c✅ patch_deteksi_musim_v3.0.js aktif\n' +
-            '\n  ╔══ FIX AGRONOMI TIKUS + SEMUA FIX SEBELUMNYA v3.0 ══╗\n' +
-            '  ║ ✅ [FIX UTAMA] Gropyokan: H-14 s/d H-3 PRA-OLAH TANAH\n' +
-            '  ║    Acuan = tglOlahTanah (lahan bera, tikus terekspos)\n' +
-            '  ║ ✅ [FIX UTAMA] Sanitasi Pematang: H-10 s/d H-1 PRA-OLAH\n' +
-            '  ║ ✅ [FIX UTAMA] Umpan Racun: H+1–H+21 HST (bukan pasca tanam!)\n' +
-            '  ║    Kanopi belum menutup — umpan mudah, predator aman\n' +
-            '  ║ ✅ [FIX UTAMA] TBS dipasang tepat hari tanam (H+0)\n' +
-            '  ║ ✅ Output jadwalTikus sebagai field terstruktur di hasil\n' +
-            '  ╠══ WARISAN FIX v2.9 ════════════════════════════════════╣\n' +
-            '  ║ ✅ maxOnsetGeser per zona (timur=1, Wajo fix)\n' +
-            '  ║ ✅ Bobot ZOM/ENSO/IOD setara (25%/50%/25%)\n' +
-            '  ║ ✅ deltaIdx arah eksplisit\n' +
-            '  ║ ✅ additiveBoost cap 60mm\n' +
+            '%c✅ patch_deteksi_musim_v3.0.1.js aktif\n' +
+            '\n  ╔══ FIX TAMPILAN RAMAH PETANI v3.0.1 ══╗\n' +
+            '  ║ ✅ Hilangkan bobot teknis [ZOM/ENSO/IOD %]\n' +
+            '  ║ ✅ Hilangkan angka mm teknis dari kalimat\n' +
+            '  ║ ✅ Jadwal tikus ringkas & mudah dibaca\n' +
+            '  ║ ✅ ENSO/IOD hanya tampil jika dampak nyata\n' +
+            '  ║ ✅ Kalimat alasan fokus pada aksi petani\n' +
+            '  ╠══ WARISAN FIX v3.0 TETAP AKTIF ═══════╣\n' +
+            '  ║ ✅ Gropyokan sebelum olah tanah (lahan bera)\n' +
+            '  ║ ✅ Umpan racun H+1–H+21 HST\n' +
+            '  ║ ✅ TBS dipasang hari tanam\n' +
+            '  ║ ✅ maxOnsetGeser per zona\n' +
             '  ║ ✅ Guard loncat tahun siklus pasangan\n' +
-            '  ╚════════════════════════════════════════════════════════╝',
+            '  ╚═══════════════════════════════════════╝',
             'color:#10b981; font-weight:bold;'
         );
     }
