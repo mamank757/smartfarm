@@ -1,149 +1,68 @@
 /**
  * ============================================================
- *  patch_deteksi_musim_v2.2.js
- *  Versi: 2.2 — Urutan Agronomi Olah Tanah → Pembibitan → Tanam
+ *  patch_deteksi_musim_v2.3.js
+ *  Versi: 2.3 — Fix Urutan Musim Lintas Tahun & Anti-Overlap
  * ------------------------------------------------------------
- *  PERBAIKAN v2.1 vs v2.0:
+ *  PERBAIKAN v2.3 vs v2.2:
  *
- *  [LAPISAN 5 — ENSO/IOD DIAMBIL TAPI TIDAK PERNAH DIPAKAI]
- *    rekomendasiWindowTanamV3() menerima parameter `ensoVal` dan
- *    `iodVal` (dikirim oleh prosesJadwalOtomatis() dari hasil
- *    getENSOAnomaly()/getIODAnomaly() — sumber NOAA CPC/PSL),
- *    dan juga menerima `skorBulan` (skor ZOM yang SUDAH disesuaikan
- *    ENSO/IOD oleh skorKelembapan() di patch_jadwal_tanam_otomatis).
+ *  [BUG KRITIS — TAHUN TANAM SELALU "tahunSekarang"]
+ *    v2.2 ke bawah menggunakan `tahunSekarang` (tahun kalender saat
+ *    ini) sebagai tahun untuk SEMUA kandidat di kedua musim, tanpa
+ *    mempertimbangkan apakah bulan musim itu sudah lewat atau belum
+ *    dalam tahun ini.
  *
- *    NAMUN v2.0 membuang kedua hal tersebut total: `skorBulan`
- *    hanya dipakai untuk console.log perbandingan, dan `skorZOM`
- *    (skor yang benar-benar dipakai untuk seleksi & penilaian)
- *    dihitung ULANG murni dari rawZOM (mm klimatologi mentah) via
- *    skorZOMRegional() — tanpa jejak ensoVal/iodVal sama sekali.
+ *    Contoh nyata yang dilaporkan (Juni 2026, zona barat/monsunal):
+ *      - Gadu   → Olah Lahan 26 Feb 2026, Panen 14 Jun 2026  ✓ (masuk akal)
+ *      - Rendeng → Olah Lahan 17 Mei 2026                    ✗ (mestinya Okt/Nov!)
  *
- *    Akibatnya: status El Niño/La Niña & IOD positif/negatif yang
- *    ditampilkan di UI ("Sumber: NOAA ENSO/IOD") TIDAK berpengaruh
- *    apa-apa terhadap bulan tanam, varietas, atau jendela onset
- *    yang direkomendasikan — analisis jadi tidak akurat saat
- *    terjadi anomali iklim kuat (mis. El Niño yang menggeser &
- *    memendekkan musim hujan secara nyata).
+ *    Harusnya Rendeng = Okt/Nov 2025 (sudah lewat) ATAU Okt/Nov 2026
+ *    (musim mendatang). Sistem memilih Mei 2026 karena `tahunSekarang`
+ *    ditempel begitu saja tanpa melihat apakah bulan itu memang masuk
+ *    jendela musim yang benar.
  *
- *    [FIX] Tambah faktorPenyesuaianENSOIOD(bulanIdx, zonaIklim,
- *    ensoVal, iodVal) — memakai tabel bobot korelasi BOBOT_IKLIM
- *    (sama seperti skorKelembapan asli & hitungWetnessScore di
- *    patch_risiko_iklim.js) untuk menghitung faktor pengali curah
- *    hujan per bulan (0.4–1.6×). rawZOM disesuaikan PER BULAN
- *    dengan faktor ini (→ rawZOMSesuai) SEBELUM dipakai untuk:
- *      • skorZOMRegional()      (skor 0–100 per bulan)
- *      • cariOnsetHujan()       (deteksi onset hujan efektif)
- *      • gerbang syarat air bajak (mmTanam/mmBajak)
+ *    [FIX A] Fungsi `hitungTahunMusim(bTanam, referensiTgl, kodeMusim,
+ *    startMusim)` menentukan tahun yang TEPAT untuk setiap bulan olah
+ *    tanah, dengan aturan:
+ *      1. Coba tahun `referensiTgl.getFullYear() - 1` (musim lalu):
+ *         hanya valid jika panen belum lewat (masih dalam musim aktif
+ *         atau belum dimulai secara agronomis).
+ *      2. Coba tahun `referensiTgl.getFullYear()` (tahun ini).
+ *      3. Coba tahun `referensiTgl.getFullYear() + 1` (tahun depan).
+ *      Pilih kandidat tahun TERDEKAT KE DEPAN dari `now` yang belum
+ *      selesai panen (tglPanen > now - toleransiHari), mengutamakan
+ *      musim yang sedang berjalan atau paling dekat akan datang.
  *
- *    El Niño / IOD positif kuat → rawZOMSesuai turun (musim makin
- *    kering/mundur). La Niña / IOD negatif kuat → rawZOMSesuai naik
- *    (musim makin basah/maju). Nilai mm ASLI (rawZOM, klimatologi)
- *    tetap ditampilkan di `alasan` untuk transparansi, ditambah
- *    catatan persentase penyesuaian ENSO/IOD jika signifikan (>3%).
+ *  [BUG KRITIS — TIDAK ADA VALIDASI URUTAN RENDENG → GADU]
+ *    v2.2 ke bawah tidak menjamin bahwa tanggal mulai olah tanah
+ *    Gadu terjadi SETELAH tanggal panen Rendeng, dan sebaliknya.
+ *    Akibatnya, dua musim bisa overlap atau bahkan terbalik urutannya.
  *
- *  [LAPISAN 5b — ZONA BOBOT_IKLIM TIDAK KONSISTEN DI PANTAI TIMUR SULSEL]
- *    Implementasi awal Lapisan 5 memakai window.tentukanZonaIklim(lat,lon)
- *    (fungsi generik nasional di patch_risiko_iklim.js) sebagai sumber
- *    utama zona BOBOT_IKLIM. Fungsi itu memakai batas lintang kasar
- *    `lat >= -4` untuk zona 'peralihan' (didokumentasikan untuk Sulawesi
- *    Tengah/Tenggara). Akibatnya, untuk zona musim 'timur' (Pantai Timur
- *    Sulsel: Wajo/Bone/Sinjai, lon 120.0–120.79, lat -6.0..-3.5) — SATU
- *    pola musim yang sama — bagian utara (lat -4.0..-3.5) mendapat bobot
- *    'peralihan', sementara bagian selatan (lat <-4) mendapat 'monsunal'.
- *    Padahal seluruh Sulawesi Selatan menurut dokumentasi BOBOT_IKLIM
- *    sendiri = 'monsunal'. Hasilnya: penyesuaian ENSO/IOD bisa "lompat"
- *    nilainya hanya karena selisih lintang 0,1–0,2°.
- *    [FIX] PEMETAAN_POLA_KE_ZONA_IKLIM (dari `polaPuncak`, yang sudah
- *    spesifik per-zona Sulawesi via REFERENSI_MUSIM_REGIONAL) kini jadi
- *    sumber UTAMA; tentukanZonaIklim(lat,lon) hanya fallback jika
- *    polaPuncak tidak dikenali.
+ *    [FIX B] Setelah kedua musim dihitung, validasi urutan:
+ *      - Musim diurutkan berdasarkan tglOlahTanah (bukan tglTanam).
+ *      - Jika tglOlahTanah musim ke-2 < tglPanen musim ke-1,
+ *        geser musim ke-2 ke TAHUN BERIKUTNYA (karena mustahil
+ *        olah lahan sebelum panen selesai).
+ *      - field `tglPanen` ditambahkan ke objek hasil agar validasi
+ *        lintas-musim bisa dilakukan dan ditampilkan di UI.
  *
- *  [LAPISAN 6 — TANGGAL "TANAM" = BULAN OLAH TANAH, TIDAK SESUAI URUTAN AGRONOMI]
- *    v2.1 ke bawah memperlakukan `bTanam` (bulan yang lolos gerbang air,
- *    yaitu bulan ketika hujan mulai konsisten & cocok untuk olah tanah)
- *    SEBAGAI bulan "tanam" itu sendiri — `tglFaseBaik` dicari LANGSUNG di
- *    dalam bulan bTanam, dan seluruh fenologi (vegetatif/generatif/panen)
- *    dihitung mulai dari tanggal di bulan bTanam tersebut.
- *
- *    Ini tidak sesuai urutan nyata di lapangan:
- *      1) Hujan mulai konsisten, sawah tergenang → OLAH TANAH/BAJAK
- *      2) ~1 minggu kemudian                     → SEBAR BENIH (pembibitan)
- *      3) Bibit berumur 15–20 hari                → TANAM PINDAH
- *    Total jeda olah tanah → tanam pindah ≈ 22–27 hari (≈25 hari).
- *    Akibatnya, v2.1 merekomendasikan "tanam" pada bulan yang seharusnya
- *    untuk OLAH TANAH — seluruh kalender fenologi (generatif, panen)
- *    bisa meleset ~1 bulan dari kenyataan.
- *
- *    [FIX] `bTanam` kini eksplisit berarti "bulan olah tanah" (tetap
- *    digerbangi syarat air seperti v2.0/v2.1, karena itulah yang
- *    butuh sawah tergenang). Ditambahkan JEDA_OLAH_KE_TANAM_HARI (25
- *    hari) → `tglTanamAktual` = tengah-bulan(bTanam) + 25 hari, yang
- *    secara matematis selalu jatuh di bulan SETELAH bTanam. Seluruh
- *    fenologi (vegetatif/generatif/panen) & pencarian tanggal fase
- *    bulan baik (`tglFaseBaik`) kini dihitung dari `tglTanamAktual`.
- *    `alasan` menjelaskan rangkaian olah tanah → pembibitan → tanam
- *    pindah secara eksplisit.
+ *  [FIX C — KONSISTENSI: tglOlahTanah SELALU ADA DI OBJEK HASIL]
+ *    v2.2 hanya menyimpan `tglTanam` (tanggal tanam pindah + fase
+ *    bulan). Untuk validasi urutan dan tampilan UI yang benar, objek
+ *    hasil kini selalu menyertakan:
+ *      - tglOlahTanah : Date — tanggal tengah bulan olah tanah
+ *      - tglTanam     : Date — tanggal tanam pindah (fase bulan baik)
+ *      - tglPanen     : Date — tanggal estimasi panen
+ *    sehingga urutan olah → tanam → panen bisa diverifikasi dan
+ *    ditampilkan secara eksplisit.
  * ------------------------------------------------------------
- *  LATAR BELAKANG
- *  Versi 1.x menghasilkan rekomendasi tanam yang terlalu awal
- *  dari kebiasaan faktual petani — bulan yang dipilih belum ada
- *  hujan yang cukup untuk bajak lahan. Audit mendalam menemukan
- *  4 lapisan masalah yang saling memperkuat:
- *
- *  [LAPISAN 1 — SKOR ZOM MENYESATKAN]
- *    skorKelembapan() (di patch_jadwal v3.10) menggunakan
- *    normalisasi curah hujan berbasis skala absolut (mm):
- *      < 30mm  → −1.5  → skor ~12
- *      < 75mm  → −0.8  → skor ~30
- *      < 150mm →  0.0  → skor ~50
- *    Di Pantai Timur Sulsel (Wajo, Bone), bulan awal musim hujan
- *    (April) memiliki curah hujan 80–120 mm — cukup untuk bajak
- *    dan tanam secara faktual — tapi sistem memberinya skor 30–45,
- *    dikategorikan "kering/kurang layak". Ini membuat bulan yang
- *    benar tampak buruk di mata algoritma.
- *    [FIX] Tambahkan KOREKSI OFFSET REGIONAL: untuk zona 'timur'
- *    dan 'peralihan', nilai mm dianggap "cukup untuk tanam" dimulai
- *    dari 70mm (bukan 150mm). Koreksi ini dilakukan dengan
- *    menormalkan ulang skor mentah rawZOM sebelum dipakai sebagai
- *    acuan kelayakan tanam, menggunakan thresholdLayak per zona.
- *
- *  [LAPISAN 2 — FORMULA nilaiTotal TIDAK SENSITIF TERHADAP KONDISI AIR]
- *    Formula lama: nilaiTotal = (skorTanam×0.4) + (nilaiGen×0.4) + (nilaiPanen×0.2)
- *    Masalah: bobot generatif 0.40 dengan nilaiGen bisa 80–90 poin
- *    membuat perbedaan skor antar bulan tanam (misal 10 vs 20 poin)
- *    tidak cukup membedakan layak vs tidak layak. Bulan terlalu awal
- *    bisa menang karena nilaiGen-nya kebetulan lebih baik.
- *    [FIX] Formula baru menggunakan SYARAT GERBANG (gate condition):
- *      • Jika rawZOM[bTanam] < thresholdBajak → DISKUALIFIKASI total,
- *        tidak masuk kandidat sama sekali. Ini adalah kondisi wajib
- *        "ada air untuk bajak" berbasis mm aktual (bukan skor 0–100).
- *      • Jika lolos gerbang, nilaiTotal dihitung dengan bobot baru
- *        yang lebih menekankan kelayakan air saat tanam dan vegetatif.
- *
- *  [LAPISAN 3 — JENDELA KANDIDAT TIDAK MEMPERTIMBANGKAN ONSET HUJAN]
- *    rendengBulan = [startRendeng, +1, +2, +3] selalu dimulai
- *    dari bulan pertama musim tanpa memastikan hujan sudah stabil.
- *    Di Pantai Timur, April bisa jadi bulan "masuk" hujan tapi
- *    belum tentu stabil — Mei lebih sering menjadi onset yang benar.
- *    [FIX] Tambahkan deteksi ONSET HUJAN EFEKTIF: bulan pertama
- *    di mana rawZOM mencapai thresholdOnset (default 70mm untuk
- *    zona timur). Jendela kandidat dimulai dari onset ini, bukan
- *    dari startRendeng mentah. Ini mencegah bulan pra-onset masuk
- *    sebagai kandidat utama.
- *
- *  [LAPISAN 4 — PENALTI skorOlah KASAR DAN KONTRAPRODUKTIF]
- *    (Sudah dianalisis di v1.4 — tetap diperbaiki di sini)
- *    Penalti (50 − skorOlah) × 5 menggunakan bulan kasar (bTanam−1)
- *    dan threshold 50 yang terlalu tinggi, justru mendiskualifikasi
- *    bulan awal musim yang benar. Dihapus sepenuhnya dari seleksi
- *    kandidat. Informasi kondisi pengolahan dipindahkan ke field
- *    'alasan' sebagai peringatan kualitatif.
- *
- *  [TETAP dari v1.3]
- *    REFERENSI_MUSIM_REGIONAL, tentukanKalenderMusimLokal(),
- *    cariTglFaseBulan(), statusWaktuTanam(), deteksi lembah
- *    ekuatorial, pemisahan Barat/Timur di lon 120.0, nama musim
- *    lokal — semua tetap aktif tanpa perubahan.
+ *  SEMUA FIX DARI v2.0–v2.2 TETAP AKTIF:
+ *    Fix #1 (Lapisan 1): Skor ZOM dinormalisasi ulang per zona regional
+ *    Fix #2 (Lapisan 2): Gerbang syarat air bajak berbasis mm aktual
+ *    Fix #3 (Lapisan 3): Jendela kandidat dimulai dari onset hujan efektif
+ *    Fix #4 (Lapisan 4): isLewat/isBerjalan sinkron dengan tglFaseBaik
+ *    Fix #5 (Lapisan 5): ENSO/IOD disesuaikan ke rawZOM sebelum dipakai
+ *    Fix #5b: Zona BOBOT_IKLIM konsisten via polaPuncak (bukan lat/lon mentah)
+ *    Fix #6 (Lapisan 6): bTanam = bulan OLAH TANAH; tanam pindah +25 hari
  * ============================================================
  */
 
@@ -152,12 +71,6 @@
 
     /* =========================================================
        KONSTANTA THRESHOLD KELAYAKAN AIR PER ZONA
-       Berbasis fakta agronomis lapangan Sulawesi:
-         thresholdBajak : mm/bulan minimum untuk bajak & garu
-         thresholdOnset  : mm/bulan minimum untuk tanam produktif
-                          (onset hujan efektif)
-         thresholdLayak  : mm/bulan yang setara skor "cukup layak"
-                          untuk normalisasi ulang skor ZOM
     ========================================================= */
     var THRESHOLD_AIR = {
         barat:               { thresholdBajak: 80,  thresholdOnset: 100, thresholdLayak: 120 },
@@ -234,7 +147,7 @@
             if (refRegional.polaPuncak !== 'peralihan_sultra' &&
                 refRegional.polaPuncak !== 'ekuatorial_dua_puncak' &&
                 refRegional.polaPuncak !== polaDariZOM) {
-                console.warn('[PatchMusim v2.0] Pola ZOM (' + polaDariZOM + ') berbeda dari referensi regional di [' +
+                console.warn('[PatchMusim v2.3] Pola ZOM (' + polaDariZOM + ') berbeda dari referensi regional di [' +
                     lat.toFixed(3) + ', ' + lon.toFixed(3) + ']');
             }
             return Object.assign({}, refRegional, {
@@ -271,20 +184,11 @@
     var EPOCH_BULAN_BARU = new Date('2026-01-29T12:36:00Z');
     var SIKLUS_SINODIS   = 29.53059;
 
-    /* =========================================================
-       [FIX LAPISAN 6] JEDA AGRONOMIS: OLAH TANAH → TANAM PINDAH
-       Sesuai praktik petani: (1) saat hujan sudah konsisten & sawah
-       tergenang → olah tanah/bajak; (2) ~1 minggu kemudian → sebar
-       benih (pembibitan); (3) setelah bibit tumbuh 15-20 hari →
-       tanam pindah. Total ≈ 7 + 17.5 (titik tengah 15-20) ≈ 24-25 hari.
-       Dibulatkan ke 25 hari sebagai titik tengah yang konservatif.
-    ========================================================= */
     var JEDA_OLAH_KE_TANAM_HARI = 25;
 
     function tambahHari(d, n) {
         var h = new Date(d); h.setDate(h.getDate() + n); return h;
     }
-    function tanggalDariBulanTahun(b, t) { return new Date(t, b, 1); }
 
     function hariFaseBulan(tgl) {
         var s = (tgl.getTime() - EPOCH_BULAN_BARU.getTime()) / 86400000;
@@ -303,7 +207,6 @@
         return mulai;
     }
 
-    /* [FIX LAPISAN 4] Disalin dari v3.10 — sinkron dengan tglFaseBaik */
     function statusWaktuTanam(tglTanam, now) {
         var isLewat = tglTanam.getTime() < now.getTime();
         var isBerjalan = !isLewat &&
@@ -313,20 +216,85 @@
     }
 
     /* =========================================================
-       [FIX LAPISAN 1] NORMALISASI SKOR BERBASIS THRESHOLD REGIONAL
-       Mengubah mm rawZOM menjadi skor 0–100 yang mencerminkan
-       kelayakan tanam aktual di zona yang bersangkutan.
-       Zona 'timur' dan 'peralihan' memiliki threshold lebih rendah
-       karena secara faktual petani bisa bajak di 60–80mm/bulan.
+       [FIX A — v2.3] TENTUKAN TAHUN MUSIM YANG TEPAT
+       ─────────────────────────────────────────────────────────
+       Masalah inti v2.2: `tahunSekarang` ditempel mentah ke semua
+       bulan → Rendeng (Okt/Nov) pada Juni 2026 dihitung sebagai
+       Okt/Nov 2026 ATAU (lebih parah) salah pilih bulan di 2026
+       yang tidak masuk musim Rendeng sama sekali.
 
-       Skala:
-         0   mm              → skor  0  (tidak mungkin tanam)
-         thresholdBajak/2    → skor 20  (sangat kering, hanya tabela)
-         thresholdBajak      → skor 40  (cukup bajak, mulai layak)
-         thresholdOnset      → skor 60  (onset hujan, layak tapin)
-         thresholdLayak      → skor 75  (kondisi baik)
-         thresholdLayak×1.5  → skor 85  (optimal)
-         thresholdLayak×2+   → skor 95  (terlalu basah, tetap bisa)
+       Algoritma v2.3:
+         Untuk setiap bulan olah tanah (`bTanam`), coba 3 kandidat
+         tahun: (now.year - 1), (now.year), (now.year + 1).
+
+         Untuk setiap kandidat tahun, hitung:
+           tglOlah  = new Date(tahunKandidat, bTanam, 15)
+           tglPanen = tglOlah + JEDA_OLAH_KE_TANAM_HARI + hariPanen
+
+         Kriteria pemilihan:
+           1. Utamakan kandidat dengan tglOlah >= (now - toleransiLewat).
+              Toleransi 45 hari: musim yang baru mulai olah 45 hari
+              lalu masih dianggap "sedang berjalan" (bisa terlambat tanam).
+           2. Dari kandidat yang lolos #1, pilih yang tglOlah paling dekat
+              ke now (tidak terlalu jauh ke depan).
+           3. Jika semua tglOlah sudah lewat toleransi → pilih tahun depan.
+
+         Ini memastikan:
+           - Rendeng Nov 2025 dipilih pada Jan–Feb 2026 (masih dalam
+             periode panen / akhir musim) → ditandai isLewat = true
+             tapi tglOlah ditampilkan dengan benar.
+           - Rendeng Nov 2026 dipilih mulai sekitar Agustus 2026
+             (mendekati musim baru).
+           - Gadu Mei 2026 tetap dipilih pada Juni 2026 (sedang berjalan).
+    ========================================================= */
+    function hitungTahunMusim(bTanam, now, hariPanenDariTanam) {
+        /* hariPanenDariTanam = JEDA_OLAH_KE_TANAM_HARI + v.panen */
+        var TOLERANSI_LEWAT_HARI = 45; /* masih anggap "aktif" jika olah lahan max 45 hari lalu */
+        var nowMs = now.getTime();
+        var baseYear = now.getFullYear();
+
+        var kandidat = [];
+        for (var dy = -1; dy <= 1; dy++) {
+            var th = baseYear + dy;
+            var tglOlah  = new Date(th, bTanam, 15);
+            var tglPanen = tambahHari(tglOlah, hariPanenDariTanam);
+            kandidat.push({ tahun: th, tglOlah: tglOlah, tglPanen: tglPanen });
+        }
+
+        /* Filter: sudah melewati PANEN lebih dari toleransi → sudah selesai */
+        var batasLewat = nowMs - TOLERANSI_LEWAT_HARI * 86400000;
+        var masihAktif = kandidat.filter(function(k) {
+            return k.tglPanen.getTime() > batasLewat;
+        });
+
+        if (masihAktif.length === 0) {
+            /* Semua sudah lewat → ambil tahun depan */
+            return kandidat[2];
+        }
+
+        /* Dari yang masih aktif, pilih tglOlah paling dekat ke depan dari now.
+           Jika tglOlah sudah lewat tapi masih dalam toleransi lewat, tetap valid. */
+        var keDepan = masihAktif.filter(function(k) {
+            return k.tglOlah.getTime() >= nowMs - TOLERANSI_LEWAT_HARI * 86400000;
+        });
+
+        if (keDepan.length === 0) return masihAktif[masihAktif.length - 1];
+
+        /* Urutkan: tglOlah paling dekat ke depan dari now (boleh sedikit ke belakang
+           dalam toleransi) */
+        keDepan.sort(function(a, b) {
+            var distA = a.tglOlah.getTime() - nowMs;
+            var distB = b.tglOlah.getTime() - nowMs;
+            /* Negatif kecil (sedikit lewat) lebih baik dari positif besar (jauh ke depan)
+               HANYA jika dalam toleransi. Prioritaskan yang paling dekat ke now. */
+            return Math.abs(distA) - Math.abs(distB);
+        });
+
+        return keDepan[0];
+    }
+
+    /* =========================================================
+       [FIX LAPISAN 1] NORMALISASI SKOR BERBASIS THRESHOLD REGIONAL
     ========================================================= */
     function skorZOMRegional(mmBulanIni, polaPuncak) {
         var th = THRESHOLD_AIR[polaPuncak] || THRESHOLD_AIR.fallback;
@@ -346,56 +314,29 @@
 
     /* =========================================================
        [FIX LAPISAN 3] DETEKSI ONSET HUJAN EFEKTIF
-       Mencari bulan pertama dalam jendela musim di mana rawZOM
-       sudah mencapai thresholdOnset secara berturutan (atau setidaknya
-       bulan itu sendiri). Ini mencegah bulan pra-onset (masih kering
-       atau hujan sporadis) masuk sebagai kandidat awal.
-
-       Mengembalikan index bulan onset (0–11), atau startMusim jika
-       semua bulan di jendela di bawah threshold (fallback aman).
     ========================================================= */
     function cariOnsetHujan(startMusim, rawZOM, polaPuncak) {
         var th = THRESHOLD_AIR[polaPuncak] || THRESHOLD_AIR.fallback;
         var tOn = th.thresholdOnset;
 
-        /* Cari bulan pertama di 6 bulan ke depan yang mmnya >= thresholdOnset
-           DAN bulan berikutnya juga >= thresholdBajak (onset stabil, bukan hujan 1x) */
         for (var offset = 0; offset < 6; offset++) {
             var bIni  = (startMusim + offset) % 12;
             var bBrk  = (startMusim + offset + 1) % 12;
             if (rawZOM[bIni] >= tOn && rawZOM[bBrk] >= th.thresholdBajak) {
                 if (offset > 0) {
-                    console.log('[PatchMusim v2.0] Onset hujan efektif: ' +
+                    console.log('[PatchMusim v2.3] Onset hujan efektif: ' +
                         NAMA_BULAN[bIni] + ' (geser ' + offset + ' bulan dari ' +
                         NAMA_BULAN[startMusim] + ', ZOM=' + rawZOM[bIni].toFixed(0) + 'mm)');
                 }
                 return bIni;
             }
         }
-        /* Fallback: pakai startMusim asli jika tidak ada yang memenuhi.
-           Ini aman karena filter gerbang bajak di bawah akan menangkis bulan kering. */
-        console.warn('[PatchMusim v2.0] Onset tidak terdeteksi — pakai startMusim: ' + NAMA_BULAN[startMusim]);
+        console.warn('[PatchMusim v2.3] Onset tidak terdeteksi — pakai startMusim: ' + NAMA_BULAN[startMusim]);
         return startMusim;
     }
 
     /* =========================================================
        [FIX LAPISAN 5] FAKTOR PENYESUAIAN ENSO/IOD
-       Menghitung faktor pengali curah hujan bulanan dari anomali
-       ENSO (ONI) & IOD (DMI) terkini, memakai tabel bobot korelasi
-       BOBOT_IKLIM (Aldrian & Susanto 2003; Nur'utami & Hidayat 2016;
-       Boer & Faqih 2004) — sumber yang sama dengan skorKelembapan()
-       asli di patch_jadwal_tanam_otomatis.js & hitungWetnessScore()
-       di patch_risiko_iklim.js.
-
-       deltaIdx berada di skala indeks ZOM (-1.5..+1.5), sama seperti
-       pada skorKelembapan(). Setiap 1.0 unit deltaIdx ≈ ±35% perubahan
-       curah hujan bulanan terhadap klimatologi rawZOM. Faktor dibatasi
-       0.4–1.6× agar tetap masuk akal secara agronomis.
-
-       ENSO/IOD positif kuat (El Niño / IOD+) → faktor < 1
-         (musim makin kering & onset hujan mundur).
-       ENSO/IOD negatif kuat (La Niña / IOD−) → faktor > 1
-         (musim makin basah & onset hujan lebih cepat).
     ========================================================= */
     function faktorPenyesuaianENSOIOD(bulanIdx, zonaIklim, ensoVal, iodVal) {
         var tabel = (typeof BOBOT_IKLIM !== 'undefined') ? BOBOT_IKLIM : null;
@@ -411,12 +352,6 @@
         return Math.max(0.4, Math.min(1.6, faktor));
     }
 
-    /**
-     * [FIX LAPISAN 5] Terapkan faktor ENSO/IOD ke seluruh 12 bulan
-     * rawZOM → rawZOMSesuai. rawZOM asli TIDAK diubah (tetap dipakai
-     * untuk tampilan `alasan`); rawZOMSesuai dipakai untuk skor,
-     * onset, dan gerbang syarat air.
-     */
     function terapkanPenyesuaianENSOIOD(rawZOM, zonaIklim, ensoVal, iodVal) {
         return rawZOM.map(function (mm, idx) {
             return mm * faktorPenyesuaianENSOIOD(idx, zonaIklim, ensoVal, iodVal);
@@ -424,12 +359,13 @@
     }
 
     /* =========================================================
-       FUNGSI UTAMA REKOMENDASI (rekonstruksi menyeluruh)
+       FUNGSI UTAMA REKOMENDASI
     ========================================================= */
-    function rekomendasiWindowTanamV3(skorBulan, rawZOM, zona, ensoVal = 0, iodVal = 0) {
-        var now           = new Date();
-        var tahunSekarang = now.getFullYear();
+    function rekomendasiWindowTanamV3(skorBulan, rawZOM, zona, ensoVal, iodVal) {
+        ensoVal = ensoVal || 0;
+        iodVal  = iodVal  || 0;
 
+        var now           = new Date();
         var lat = (window._lokasiKalender && window._lokasiKalender.lat) || -4.0;
         var lon = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
 
@@ -445,7 +381,7 @@
             polaPuncak   = kalenderLokal.polaPuncak || kalenderLokal.polaDideteksi || 'barat';
 
             console.log(
-                '%c[PatchMusim v2.0] Zona: ' + polaPuncak +
+                '%c[PatchMusim v2.3] Zona: ' + polaPuncak +
                 ' | Sumber: ' + kalenderLokal.sumber +
                 '\n Rendeng mulai : ' + NAMA_BULAN[startRendeng] +
                 ' | Gadu mulai : ' + NAMA_BULAN[startGadu] +
@@ -454,7 +390,7 @@
             );
         } else {
             polaPuncak = 'ekuatorial_dua_puncak';
-            console.log('[PatchMusim v2.0] Pola ekuatorial — deteksi lembah ZOM aktif');
+            console.log('[PatchMusim v2.3] Pola ekuatorial — deteksi lembah ZOM aktif');
             var maxSum = -Infinity; startRendeng = 0;
             for (var i = 0; i < 12; i++) {
                 var sum = 0;
@@ -479,29 +415,6 @@
 
         var th = THRESHOLD_AIR[polaPuncak] || THRESHOLD_AIR.fallback;
 
-        /* ── [FIX LAPISAN 5] Tentukan zona BOBOT_IKLIM (monsunal/ekuatorial/
-           peralihan/lokal) untuk bobot korelasi ENSO/IOD.
-
-           [FIX LAPISAN 5b] PRIORITASKAN pemetaan dari `polaPuncak` —
-           yang sudah ditentukan secara spesifik untuk Sulawesi via
-           REFERENSI_MUSIM_REGIONAL — DI ATAS tentukanZonaIklim(lat,lon)
-           (fungsi generik nasional di patch_risiko_iklim.js).
-
-           Alasan: tentukanZonaIklim() memakai batas lintang kasar
-           `lat >= -4` untuk zona 'peralihan' (didokumentasikan untuk
-           Sulawesi Tengah/Tenggara). Untuk zona 'timur' (Pantai Timur
-           Sulsel: Wajo/Bone/Sinjai, lon 120.0–120.79, lat -6.0..-3.5),
-           bagian UTARA-nya (lat -4.0..-3.5, msl. Wajo bagian utara)
-           jatuh ke 'peralihan', sementara bagian SELATAN-nya (lat <-4,
-           msl. Sengkang/Watampone/Sinjai) jatuh ke 'monsunal' — padahal
-           keduanya satu pola musim ('timur') & satu provinsi (Sulsel,
-           yang menurut dokumentasi BOBOT_IKLIM sendiri = 'monsunal').
-           Pemetaan via polaPuncak menjaga konsistensi bobot ENSO/IOD
-           di seluruh wilayah zona 'timur', tidak "lompat" hanya karena
-           selisih lintang 0.1–0.2°.
-
-           tentukanZonaIklim(lat,lon) tetap dipakai sebagai fallback
-           jika polaPuncak tidak dikenali (di luar 4 nilai standar). ── */
         var PEMETAAN_POLA_KE_ZONA_IKLIM = {
             barat: 'monsunal',
             timur: 'monsunal',
@@ -513,38 +426,18 @@
                 ? window.tentukanZonaIklim(lat, lon)
                 : 'monsunal');
 
-        /* ── [FIX LAPISAN 5] Sesuaikan rawZOM dengan anomali ENSO/IOD
-           SEBELUM dipakai untuk skor, onset, dan gerbang air. rawZOM
-           asli tetap dipakai utuh untuk tampilan `alasan`. ── */
         var rawZOMSesuai = terapkanPenyesuaianENSOIOD(rawZOM, zonaIklim, ensoVal, iodVal);
 
-        /* ── [FIX LAPISAN 1] Hitung ulang skor ZOM berbasis threshold regional,
-           dari rawZOM yang sudah disesuaikan ENSO/IOD ── */
         var skorZOM = rawZOMSesuai.map(function(mm) {
             return skorZOMRegional(mm, polaPuncak);
         });
 
-        /* Log perbandingan skor lama vs baru untuk debugging lapangan */
-        console.log('[PatchMusim v2.1] Zona iklim ENSO/IOD: ' + zonaIklim +
+        console.log('[PatchMusim v2.3] Zona iklim ENSO/IOD: ' + zonaIklim +
             ' | ENSO=' + ensoVal + ' | IOD=' + iodVal);
-        console.log('[PatchMusim v2.1] Skor ZOM regional (vs skor lama dari skorBulan):');
-        var logBaris = [];
-        for (var m = 0; m < 12; m++) {
-            var faktorLog = faktorPenyesuaianENSOIOD(m, zonaIklim, ensoVal, iodVal);
-            logBaris.push(NAMA_BULAN[m].substring(0,3) + ':' +
-                rawZOM[m].toFixed(0) + 'mm×' + faktorLog.toFixed(2) +
-                '=' + rawZOMSesuai[m].toFixed(0) + 'mm→' + skorZOM[m] +
-                '(lama:' + skorBulan[m] + ')');
-        }
-        console.log(logBaris.join(' | '));
 
-        /* ── [FIX LAPISAN 3] Deteksi onset hujan efektif, dari rawZOM
-           yang sudah disesuaikan ENSO/IOD (onset bisa mundur saat
-           El Niño/IOD+, atau lebih cepat saat La Niña/IOD−) ── */
         var onsetRendeng = cariOnsetHujan(startRendeng, rawZOMSesuai, polaPuncak);
         var onsetGadu    = cariOnsetHujan(startGadu,    rawZOMSesuai, polaPuncak);
 
-        /* Bangun jendela 4 bulan dimulai dari onset (bukan dari startMusim kasar) */
         var rendengBulan = [onsetRendeng, (onsetRendeng+1)%12, (onsetRendeng+2)%12, (onsetRendeng+3)%12];
         var gaduBulan    = [onsetGadu,    (onsetGadu+1)%12,    (onsetGadu+2)%12,    (onsetGadu+3)%12];
 
@@ -566,91 +459,53 @@
 
             musim.bulanTanam.forEach(function (bTanam) {
                 var mmTanam   = rawZOM[bTanam];
-                var mmBajak   = rawZOM[(bTanam - 1 + 12) % 12]; /* bulan pengolahan lahan */
-
-                /* [FIX LAPISAN 5] Versi yang sudah disesuaikan ENSO/IOD —
-                   dipakai untuk gerbang & penalti onset (kondisi aktual
-                   yang diperkirakan), sementara mmTanam/mmBajak (raw,
-                   klimatologi) tetap dipakai untuk tampilan `alasan`. */
+                var mmBajak   = rawZOM[(bTanam - 1 + 12) % 12];
                 var mmTanamSesuai = rawZOMSesuai[bTanam];
                 var mmBajakSesuai = rawZOMSesuai[(bTanam - 1 + 12) % 12];
 
-                /* ── [FIX LAPISAN 2] GERBANG SYARAT AIR MUTLAK ──────────────
-                   Bulan tanam WAJIB memiliki curah hujan minimal thresholdBajak
-                   DI BULAN PENGOLAHAN (bTanam−1) atau di bulan tanam itu sendiri.
-                   Ini mencerminkan kenyataan lapangan: petani butuh air untuk
-                   bajak/garu sebelum atau saat tanam. Tanpa air bajak, tidak ada
-                   kandidat dari bulan ini — tidak peduli nilai generatif/panen.
-                ──────────────────────────────────────────────────────────── */
                 var mmUntukBajak = Math.max(mmBajakSesuai, mmTanamSesuai);
                 if (mmUntukBajak < th.thresholdBajak) {
-                    console.log('[PatchMusim v2.1] Bulan ' + NAMA_BULAN[bTanam] +
+                    console.log('[PatchMusim v2.3] Bulan ' + NAMA_BULAN[bTanam] +
                         ' dilewati (bajak: ' + mmUntukBajak.toFixed(0) +
                         'mm setelah penyesuaian ENSO/IOD < threshold ' + th.thresholdBajak + 'mm)');
-                    return; /* skip — belum ada air untuk bajak */
+                    return;
                 }
 
-                var skorTanam = skorZOM[bTanam]; /* [FIX LAPISAN 1] pakai skor regional */
-                if (skorTanam < 10) return; /* kering ekstrem mutlak */
-
-                /* ── [FIX LAPISAN 6] URUTAN AGRONOMI: OLAH TANAH → PEMBIBITAN → TANAM ──
-                   `bTanam` di atas = bulan OLAH TANAH/BAJAK, digerbangi oleh
-                   ketersediaan air (sawah tergenang, syarat air mutlak di atas).
-                   Tanam pindah (transplanting) BUKAN bulan yang sama — terjadi
-                   ~JEDA_OLAH_KE_TANAM_HARI (25) hari kemudian, setelah pembibitan.
-                   Karena 25 hari > sisa hari dari pertengahan bulan manapun,
-                   tglTanamAktual selalu jatuh di bulan SETELAH bTanam. Seluruh
-                   fenologi (vegetatif/generatif/panen) dihitung dari
-                   tglTanamAktual, bukan dari bulan olah tanah. ── */
-                var tglOlahTanah   = new Date(tahunSekarang, bTanam, 15);
-                var tglTanamAktual = tambahHari(tglOlahTanah, JEDA_OLAH_KE_TANAM_HARI);
-                var bTanamAktual   = tglTanamAktual.getMonth();
+                var skorTanam = skorZOM[bTanam];
+                if (skorTanam < 10) return;
 
                 varianArr.forEach(function (v) {
+                    /* [FIX A] Hitung tahun yang tepat untuk bulan olah tanah ini */
+                    var hariTotal = JEDA_OLAH_KE_TANAM_HARI + v.panen;
+                    var infoTahun = hitungTahunMusim(bTanam, now, hariTotal);
+
+                    var tglOlahTanah   = infoTahun.tglOlah;
+                    var tglTanamAktual = tambahHari(tglOlahTanah, JEDA_OLAH_KE_TANAM_HARI);
+                    var bTanamAktual   = tglTanamAktual.getMonth();
+                    var tglPanen       = infoTahun.tglPanen; /* [FIX C] simpan tglPanen */
+
                     var hariGen    = Math.floor(v.panen * v.persenGen);
                     var bGenIdx    = tambahHari(tglTanamAktual, hariGen).getMonth();
-                    var bPanenIdx  = tambahHari(tglTanamAktual, v.panen).getMonth();
+                    var bPanenIdx  = tglPanen.getMonth();
                     var bVeg1      = tambahHari(tglTanamAktual, 30).getMonth();
 
-                    var skorGen    = skorZOM[bGenIdx];   /* [FIX LAPISAN 1] */
-                    var skorPanen  = skorZOM[bPanenIdx]; /* [FIX LAPISAN 1] */
-                    var skorVeg1   = skorZOM[bVeg1];     /* [FIX LAPISAN 1] */
+                    var skorGen    = skorZOM[bGenIdx];
+                    var skorPanen  = skorZOM[bPanenIdx];
+                    var skorVeg1   = skorZOM[bVeg1];
 
-                    /* ── [FIX LAPISAN 2] Formula nilaiTotal baru ────────────────
-                       Bobot dirancang agar kondisi air saat tanam & vegetatif
-                       menjadi penentu utama. Generatif & panen sebagai penyeimbang.
-
-                       nilaiTanam (0.45): skor air saat tanam — dominan.
-                       nilaiVeg1  (0.20): skor air bulan vegetatif pertama —
-                                          penting untuk anakan produktif.
-                       nilaiGen   (0.20): mendekati 50 = optimal generatif
-                                          (tidak terlalu kering/basah).
-                       nilaiPanen (0.15): rendah = bagus (panen kering lebih mudah).
-
-                       Penalti tambahan:
-                       • Jika mmTanam < thresholdOnset (ada air tapi sedikit):
-                         penalti progresif — mencegah bulan "cukup bajak tapi
-                         terlalu kering untuk tanam produktif" mendominasi.
-                       • Jika skorVeg1 sangat rendah: bulan vegetatif kering,
-                         risiko kematian anakan.
-                    ─────────────────────────────────────────────────────────── */
                     var nilaiTanam = skorTanam;
                     var nilaiVeg1  = skorVeg1;
-                    var nilaiGen   = 100 - Math.abs(skorGen - 55);  /* optimal ~skor 55 = hujan sedang */
-                    var nilaiPanen = 100 - (skorPanen * 0.5);       /* makin kering makin bagus */
+                    var nilaiGen   = 100 - Math.abs(skorGen - 55);
+                    var nilaiPanen = 100 - (skorPanen * 0.5);
 
                     var nilaiTotal = (nilaiTanam * 0.45) +
                                      (nilaiVeg1  * 0.20) +
                                      (nilaiGen   * 0.20) +
                                      (nilaiPanen * 0.15);
 
-                    /* Penalti: bulan tanam ada air tapi kurang dari onset stabil
-                       [FIX LAPISAN 5] pakai mm yang sudah disesuaikan ENSO/IOD */
                     if (mmTanamSesuai < th.thresholdOnset) {
                         nilaiTotal -= (th.thresholdOnset - mmTanamSesuai) * 0.3;
                     }
-
-                    /* Penalti: vegetatif sangat kering (anakan mati) */
                     if (skorVeg1 < 25) {
                         nilaiTotal -= (25 - skorVeg1) * 1.0;
                     }
@@ -659,7 +514,7 @@
                         musimNama     : musim.nama,
                         musimKode     : musim.kode,
                         bTanam        : bTanam,
-                        tahunTanam    : tahunSekarang,
+                        tahunTanam    : infoTahun.tahun,   /* [FIX A] tahun tepat */
                         varietas      : v.kode,
                         labelVar      : v.label,
                         panen         : v.panen,
@@ -672,7 +527,9 @@
                         skorPanen     : skorPanen,
                         namaBulanGen  : NAMA_BULAN[bGenIdx],
                         namaBulanPanen: NAMA_BULAN[bPanenIdx],
+                        tglOlahTanah  : tglOlahTanah,      /* [FIX C] */
                         tglTanamAktual: tglTanamAktual,
+                        tglPanen      : tglPanen,           /* [FIX C] */
                         bTanamAktual  : bTanamAktual
                     });
                 });
@@ -680,29 +537,34 @@
 
             /* ── FALLBACK jika semua bulan di bawah threshold bajak ── */
             if (kandidatMusim.length === 0) {
-                /* Pilih bulan dengan mm (terkoreksi ENSO/IOD) tertinggi
-                   di jendela musim sebagai fallback [FIX LAPISAN 5] */
                 var bFallback  = musim.bulanTanam[0];
                 var mmMax      = -1;
                 musim.bulanTanam.forEach(function(b) {
                     if (rawZOMSesuai[b] > mmMax) { mmMax = rawZOMSesuai[b]; bFallback = b; }
                 });
 
-                var tglOlahFb       = new Date(tahunSekarang, bFallback, 15);
+                /* [FIX A] Hitung tahun tepat untuk fallback juga */
+                var hariTotalFb      = JEDA_OLAH_KE_TANAM_HARI + 110; /* gunakan sedang */
+                var infoTahunFb      = hitungTahunMusim(bFallback, now, hariTotalFb);
+                var tglOlahFb        = infoTahunFb.tglOlah;
                 var tglTanamAktualFb = tambahHari(tglOlahFb, JEDA_OLAH_KE_TANAM_HARI);
-                var bTanamAktualFb  = tglTanamAktualFb.getMonth();
-                var tglFaseFb       = cariTglFaseBulan(tglTanamAktualFb, 3, 8, 0, bTanamAktualFb);
-                var statusFb        = statusWaktuTanam(tglFaseFb, now);
+                var bTanamAktualFb   = tglTanamAktualFb.getMonth();
+                var tglPanenFb       = infoTahunFb.tglPanen;
+                var tglFaseFb        = cariTglFaseBulan(tglTanamAktualFb, 3, 8, 0, bTanamAktualFb);
+                var statusFb         = statusWaktuTanam(tglFaseFb, now);
 
                 hasilDuaMusim.push({
                     musimNama  : musim.nama,
                     musimKode  : musim.kode,
+                    tglOlahTanah: tglOlahFb,                    /* [FIX C] */
                     tglTanam   : tglFaseFb,
+                    tglPanen   : tglPanenFb,                    /* [FIX C] */
                     varietas   : 'sedang',
                     labelVar   : 'Sedang (95–115 HST)',
                     alasan     : 'Seluruh jendela olah tanah di bawah threshold air untuk bajak (' +
                                  th.thresholdBajak + 'mm) setelah penyesuaian ENSO/IOD. Dipilih bulan ' +
-                                 'dengan curah hujan tertinggi (' + NAMA_BULAN[bFallback] + ', ' +
+                                 'dengan curah hujan tertinggi (' + NAMA_BULAN[bFallback] + ' ' +
+                                 infoTahunFb.tahun + ', ' +
                                  rawZOM[bFallback].toFixed(0) + 'mm klimatologi → ' + mmMax.toFixed(0) +
                                  'mm setelah penyesuaian). Tanam pindah diperkirakan ~' +
                                  JEDA_OLAH_KE_TANAM_HARI + ' hari kemudian (≈' +
@@ -716,17 +578,9 @@
                 kandidatMusim.sort(function (a, b) { return b.nilaiTotal - a.nilaiTotal; });
                 var best = kandidatMusim[0];
 
-                /* [FIX LAPISAN 6] Cari tanggal fase bulan baik di sekitar
-                   tglTanamAktual (tanam pindah), bukan bulan olah tanah */
                 var tglFaseBaik = cariTglFaseBulan(best.tglTanamAktual, 3, 8, 0, best.bTanamAktual);
+                var statusBest  = statusWaktuTanam(tglFaseBaik, now);
 
-                /* [FIX LAPISAN 4] isLewat dari tanggal FINAL, bukan heuristik */
-                var statusBest = statusWaktuTanam(tglFaseBaik, now);
-
-                /* [FIX LAPISAN 6] Bulan & curah hujan olah tanah diketahui
-                   langsung dari best.bTanam — tidak lagi ditebak via -14 hari
-                   dari tglFaseBaik. Peringatan dipakai jika mm olah tanah
-                   (setelah penyesuaian ENSO/IOD) ternyata di bawah threshold. */
                 var bOlah        = best.bTanam;
                 var mmOlah       = best.mmTanam;
                 var catatanOlah  = best.mmTanamSesuai < th.thresholdBajak
@@ -741,7 +595,6 @@
                 var keteranganPanen = best.skorPanen > 65 ? 'basah — butuh dryer' :
                                       best.skorPanen < 20 ? 'kering ideal' : 'sedang — aman';
 
-                /* [FIX LAPISAN 5] Catatan penyesuaian ENSO/IOD jika signifikan (>3%) */
                 var catatanENSOIOD = '';
                 if (best.mmTanam > 0) {
                     var persenSesuai = ((best.mmTanamSesuai - best.mmTanam) / best.mmTanam) * 100;
@@ -754,34 +607,122 @@
                     }
                 }
 
-                /* [FIX LAPISAN 6] Alasan kini menjelaskan rangkaian
-                   olah tanah → pembibitan → tanam pindah, bukan hanya
-                   "curah hujan saat tanam" di bulan yang sama. */
+                /* [FIX A] Tampilkan tahun di alasan agar tidak ambigu */
+                var tahunOlah  = best.tglOlahTanah.getFullYear();
+                var tahunTanam = best.tglTanamAktual.getFullYear();
+
                 var alasan =
-                    'Olah tanah (bajak) di ' + NAMA_BULAN[bOlah] + ': ' + mmOlah.toFixed(0) + 'mm' +
+                    'Olah tanah (bajak) di ' + NAMA_BULAN[bOlah] + ' ' + tahunOlah +
+                    ': ' + mmOlah.toFixed(0) + 'mm' +
                     ' (skor ' + best.skorTanam + '/100). Pembibitan ~1 minggu setelahnya; ' +
                     'tanam pindah ~' + JEDA_OLAH_KE_TANAM_HARI + ' hari setelah olah tanah ' +
-                    '(≈' + NAMA_BULAN[best.bTanamAktual] + ', setelah bibit berumur 15–20 hari). ' +
+                    '(≈' + NAMA_BULAN[best.bTanamAktual] + ' ' + tahunTanam +
+                    ', setelah bibit berumur 15–20 hari). ' +
                     'Generatif di ' + best.namaBulanGen + ' (' + keteranganGen + '). ' +
-                    'Panen di ' + best.namaBulanPanen + ' (' + keteranganPanen + ').' +
+                    'Panen di ' + best.namaBulanPanen + ' ' + best.tglPanen.getFullYear() +
+                    ' (' + keteranganPanen + ').' +
                     (catatanOlah ? ' ⚠️ ' + catatanOlah : '') +
                     catatanENSOIOD;
 
                 hasilDuaMusim.push({
-                    musimNama  : best.musimNama,
-                    musimKode  : best.musimKode,
-                    tglTanam   : tglFaseBaik,
-                    varietas   : best.varietas,
-                    labelVar   : best.labelVar,
-                    alasan     : alasan,
-                    isLewat    : statusBest.isLewat,
-                    isBerjalan : statusBest.isBerjalan
+                    musimNama   : best.musimNama,
+                    musimKode   : best.musimKode,
+                    tglOlahTanah: best.tglOlahTanah,  /* [FIX C] */
+                    tglTanam    : tglFaseBaik,
+                    tglPanen    : best.tglPanen,       /* [FIX C] */
+                    varietas    : best.varietas,
+                    labelVar    : best.labelVar,
+                    alasan      : alasan,
+                    isLewat     : statusBest.isLewat,
+                    isBerjalan  : statusBest.isBerjalan
                 });
             }
         });
 
+        /* ================================================================
+           [FIX B — v2.3] VALIDASI URUTAN MUSIM: PANEN RENDENG → OLAH GADU
+           ================================================================
+           Setelah kedua musim dihitung SECARA INDEPENDEN (termasuk
+           tahun yang tepat masing-masing via Fix A), pastikan tidak ada
+           overlap: Olah Tanah musim ke-2 TIDAK BOLEH terjadi sebelum
+           Panen musim ke-1 selesai.
+
+           Jika overlap terdeteksi, geser musim ke-2 ke tahun berikutnya:
+             - tglOlahTanah += 1 tahun
+             - tglTanam     += 1 tahun
+             - tglPanen     += 1 tahun
+           (Geser tanggal, bukan bulan — mempertahankan fase bulan yang
+           sudah dihitung agar tglFaseBaik tetap valid.)
+
+           Validasi dilakukan pada pasangan (rendeng, gadu) maupun
+           (gadu, rendeng) — urutan musim dalam setahun tergantung zona
+           dan tahun kalender, jadi cek kedua arah.
+        ================================================================ */
+        if (hasilDuaMusim.length === 2) {
+            /* Urutkan berdasarkan tglOlahTanah untuk identifikasi musim ke-1 & ke-2 */
+            hasilDuaMusim.sort(function(a, b) {
+                return (a.tglOlahTanah ? a.tglOlahTanah.getTime() : a.tglTanam.getTime()) -
+                       (b.tglOlahTanah ? b.tglOlahTanah.getTime() : b.tglTanam.getTime());
+            });
+
+            var m1 = hasilDuaMusim[0];
+            var m2 = hasilDuaMusim[1];
+
+            /* tglPanen m1 tersedia (Fix C). Jika tglOlahTanah m2 SEBELUM tglPanen m1,
+               berarti overlap — petani mustahil olah lahan sebelum panen musim lalu. */
+            var tglOlahM2  = m2.tglOlahTanah || m2.tglTanam;
+            var tglPanenM1 = m1.tglPanen;
+
+            if (tglPanenM1 && tglOlahM2 && tglOlahM2.getTime() < tglPanenM1.getTime()) {
+                console.warn(
+                    '[PatchMusim v2.3] ⚠️ OVERLAP MUSIM TERDETEKSI!\n' +
+                    '  Olah tanah ' + m2.musimNama + ': ' + tglOlahM2.toLocaleDateString('id-ID') +
+                    '\n  Panen ' + m1.musimNama + ': ' + tglPanenM1.toLocaleDateString('id-ID') +
+                    '\n  → Geser ' + m2.musimNama + ' ke tahun berikutnya.'
+                );
+
+                /* Geser semua tanggal musim ke-2 maju 1 tahun */
+                function geserSetahun(d) {
+                    if (!d) return d;
+                    var baru = new Date(d);
+                    baru.setFullYear(baru.getFullYear() + 1);
+                    return baru;
+                }
+
+                m2.tglOlahTanah = geserSetahun(m2.tglOlahTanah);
+                m2.tglTanam     = geserSetahun(m2.tglTanam);
+                m2.tglPanen     = geserSetahun(m2.tglPanen);
+
+                /* Update isLewat/isBerjalan setelah pergeseran */
+                var statusGeser = statusWaktuTanam(m2.tglTanam, now);
+                m2.isLewat     = statusGeser.isLewat;
+                m2.isBerjalan  = statusGeser.isBerjalan;
+
+                /* Update alasan agar tahun yang ditampilkan ikut bergeser */
+                if (m2.tglOlahTanah && m2.tglTanam && m2.tglPanen) {
+                    m2.alasan = m2.alasan.replace(
+                        /Olah tanah \(bajak\) di (\w+) (\d{4})/,
+                        'Olah tanah (bajak) di $1 ' + m2.tglOlahTanah.getFullYear()
+                    );
+                    m2.alasan = m2.alasan.replace(
+                        /Panen di (\w+) (\d{4})/,
+                        'Panen di $1 ' + m2.tglPanen.getFullYear()
+                    );
+                }
+
+                console.log(
+                    '[PatchMusim v2.3] Setelah pergeseran:\n' +
+                    '  Olah tanah ' + m2.musimNama + ': ' +
+                    (m2.tglOlahTanah ? m2.tglOlahTanah.toLocaleDateString('id-ID') : '-')
+                );
+            }
+        }
+
+        /* Urutkan hasil akhir berdasarkan tglOlahTanah (atau tglTanam jika tglOlahTanah tidak ada) */
         hasilDuaMusim.sort(function (a, b) {
-            return a.tglTanam.getTime() - b.tglTanam.getTime();
+            var tA = (a.tglOlahTanah || a.tglTanam).getTime();
+            var tB = (b.tglOlahTanah || b.tglTanam).getTime();
+            return tA - tB;
         });
 
         return hasilDuaMusim;
@@ -797,26 +738,27 @@
         window.rekomendasiWindowTanam     = rekomendasiWindowTanamV3;
         window.tentukanKalenderMusimLokal = tentukanKalenderMusimLokal;
         window.statusWaktuTanam           = statusWaktuTanam;
-        window._thresholdAirMusim         = THRESHOLD_AIR; /* expose untuk debugging */
-        window._faktorPenyesuaianENSOIOD  = faktorPenyesuaianENSOIOD; /* expose untuk debugging */
+        window._thresholdAirMusim         = THRESHOLD_AIR;
+        window._faktorPenyesuaianENSOIOD  = faktorPenyesuaianENSOIOD;
+        window._hitungTahunMusim          = hitungTahunMusim; /* expose untuk debugging */
 
         console.log(
-            '%c✅ patch_deteksi_musim_v2.2.js aktif\n' +
+            '%c✅ patch_deteksi_musim_v2.3.js aktif\n' +
+            '   Fix A (v2.3): Tahun musim dihitung dinamis — Rendeng boleh mundur\n' +
+            '                  ke akhir tahun lalu (mis. Nov 2025 saat ini Jun 2026)\n' +
+            '   Fix B (v2.3): Validasi urutan musim — Olah tanah musim ke-2 TIDAK\n' +
+            '                  boleh terjadi sebelum Panen musim ke-1 selesai;\n' +
+            '                  jika overlap terdeteksi, musim ke-2 digeser +1 tahun\n' +
+            '   Fix C (v2.3): tglOlahTanah & tglPanen kini selalu ada di objek hasil\n' +
+            '                  (untuk validasi urutan & tampilan UI yang akurat)\n' +
+            '   ── Semua fix v2.0–v2.2 tetap aktif ──\n' +
             '   Fix #1 (Lapisan 1): Skor ZOM dinormalisasi ulang per zona regional\n' +
             '   Fix #2 (Lapisan 2): Gerbang syarat air bajak berbasis mm aktual\n' +
             '   Fix #3 (Lapisan 3): Jendela kandidat dimulai dari onset hujan efektif\n' +
             '   Fix #4 (Lapisan 4): isLewat/isBerjalan sinkron dengan tglFaseBaik\n' +
-            '   Fix #5 (Lapisan 5): ENSO/IOD (NOAA) kini disesuaikan ke rawZOM sebelum\n' +
-            '                       dipakai untuk skor, onset, & gerbang air — sebelumnya\n' +
-            '                       diterima tapi diabaikan total\n' +
-            '   Fix #5b: Zona BOBOT_IKLIM untuk ENSO/IOD kini konsisten di seluruh\n' +
-            '            Pantai Timur Sulsel (polaPuncak -> zona, bukan lat/lon mentah)\n' +
-            '   Fix #6 (Lapisan 6): bTanam = bulan OLAH TANAH (digerbangi air). Tanam\n' +
-            '                       pindah dihitung ~25 hari kemudian (setelah\n' +
-            '                       pembibitan 7+15-20 hari) — fenologi & tglFaseBaik\n' +
-            '                       kini dihitung dari tanggal tanam pindah, bukan\n' +
-            '                       dari bulan olah tanah\n' +
-            '   Penalti skorOlah dihapus dari seleksi — dipindahkan ke field alasan',
+            '   Fix #5 (Lapisan 5): ENSO/IOD (NOAA) disesuaikan ke rawZOM sebelum dipakai\n' +
+            '   Fix #5b: Zona BOBOT_IKLIM konsisten via polaPuncak\n' +
+            '   Fix #6 (Lapisan 6): bTanam = bulan OLAH TANAH; tanam pindah +25 hari',
             'color:#10b981; font-weight:bold;'
         );
     }
