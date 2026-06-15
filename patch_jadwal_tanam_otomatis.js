@@ -996,7 +996,7 @@ if (tabPertama) {
     sembunyikanSemuaUntukJadwal();
     if (boxJTO) boxJTO.style.display = 'block';
     var titleEl = document.getElementById('modeTitle');
-    if (titleEl) { titleEl.innerText = '📅 Jadwal Kegiatan Tani'; titleEl.style.color = WARNA; }
+    if (titleEl) { titleEl.innerText = '📅 Kalender Jadwal Tanam'; titleEl.style.color = WARNA; }
     var subEl = document.getElementById('tabSubtitleDisplay');
     if (subEl)  { subEl.innerText = ''; subEl.style.display = 'none'; }
     document.querySelectorAll('.tab-btn').forEach(function (btn) { btn.classList.remove('active'); });
