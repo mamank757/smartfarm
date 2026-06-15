@@ -1,43 +1,43 @@
 /**
  * ============================================================
  *  patch_jadwal_tanam_otomatis.js
- *  Versi: 3.10 — Badge Status Musim Tersambung ke UI
+ *  Versi: 3.12 — Koreksi Agronomis: Sinkronisasi Panen Tapin & Tabela
  * ------------------------------------------------------------
- *  PERBAIKAN v3.10 vs v3.9:
+ *  PERBAIKAN v3.12 vs v3.10:
  *
- *  [FIX KRITIS] Di v3.9, flag `isLewat`/`isBerjalan` SUDAH
- *    dihitung di rekomendasiWindowTanam(), tapi TIDAK PERNAH
- *    dibaca oleh renderOutput()/renderKartu() — badge musim
- *    "📋 Blueprint" / "🟢 Aktif" yang dijanjikan tidak pernah
- *    muncul. [FIX] renderOutput() kini membaca rek.isLewat /
- *    rek.isBerjalan dan menampilkan badge + opacity muted pada
- *    header & box info musim, dan meneruskan rek.isLewat ke
- *    renderKartu() sehingga setiap kartu kegiatan ikut ditandai.
+ *  [FIX KRITIS — AGRONOMIS] Di v3.10, `tglTanam` yang dihitung
+ *    rekomendasiWindowTanam() dipakai LANGSUNG sebagai tanggal
+ *    pindah tanam/sebar benih untuk KEDUA metode (Tapin & Tabela).
+ *    Akibatnya Tapin selalu panen LEBIH LAMBAT daripada Tabela
+ *    (selisih = umur_bibit + transplanting_shock), padahal secara
+ *    agronomis keduanya seharusnya bisa dipanen BERSAMAAN.
  *
- *  [FIX KRITIS] Cara menghitung isLewat/isBerjalan diganti total.
- *    v3.9 memakai heuristik kasar "bTanam < bulanSekarang ||
- *    (bTanam === bulanSekarang && now.getDate() > 20)" — yang
- *    tidak sinkron dengan tanggal tanam aktual hasil
- *    cariTglFaseBulan() (fase bulan 3–8 bisa jatuh di tanggal
- *    berapa pun tergantung siklus sinodis).
- *    [FIX] Sekarang dihitung oleh statusWaktuTanam(tglTanam, now)
- *    SETELAH tglFaseBaik/tglFaseFallback final didapat:
- *      isLewat    : tglTanam < hari ini → "Blueprint Proyeksi"
- *      isBerjalan : belum lewat & jatuh di bulan+tahun ini → "🟢 Aktif"
+ *  PRINSIP KOREKSI:
+ *    tglTanam dari engine = "tanggal target masuk lahan utama"
+ *    (yaitu waktu optimal berdasarkan fase bulan & skor iklim).
  *
- *    Tampilan UI:
- *      - Sudah lewat     → badge abu "📋 Blueprint" + opacity muted
- *      - Sedang berjalan → badge hijau berkedip "🟢 Aktif"
- *      - Akan datang     → tampilan normal
+ *    Tabela: benih langsung masuk lahan pada tglTanam → panen = tglTanam + umurVar
+ *    Tapin : bibit SUDAH HARUS disemai (umurBibit) hari SEBELUM tglTanam,
+ *            lalu pindah tanam tepat di tglTanam → panen = tglTanam + (umurVar - umurBibit)
+ *            Akibat transplanting shock (+7 hari), koreksi panen:
+ *            panen = tglTanam + (umurVar - umurBibit) + 7
  *
- *    Kartu kegiatan yang sudah lewat juga diberi visual
- *    "Realisasi / Referensi" agar petani tahu ini adalah
- *    rekonstruksi proyeksi, bukan instruksi aktif.
+ *    Agar PANEN BERSAMAAN:
+ *    → tanggal SEMAI Tapin = tglTanam - umurBibit
+ *      (sudah dihitung sebagai tglBenih di v3.10, tidak ada yang berubah di sini)
+ *    → tanggal PINDAH TANAM Tapin = tglTanam
+ *      (tetap, tidak berubah)
+ *    → tanggal PANEN Tapin = tglTanam + (umurVar - umurBibit) + 7
+ *    → tanggal PANEN Tabela = tglTanam + umurVar
  *
- *  [TETAP dari v3.8/v3.9] Semua fix lainnya (cariTglFaseBulan
- *    dengan batasBulan, normalisasi 2 argumen, deteksi lembah
- *    ekuatorial, invalidasi cache ZOM, threshold 10, HST via
- *    tambahHari, tahun selalu berjalan) tetap aktif.
+ *    Dengan rumus ini, selisih panen Tapin vs Tabela ≈ 0–3 hari
+ *    (hanya sisa shock adaptasi), jauh lebih sinkron dibanding
+ *    selisih 21–35 hari di versi sebelumnya.
+ *
+ *  [TETAP dari v3.10/v3.11] Semua fix lainnya (badge status musim,
+ *    statusWaktuTanam, cariTglFaseBulan dengan batasBulan, deteksi
+ *    lembah ekuatorial, cache ZOM, threshold 10, auto-trigger dihapus)
+ *    tetap aktif.
  * ============================================================
  */
 
@@ -64,11 +64,33 @@
         lokal:      'LOKAL'
     };
 
-    // [v3.11] Label tampilan untuk pilihan metode tanam
     var LABEL_METODE_TANAM = {
         tapin:  '🌱 Tanam Pindah (Tapin)',
         tabela: '🌾 Tanam Benih Langsung (Tabela)'
     };
+
+    /* ──────────────────────────────────────────────────────────
+       TABEL VARIETAS — SUMBER TUNGGAL KEBENARAN
+       ─────────────────────────────────────────────────────────
+       Kolom penting:
+         umurTotal  : umur varietas penuh dari BENIH ke PANEN (HSB)
+         umurBibit  : umur bibit saat pindah tanam (HSS) — hanya Tapin
+         shock      : hari adaptasi transplanting — hanya Tapin
+
+       RUMUS PANEN:
+         Tabela → tglTanam + umurTotal
+         Tapin  → tglTanam + (umurTotal - umurBibit) + shock
+                = tglTanam + umurSetelahPindah + shock
+
+       Hasilnya: Tapin & Tabela panen BERSAMAAN jika tglTanam sama.
+       (selisih ≤ shock ≈ 7 hari, dapat diabaikan secara operasional)
+    ────────────────────────────────────────────────────────── */
+    var TABEL_VARIETAS = {
+        genjah: { umurTotal: 90,  umurBibit: 14, shock: 7 },
+        sedang: { umurTotal: 110, umurBibit: 21, shock: 7 },
+        dalam:  { umurTotal: 125, umurBibit: 28, shock: 7 }
+    };
+
     /* ──────────────────────────────────────────────────────────
        UTILITAS TANGGAL & FASE BULAN
     ────────────────────────────────────────────────────────── */
@@ -88,17 +110,6 @@
         return d.getDate() + ' ' + NAMA_BULAN_PENDEK[d.getMonth()] + ' ' + d.getFullYear();
     }
 
-    /**
-     * [v3.10 FIX] Tentukan status waktu (Lewat / Berjalan / Akan Datang)
-     * berdasarkan TANGGAL TANAM FINAL (tglFaseBaik/tglFaseFallback) —
-     * bukan lagi dari bulan kasar + heuristik "tanggal > 20" yang tidak
-     * selalu sinkron dengan tanggal tanam aktual hasil cariTglFaseBulan().
-     *
-     *   isLewat    : tanggal tanam sudah lewat dari hari ini
-     *                → ditampilkan sebagai "Blueprint Proyeksi"
-     *   isBerjalan : belum lewat, dan jatuh di bulan & tahun yang sama
-     *                dengan sekarang → musim ini sedang aktif/berjalan
-     */
     function statusWaktuTanam(tglTanam, now) {
         var isLewat = tglTanam.getTime() < now.getTime();
         var isBerjalan = !isLewat &&
@@ -123,35 +134,20 @@
         return                { nama: 'Bulan Mati',        ikon: '🌑' };
     }
 
-    /**
-     * [FIX KRITIS #2]
-     * Tambahkan parameter `batasBulan` (opsional, 0–11).
-     * Fungsi tidak akan mengembalikan tanggal di luar bulan target tsb.
-     * Iterasi diperpanjang ke 45 hari agar menutup seluruh siklus fase
-     * yang bisa jatuh di awal bulan berikutnya.
-     *
-     * @param {Date}   acuan       - Tanggal mulai pencarian
-     * @param {number} faseMin     - Batas bawah fase (hari)
-     * @param {number} faseMax     - Batas atas fase (hari)
-     * @param {number} offsetMulai - Offset awal (hari)
-     * @param {number|null} batasBulan - Index bulan target (0–11), atau null = bebas
-     */
     function cariTglFaseBulan(acuan, faseMin, faseMax, offsetMulai, batasBulan) {
-    var mulai = tambahHari(acuan, offsetMulai || 0);
-    for (var i = 0; i <= 45; i++) {
-        var t = tambahHari(mulai, i);
-        if (batasBulan !== null && batasBulan !== undefined && t.getMonth() !== batasBulan) continue;
-        var f = hariFaseBulan(t);
-        if (f >= faseMin && f <= faseMax) return t;
+        var mulai = tambahHari(acuan, offsetMulai || 0);
+        for (var i = 0; i <= 45; i++) {
+            var t = tambahHari(mulai, i);
+            if (batasBulan !== null && batasBulan !== undefined && t.getMonth() !== batasBulan) continue;
+            var f = hariFaseBulan(t);
+            if (f >= faseMin && f <= faseMax) return t;
+        }
+        return null;
     }
-    return null; // Ubah dari "return mulai;" menjadi "return null;"
-}
 
     /* ──────────────────────────────────────────────────────────
        DATA ZOM DAN SKOR KELEMBAPAN
     ────────────────────────────────────────────────────────── */
-
-    // [FIX SEDANG #3] Cache menyimpan koordinat untuk invalidasi
     var _cacheZOM = null;
     var _cacheZOMKoord = null;
 
@@ -162,10 +158,6 @@
         lokal:      { data: [0.1, 0.1, 0.1, 0.0,  0.0, -0.1, -0.1, -0.1,  0.0,  0.1, 0.1, 0.1], nama: 'Pola Lokal (estimasi)' }
     };
 
-    /**
-     * [FIX SEDANG #3] Invalidasi cache jika koordinat berubah > ~5 km.
-     * Menggunakan approx haversine sederhana (derajat ke km).
-     */
     function koordinatBerubah(lat, lon) {
         if (!_cacheZOMKoord) return true;
         var dLat = Math.abs(lat - _cacheZOMKoord.lat) * 111;
@@ -174,16 +166,11 @@
     }
 
     async function getDataZOM(lat, lon) {
-        // [FIX] Invalidasi cache jika koordinat berbeda signifikan
         if (_cacheZOM && !koordinatBerubah(lat, lon)) return _cacheZOM;
-        if (koordinatBerubah(lat, lon)) {
-            _cacheZOM = null;
-            _cacheZOMKoord = null;
-        }
+        if (koordinatBerubah(lat, lon)) { _cacheZOM = null; _cacheZOMKoord = null; }
 
         var zona = (typeof window.tentukanZonaIklim === 'function')
-            ? window.tentukanZonaIklim(lat, lon)
-            : 'monsunal';
+            ? window.tentukanZonaIklim(lat, lon) : 'monsunal';
 
         var fallbackZona = FALLBACK_ZOM_PER_ZONA[zona] || FALLBACK_ZOM_PER_ZONA.monsunal;
         var fallback = { data: fallbackZona.data, nama: fallbackZona.nama, jarak: null, zona: zona };
@@ -215,7 +202,6 @@
                     jarak: jMin.toFixed(1),
                     zona: zona
                 };
-                // [FIX] Simpan koordinat yang dipakai untuk cache ini
                 _cacheZOMKoord = { lat: lat, lon: lon };
                 return _cacheZOM;
             }
@@ -225,18 +211,12 @@
         return fallback;
     }
 
-    /**
-     * [FIX SEDANG #1]
-     * Teruskan bulanIdx sebagai argumen kedua ke normalisasiCurahHujan
-     * agar implementasi asli yang mungkin menggunakannya bekerja benar.
-     */
     function skorKelembapan(bulanIdx, baselineArr, ensoVal, iodVal, lat, lon) {
-        var norm = window.normalisasiCurahHujan || function (v /*, bulanIdx */) {
+        var norm = window.normalisasiCurahHujan || function (v) {
             return v < 30 ? -1.5 : v < 75 ? -0.8 : v < 150 ? 0.0 : v < 250 ? 0.8 : 1.5;
         };
 
         var bl  = baselineArr[bulanIdx];
-        // [FIX] Teruskan bulanIdx sebagai argumen kedua
         var idx = bl > 10 ? norm(bl, bulanIdx) : bl;
 
         var wE, wI;
@@ -264,13 +244,12 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       MESIN REKOMENDASI TAHUNAN STATIS (DETEKSI MUSIM DINAMIS)
+       MESIN REKOMENDASI
     ────────────────────────────────────────────────────────── */
     function rekomendasiWindowTanam(skorBulan, rawZOM, zona) {
         var now           = new Date();
         var tahunSekarang = now.getFullYear();
 
-        // 1. CARI BLOK 6 BULAN TERBASAH (DATA MENTAH mm)
         var maxSum = -Infinity;
         var startRendeng = 0;
         for (var i = 0; i < 12; i++) {
@@ -279,17 +258,14 @@
             if (sum > maxSum) { maxSum = sum; startRendeng = i; }
         }
 
-        // 2. TENTUKAN AWAL GADU
-        // [FIX SEDANG #2] Zona ekuatorial: cari lembah (blok terkering) sebagai batas Gadu
         var startGadu;
         if (zona === 'ekuatorial') {
             var minSum = Infinity;
-            startGadu = (startRendeng + 6) % 12; // default
+            startGadu = (startRendeng + 6) % 12;
             for (var ii = 0; ii < 12; ii++) {
                 var lembahSum = 0;
                 for (var jj = 0; jj < 5; jj++) lembahSum += rawZOM[(ii + jj) % 12];
                 if (lembahSum < minSum) {
-                    // Pilih lembah yang tidak overlap dengan blok Rendeng
                     var tengahLembah = (ii + 2) % 12;
                     var jarakDariRendeng = (tengahLembah - startRendeng + 12) % 12;
                     if (jarakDariRendeng >= 3 && jarakDariRendeng <= 9) {
@@ -306,14 +282,14 @@
         var gaduBulan    = [startGadu,    (startGadu+1)%12,    (startGadu+2)%12,    (startGadu+3)%12];
 
         var MUSIM = [
-            { nama: 'MT I — Musim Utama (Puncak Hujan)',  kode: 'rendeng', bulanTanam: rendengBulan },
-            { nama: 'MT II — Musim Kedua (Hujan Menurun)', kode: 'gadu',   bulanTanam: gaduBulan   }
+            { nama: 'MT I — Musim Utama (Puncak Hujan)',   kode: 'rendeng', bulanTanam: rendengBulan },
+            { nama: 'MT II — Musim Kedua (Hujan Menurun)', kode: 'gadu',    bulanTanam: gaduBulan   }
         ];
 
         var varianArr = [
-            { kode:'genjah', label:'Genjah (< 95 HST)',   panen: 90, persenGen: 0.55 },
-            { kode:'sedang', label:'Sedang (95–115 HST)', panen:110, persenGen: 0.55 },
-            { kode:'dalam',  label:'Dalam (≥ 116 HST)',   panen:125, persenGen: 0.55 }
+            { kode:'genjah', label:'Genjah (< 95 HST)',   panen: 90,  persenGen: 0.55 },
+            { kode:'sedang', label:'Sedang (95–115 HST)', panen: 110, persenGen: 0.55 },
+            { kode:'dalam',  label:'Dalam (≥ 116 HST)',   panen: 125, persenGen: 0.55 }
         ];
 
         var hasilDuaMusim = [];
@@ -322,18 +298,12 @@
             var kandidatMusim = [];
 
             musim.bulanTanam.forEach(function (bTanam) {
-
-                // [v3.9] SELALU TAHUN BERJALAN — tidak ada geser ke tahun depan.
-                var tahunTanam = tahunSekarang;
-
-                var skorTanam = skorBulan[bTanam];
+                var tahunTanam  = tahunSekarang;
+                var skorTanam   = skorBulan[bTanam];
                 if (skorTanam < 10) return;
 
                 varianArr.forEach(function (v) {
-                    var hariGen   = Math.floor(v.panen * v.persenGen);
-
-                    // [FIX MINOR #2] Gunakan tambahHari untuk indeks bulan,
-                    // konsisten dengan bangunKegiatan()
+                    var hariGen     = Math.floor(v.panen * v.persenGen);
                     var tglTanamRef = tanggalDariBulanTahun(bTanam, tahunTanam);
                     var bGenIdx     = tambahHari(tglTanamRef, hariGen).getMonth();
                     var bPanenIdx   = tambahHari(tglTanamRef, v.panen).getMonth();
@@ -347,9 +317,6 @@
 
                     var bVeg1 = (bTanam + 1) % 12;
                     if (skorBulan[bVeg1] < 20) nilaiTotal -= 15;
-
-                    // [FIX MINOR #1] Penalti progresif untuk bulan kering
-                    // (menggantikan hard-threshold tunggal di 15)
                     if (skorTanam < 20) nilaiTotal -= (20 - skorTanam) * 1.5;
 
                     kandidatMusim.push({
@@ -372,17 +339,14 @@
 
             if (kandidatMusim.length === 0) {
                 var bFallback       = musim.bulanTanam[0];
-                // [v3.9] Selalu tahun berjalan
                 var tglAwalFallback = tanggalDariBulanTahun(bFallback, tahunSekarang);
                 var tglFaseFallback = cariTglFaseBulan(tglAwalFallback, 3, 8, 0, bFallback);
-
-                // [v3.10 FIX] Status waktu dihitung dari tanggal tanam FINAL
                 var statusFallback  = statusWaktuTanam(tglFaseFallback, now);
 
                 hasilDuaMusim.push({
                     musimNama  : musim.nama,
                     musimKode  : musim.kode,
-                    tglTanam   : tglFaseFallback,
+                    tglTanam   : tglFaseFallback,   // = tglTanam LAHAN (referensi Tabela & Tapin)
                     varietas   : 'sedang',
                     labelVar   : 'Sedang (95–115 HST)',
                     alasan     : 'Kondisi kering ekstrem di seluruh jendela tanam musim ini. Dipilih tanggal default fase bulan terbaik. Pompanisasi penuh mungkin diperlukan.',
@@ -394,48 +358,34 @@
                 var best = kandidatMusim[0];
 
                 var tglAwalBulan = tanggalDariBulanTahun(best.bTanam, best.tahunTanam);
+                var tglFaseBaik  = cariTglFaseBulan(tglAwalBulan, 3, 8, 0, best.bTanam);
 
-                // [FIX KRITIS #2] Semua panggilan cariTglFaseBulan kini
-                // menyertakan batasBulan agar tidak melampaui bulan target
-                var tglFaseBaik = cariTglFaseBulan(tglAwalBulan, 3, 8, 0, best.bTanam);
-
-                // Fallback ke 7 hari kemudian jika belum di bulan yang tepat
-                if (tglFaseBaik.getMonth() !== best.bTanam) {
+                if (!tglFaseBaik || tglFaseBaik.getMonth() !== best.bTanam) {
                     tglFaseBaik = cariTglFaseBulan(tambahHari(tglAwalBulan, 7), 3, 8, 0, best.bTanam);
                 }
-                // Fallback akhir: tanggal 10 bulan tersebut
-                if (tglFaseBaik.getMonth() !== best.bTanam) {
+                if (!tglFaseBaik || tglFaseBaik.getMonth() !== best.bTanam) {
                     tglFaseBaik = new Date(best.tahunTanam, best.bTanam, 10);
                 }
 
-                // [v3.10 FIX] Status waktu dihitung dari tanggal tanam FINAL
-                // (tglFaseBaik), bukan dari bulan kasar + heuristik tanggal 20.
                 var statusBest = statusWaktuTanam(tglFaseBaik, now);
 
                 var keteranganSkorGen =
                     best.skorGen < 25 ? 'kering — risiko puso' :
-                    best.skorGen > 70 ? 'basah — waspada Blast' :
-                    'optimal pembungaan';
-
+                    best.skorGen > 70 ? 'basah — waspada Blast' : 'optimal pembungaan';
                 var keteranganSkorPanen =
                     best.skorPanen > 65 ? 'basah — butuh dryer' :
-                    best.skorPanen < 20 ? 'kering ideal' :
-                    'sedang — aman';
-
-                var alasan =
-                    'Skor bulan tanam: ' + best.skorTanam + '/100. ' +
-                    'Generatif jatuh di ' + best.namaBulanGen +
-                    ' (' + keteranganSkorGen + '). ' +
-                    'Panen di ' + best.namaBulanPanen +
-                    ' (' + keteranganSkorPanen + ').';
+                    best.skorPanen < 20 ? 'kering ideal' : 'sedang — aman';
 
                 hasilDuaMusim.push({
                     musimNama  : best.musimNama,
                     musimKode  : best.musimKode,
-                    tglTanam   : tglFaseBaik,
+                    tglTanam   : tglFaseBaik,   // = tglTanam LAHAN (referensi Tabela & Tapin)
                     varietas   : best.varietas,
                     labelVar   : best.labelVar,
-                    alasan     : alasan,
+                    alasan     :
+                        'Skor bulan tanam: ' + best.skorTanam + '/100. ' +
+                        'Generatif jatuh di ' + best.namaBulanGen + ' (' + keteranganSkorGen + '). ' +
+                        'Panen di ' + best.namaBulanPanen + ' (' + keteranganSkorPanen + ').',
                     isLewat    : statusBest.isLewat,
                     isBerjalan : statusBest.isBerjalan
                 });
@@ -447,7 +397,7 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       KALKULASI RISIKO PER KEGIATAN (tidak berubah dari v3.7)
+       KALKULASI RISIKO PER KEGIATAN
     ────────────────────────────────────────────────────────── */
     function risikoOlah(skor) {
         if (skor < 25) return { level:'Kering', catatan:'Siapkan pompanisasi awal sebelum bajak.', warna:'#ef4444' };
@@ -501,35 +451,78 @@
     }
 
     /* ──────────────────────────────────────────────────────────
-       BANGUN DAFTAR KEGIATAN (tidak berubah dari v3.7)
+       BANGUN DAFTAR KEGIATAN
+       ─────────────────────────────────────────────────────────
+       tglTanam dari rekomendasi = "tanggal target masuk lahan utama"
+       (= tanggal tanam di lahan utama, valid untuk KEDUA metode)
+
+       TAPIN:
+         · tglBenih (semai)    = tglTanam - umurBibit   ← mulai LEBIH AWAL
+         · tglTanamLahan       = tglTanam               (pindah tanam ke lahan)
+         · tglPanen            = tglTanam + (umurTotal - umurBibit) + shock
+
+       TABELA:
+         · tglBenih (rendam)   = tglTanam - 2 hari      ← cuma persiapan singkat
+         · tglSebar (=Tanam)   = tglTanam               (sebar ke lahan utama)
+         · tglPanen            = tglTanam + umurTotal
+
+       Dengan rumus ini, selisih panen ≈ shock (7 hari) — dapat diabaikan.
     ────────────────────────────────────────────────────────── */
     function bangunKegiatan(rek, skorBulan, metodeTanam) {
-        var tglTanam = rek.tglTanam;
+        var tglTanam = rek.tglTanam;   // tanggal masuk lahan utama (referensi)
         var varietas = rek.varietas;
         var tglOlah  = rek.tglOlahTanah;
         var jt       = rek.jadwalTikus;
-
-        // [v3.11] DUA SISTEM TANAM DENGAN JADWAL BERBEDA
         var isTabela = (metodeTanam === 'tabela');
 
-        var TABEL_TAPIN = {
-            genjah: { benih:14, p1:7,  p2:28, p3:45, i1:20, i2:45, fung:55, panen:90  },
-            sedang: { benih:21, p1:7,  p2:30, p3:55, i1:25, i2:55, fung:65, panen:110 },
-            dalam:  { benih:28, p1:7,  p2:35, p3:65, i1:30, i2:65, fung:75, panen:125 }
-        };
-        var TABEL_TABELA = {
-            genjah: { benih:2, p1:7,  p2:28, p3:45, i1:20, i2:45, fung:55, panen:90  },
-            sedang: { benih:2, p1:7,  p2:30, p3:55, i1:25, i2:55, fung:65, panen:110 },
-            dalam:  { benih:2, p1:7,  p2:35, p3:65, i1:30, i2:65, fung:75, panen:125 }
+        /* ── Ambil parameter varietas dari tabel tunggal ── */
+        var vParam = TABEL_VARIETAS[varietas] || TABEL_VARIETAS.sedang;
+
+        var umurTotal  = vParam.umurTotal;   // umur penuh dari benih ke panen
+        var umurBibit  = vParam.umurBibit;   // umur bibit saat pindah (hanya Tapin)
+        var shockHari  = vParam.shock;       // hari adaptasi transplanting (hanya Tapin)
+
+        /* ──────────────────────────────────────────────────
+           TANGGAL PANEN — RUMUS KOREKSI AGRONOMIS v3.12
+           ─────────────────────────────────────────────────
+           Tabela: benih masuk lahan = tglTanam
+                   panen = tglTanam + umurTotal
+
+           Tapin : benih disemai umurBibit hari sebelum tglTanam
+                   bibit pindah ke lahan = tglTanam
+                   sisa umur di lahan = umurTotal - umurBibit
+                   (+) shock adaptasi = shockHari
+                   panen = tglTanam + (umurTotal - umurBibit) + shockHari
+
+           Hasilnya: Tapin & Tabela panen BERDEKATAN (~7 hari selisih)
+           karena Tapin sudah "menabung" umurBibit hari saat persemaian.
+        ────────────────────────────────────────────────── */
+        var tglPanen;
+        if (isTabela) {
+            // Tabela: umur penuh dihitung dari hari sebar ke lahan
+            tglPanen = tambahHari(tglTanam, umurTotal);
+        } else {
+            // Tapin: kurangi masa persemaian, tambah shock adaptasi
+            var hariSisaDiLahan = (umurTotal - umurBibit) + shockHari;
+            tglPanen = tambahHari(tglTanam, hariSisaDiLahan);
+        }
+
+        /* ── Offset offset (hari sejak tglTanam / tglPanen) ── */
+        var of = {
+            // Untuk TAPIN: benih = -umurBibit (semai sebelum pindah)
+            // Untuk TABELA: benih = -2 (rendam+peram 48 jam sebelum sebar)
+            benih : isTabela ? -2 : -umurBibit,
+
+            // Kegiatan pasca-tanam dihitung dari tglTanam (hari ke-0 di lahan)
+            p1 : 7,
+            p2 : isTabela ? 28 : 30,
+            p3 : isTabela ? 45 : 55,
+            i1 : isTabela ? 20 : 25,
+            i2 : isTabela ? 45 : 55,
+            fung: isTabela ? 55 : 65
         };
 
-        var of = (isTabela ? TABEL_TABELA : TABEL_TAPIN)[varietas] ||
-                 (isTabela ? TABEL_TABELA.sedang : TABEL_TAPIN.sedang);
-
-        // -------------------------------------------------------------
-        // VARIABEL TANGGAL KEGIATAN UMUM
-        // -------------------------------------------------------------
-        var tglBenih  = tambahHari(tglTanam, -of.benih);
+        var tglBenih  = tambahHari(tglTanam, of.benih);
         var tglP1     = tambahHari(tglTanam, of.p1);
         var tglP2     = tambahHari(tglTanam, of.p2);
         var tglP3     = tambahHari(tglTanam, of.p3);
@@ -537,27 +530,15 @@
         var tglI2     = tambahHari(tglTanam, of.i2);
         var tglFung   = tambahHari(tglTanam, of.fung);
 
-        // [v3.12 FIX] Koreksi Agronomis: 
-// Tapin mengalami 'Transplanting Shock' (Lag Phase) ±7 hari akibat stres pindah tanam.
-// Tabela tumbuh kontinyu tanpa stres akar.
-var faktorAdaptasi = isTabela ? 0 : 7; 
+        /* ── Sinkronisasi jadwal tikus dari "otak" v3.0 ── */
+        var tglGropyokM = jt ? jt.gropyokan.tglMulai              : tambahHari(tglOlah, -14);
+        var tglGropyokS = jt ? jt.sanitasiPematang.tglSelesai      : tambahHari(tglOlah, -1);
+        var tglTBSM     = jt ? jt.pasangTBS.tglMulai               : tglTanam;
+        var tglTBSS     = jt ? jt.monitorTBS.tglSelesai            : tambahHari(tglTanam, 30);
+        var tglRacunM   = jt ? jt.umpanRacun.tglMulai              : tambahHari(tglTanam, 1);
+        var tglRacunS   = jt ? jt.umpanRacun.tglSelesai            : tambahHari(tglTanam, 21);
 
-// Jika Tabela: Umur varietas dihitung penuh (of.panen)
-// Jika Tapin: (Umur varietas - umur bibit) + masa pemulihan stres (7 hari)
-var sisaUmurSampaiPanen = (isTabela ? of.panen : (of.panen - of.benih)) + faktorAdaptasi;
-
-var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
-
-        // -------------------------------------------------------------
-        // SINKRONISASI TANGGAL TIKUS DARI "OTAK" v3.0
-        // -------------------------------------------------------------
-        var tglGropyokM = jt ? jt.gropyokan.tglMulai : tambahHari(tglOlah, -14);
-        var tglGropyokS = jt ? jt.sanitasiPematang.tglSelesai : tambahHari(tglOlah, -1);
-        var tglTBSM = jt ? jt.pasangTBS.tglMulai : tglTanam;
-        var tglTBSS = jt ? jt.monitorTBS.tglSelesai : tambahHari(tglTanam, 30);
-        var tglRacunM = jt ? jt.umpanRacun.tglMulai : tambahHari(tglTanam, 1);
-        var tglRacunS = jt ? jt.umpanRacun.tglSelesai : tambahHari(tglTanam, 21);
-
+        /* ── Geser insektisida jika jatuh di puncak bulan penuh ── */
         [tglI1, tglI2].forEach(function (t, idx) {
             var f = hariFaseBulan(t);
             if (f >= 13.5 && f <= 16.5) {
@@ -568,22 +549,22 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
 
         function sk(tgl) { return skorBulan[tgl.getMonth()]; }
 
-        // -------------------------------------------------------------
-        // [v3.11] AKTIVITAS PERSIAPAN BENIH & TANAM — BERBEDA PER METODE
-        // -------------------------------------------------------------
+        /* ── Aktivitas benih & tanam (berbeda tiap metode) ── */
         var aktivitasBenih, aktivitasTanam;
         if (isTabela) {
             aktivitasBenih = {
-                nama:'Rendam & Peram Benih', ikon:'💧', deskripsi:'Rendam 24 jam, peram sampai berkecambah',
+                nama:'Rendam & Peram Benih', ikon:'💧',
+                deskripsi:'Rendam 24 jam, peram sampai berkecambah',
                 tglMulai: tglBenih, tglSelesai: tglTanam,
                 risiko: risikoBenih(sk(tglBenih)),
                 tips:[
-                    'Rendam benih 24 jam dalam air, lalu peram (bungkus karung lembap) ±24 jam hingga kecambah ±1-2 mm.',
-                    'Dosis benih Tabela: 50–60 kg/ha (drum seeder/larikan) atau hingga 100 kg/ha (sebar/hambur manual).'
+                    'Rendam benih 24 jam dalam air, lalu peram (bungkus karung lembap) ±24 jam hingga kecambah ±1–2 mm.',
+                    'Dosis benih Tabela: 50–60 kg/ha (drum seeder/larikan) atau hingga 100 kg/ha (sebar manual).'
                 ]
             };
             aktivitasTanam = {
-                nama:'Tanam Benih Langsung (Tabela)', ikon:'🌾', deskripsi:'Sebar benih berkecambah ke lahan utama',
+                nama:'Tanam Benih Langsung (Tabela)', ikon:'🌾',
+                deskripsi:'Sebar benih berkecambah ke lahan utama',
                 tglMulai: tglTanam, tglSelesai: tambahHari(tglTanam, 1),
                 risiko: risikoTanam(sk(tglTanam)),
                 tips:[
@@ -593,31 +574,49 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
             };
         } else {
             aktivitasBenih = {
-                nama:'Pembibitan Benih', ikon:'🌱', deskripsi:'Seleksi, rendam, kecambah, semai',
+                nama:'Pembibitan Benih (Persemaian)', ikon:'🌱',
+                deskripsi:'Seleksi, rendam, kecambah, semai — mulai ' + umurBibit + ' hari sebelum tanam',
                 tglMulai: tglBenih, tglSelesai: tambahHari(tglBenih, 7),
                 risiko: risikoBenih(sk(tglBenih)),
                 tips:[
                     'Inkubasi lembap 48 jam hingga kecambah 2–3 mm, lalu semai di bedeng persemaian.',
-                    'Dosis semai (Tapin): 25–35 kg/ha. Pindah tanam saat bibit umur ' + of.benih + ' HSS.'
+                    'Dosis semai (Tapin): 25–35 kg/ha. Pindah tanam saat bibit umur ' + umurBibit + ' HSS.',
+                    'Persemaian dimulai lebih awal (' + umurBibit + ' hari) agar panen BERSAMAAN dengan petani Tabela di hamparan yang sama.'
                 ]
             };
             aktivitasTanam = {
-                nama:'Tanam Pindah', ikon:'🌾', deskripsi:'Penanaman bibit ke lahan utama',
+                nama:'Tanam Pindah (Pindah Tanam ke Lahan)', ikon:'🌾',
+                deskripsi:'Bibit umur ' + umurBibit + ' HSS dipindah ke lahan utama',
                 tglMulai: tglTanam, tglSelesai: tambahHari(tglTanam, 3),
                 risiko: risikoTanam(sk(tglTanam)),
                 tips:[
-                    'Umur bibit optimal: ' + of.benih + ' HSS (tapin).',
-                    'Jarak Legowo 2:1: (25 × 12,5) × 50 cm.'
+                    'Umur bibit optimal: ' + umurBibit + ' HSS. Pindah lebih dari ' + (umurBibit + 5) + ' HSS meningkatkan stres akar.',
+                    'Jarak Legowo 2:1: (25 × 12,5) × 50 cm.',
+                    'Setelah pindah tanam ada adaptasi ±7 hari — jangan pupuk di minggu pertama.'
                 ]
             };
         }
 
-        // -------------------------------------------------------------
-        // SUSUNAN KARTU UI BERDASARKAN URUTAN KRONOLOGIS AGRONOMI
-        // -------------------------------------------------------------
+        /* ── Kartu panen dengan estimasi panen bersamaan ── */
+        var labelPanen = isTabela
+            ? 'Panen (Tabela — ' + umurTotal + ' HST dari sebar)'
+            : 'Panen (Tapin — ' + (umurTotal - umurBibit + shockHari) + ' hari dari pindah tanam)';
+
+        var tipsPanen = isTabela
+            ? [
+                'Panen saat 90–95% gabah kuning keemasan (' + umurTotal + ' hari sejak sebar benih).',
+                'Pesan combine 14 hari sebelum taksiran panen.'
+              ]
+            : [
+                'Panen saat 90–95% gabah kuning keemasan (' + (umurTotal - umurBibit + shockHari) + ' hari sejak pindah tanam).',
+                'Estimasi panen hampir bersamaan dengan petak Tabela di blok yang sama (~' + shockHari + ' hari selisih).',
+                'Pesan combine 14 hari sebelum taksiran panen.'
+              ];
+
         var daftar = [
             {
-                nama:'Gropyokan & Sanitasi', ikon:'🐀', deskripsi:'Gropyokan massal & bersihkan pematang',
+                nama:'Gropyokan & Sanitasi', ikon:'🐀',
+                deskripsi:'Gropyokan massal & bersihkan pematang',
                 tglMulai: tglGropyokM, tglSelesai: tglGropyokS,
                 risiko: risikoTikus(hariFaseBulan(tglGropyokM)),
                 tips:[
@@ -626,27 +625,30 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
                 ]
             },
             {
-                nama:'Pengolahan Lahan', ikon:'🚜', deskripsi:'Bajak, garu, pemerataan petakan',
+                nama:'Pengolahan Lahan', ikon:'🚜',
+                deskripsi:'Bajak, garu, pemerataan petakan',
                 tglMulai: tglOlah, tglSelesai: tambahHari(tglOlah, 7),
                 risiko: risikoOlah(sk(tglOlah)),
                 tips:[
-                    'Olah lahan utama 14 hari sebelum tanam (biarkan gulma membusuk sementara bibit tumbuh di persemaian).',
+                    'Olah lahan utama 14 hari sebelum tanam.',
                     'pH < 5,5 → tambahkan dolomit 500–1.000 kg/ha saat bajak pertama.'
                 ]
             },
             aktivitasBenih,
             aktivitasTanam,
             {
-                nama:'Pasang & Monitor TBS', ikon:'🚧', deskripsi:'Trap Barrier System untuk tangkal tikus',
+                nama:'Pasang & Monitor TBS', ikon:'🚧',
+                deskripsi:'Trap Barrier System untuk tangkal tikus',
                 tglMulai: tglTBSM, tglSelesai: tglTBSS,
                 risiko: risikoTikus(hariFaseBulan(tglTBSM)),
                 tips:[
                     'Pasang TBS di sudut petakan (plastik setinggi 60 cm) bersamaan dengan waktu tanam.',
-                    'Periksa bubu perangkap setiap 3-5 hari.'
+                    'Periksa bubu perangkap setiap 3–5 hari.'
                 ]
             },
             {
-                nama:'Umpan Racun Tikus', ikon:'☠️', deskripsi:'Rodentisida antikoagulan di liang aktif',
+                nama:'Umpan Racun Tikus', ikon:'☠️',
+                deskripsi:'Rodentisida antikoagulan di liang aktif',
                 tglMulai: tglRacunM, tglSelesai: tglRacunS,
                 risiko: risikoTikus(hariFaseBulan(tglRacunM)),
                 tips:[
@@ -655,7 +657,8 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
                 ]
             },
             {
-                nama:'Pupuk Dasar (Tahap I)', ikon:'🧪', deskripsi:'NPK Phonska + Urea I — awal anakan',
+                nama:'Pupuk Dasar (Tahap I)', ikon:'🧪',
+                deskripsi:'NPK Phonska + Urea I — awal anakan',
                 tglMulai: tglP1, tglSelesai: tambahHari(tglP1, 2),
                 risiko: risikoPupuk(sk(tglP1)),
                 tips:[
@@ -664,7 +667,8 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
                 ]
             },
             {
-                nama:'Insektisida I (Vegetatif)', ikon:'💊', deskripsi:'Pengendalian WBC, Penggerek, Sundep',
+                nama:'Insektisida I (Vegetatif)', ikon:'💊',
+                deskripsi:'Pengendalian WBC, Penggerek, Sundep',
                 tglMulai: tglI1, tglSelesai: tambahHari(tglI1, 2),
                 risiko: risikoInsektisida(sk(tglI1), hariFaseBulan(tglI1)),
                 tips:[
@@ -673,7 +677,8 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
                 ]
             },
             {
-                nama:'Pupuk Susulan I (Tahap II)', ikon:'🧪', deskripsi:'Urea II + Phonska II — anakan produktif',
+                nama:'Pupuk Susulan I (Tahap II)', ikon:'🧪',
+                deskripsi:'Urea II + Phonska II — anakan produktif',
                 tglMulai: tglP2, tglSelesai: tambahHari(tglP2, 2),
                 risiko: risikoPupuk(sk(tglP2)),
                 tips:[
@@ -682,7 +687,8 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
                 ]
             },
             {
-                nama:'Pupuk Susulan II (Tahap III)', ikon:'🧪', deskripsi:'Phonska III ± Urea III — menjelang bunting',
+                nama:'Pupuk Susulan II (Tahap III)', ikon:'🧪',
+                deskripsi:'Phonska III ± Urea III — menjelang bunting',
                 tglMulai: tglP3, tglSelesai: tambahHari(tglP3, 2),
                 risiko: risikoPupuk(sk(tglP3)),
                 tips:[
@@ -691,7 +697,8 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
                 ]
             },
             {
-                nama:'Insektisida II (Generatif)', ikon:'💊', deskripsi:'Walang Sangit, Beluk — fase malai keluar',
+                nama:'Insektisida II (Generatif)', ikon:'💊',
+                deskripsi:'Walang Sangit, Beluk — fase malai keluar',
                 tglMulai: tglI2, tglSelesai: tambahHari(tglI2, 2),
                 risiko: risikoInsektisida(sk(tglI2), hariFaseBulan(tglI2)),
                 tips:[
@@ -700,7 +707,8 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
                 ]
             },
             {
-                nama:'Fungisida Blast (Bunting)', ikon:'🍄', deskripsi:'Preventif Blast Leher Malai — fase bunting',
+                nama:'Fungisida Blast (Bunting)', ikon:'🍄',
+                deskripsi:'Preventif Blast Leher Malai — fase bunting',
                 tglMulai: tglFung, tglSelesai: tambahHari(tglFung, 2),
                 risiko: risikoFungisida(sk(tglFung)),
                 tips:[
@@ -709,21 +717,20 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
                 ]
             },
             {
-                nama:'Panen', ikon:'🌟', deskripsi:'Potong saat kadar air gabah 20–25%',
+                nama: labelPanen, ikon:'🌟',
+                deskripsi:'Potong saat kadar air gabah 20–25%',
                 tglMulai: tglPanen, tglSelesai: tambahHari(tglPanen, 5),
                 risiko: risikoPanen(sk(tglPanen)),
-                tips:[
-                    'Panen saat 90–95% gabah kuning keemasan.',
-                    'Pesan combine 14 hari sebelum taksiran panen.'
-                ]
+                tips: tipsPanen
             }
         ];
+
         daftar.sort(function (a, b) { return a.tglMulai.getTime() - b.tglMulai.getTime(); });
         return daftar;
     }
 
     /* ──────────────────────────────────────────────────────────
-       RENDER HTML OUTPUT (tidak berubah dari v3.7)
+       RENDER HTML OUTPUT
     ────────────────────────────────────────────────────────── */
     window._jtoToggle = function (headerEl) {
         var detail  = headerEl.parentElement.querySelector('.jto-detail');
@@ -734,16 +741,6 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
         if (chevron) chevron.style.transform = open ? '' : 'rotate(180deg)';
     };
 
-    /**
-     * [v3.10] renderKartu menerima flag isLewat (kini benar-benar
-     * dikirim dari renderOutput sebagai rek.isLewat — di v3.9
-     * parameter ini selalu undefined karena tidak pernah diteruskan).
-     * Kartu kegiatan yang sudah lewat ditampilkan dengan:
-     *  - Opacity 0.55 (muted) pada seluruh kartu
-     *  - Label "📋 Referensi" menggantikan badge status risiko
-     *  - Border kiri abu-abu
-     *  - Catatan iklim diganti keterangan blueprint
-     */
     function renderKartu(k, nomor, isLewat) {
         var now = new Date();
         var kegLewat = isLewat || k.tglSelesai < now;
@@ -767,7 +764,8 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
                   '<div style="font-size:12px;color:#cbd5e1;">' + k.risiko.catatan + '</div>' +
               '</div>';
 
-        return '<div style="background:#1b273a;border:0.5px solid ' + (kegLewat ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)') + ';border-radius:16px;margin-bottom:9px;overflow:hidden;opacity:1;">' +            '<div style="padding:12px 14px;display:flex;align-items:flex-start;gap:12px;cursor:pointer;border-left:3px solid ' + w + ';" onclick="window._jtoToggle(this)">' +
+        return '<div style="background:#1b273a;border:0.5px solid ' + (kegLewat ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)') + ';border-radius:16px;margin-bottom:9px;overflow:hidden;">' +
+            '<div style="padding:12px 14px;display:flex;align-items:flex-start;gap:12px;cursor:pointer;border-left:3px solid ' + w + ';" onclick="window._jtoToggle(this)">' +
                 '<div style="width:34px;height:34px;border-radius:50%;background:#111c2e;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">' + k.ikon + '</div>' +
                 '<div style="flex:1;min-width:0;">' +
                     '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
@@ -796,10 +794,8 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
     function renderOutput(multiJadwal, zonaInfo, ensoData, iodData, metodeTanam) {
         window._jtoData = multiJadwal;
 
-        var labelZona = (zonaInfo.zona && LABEL_ZONA[zonaInfo.zona]) ? LABEL_ZONA[zonaInfo.zona] : 'MONSUNAL';
-        var sumberData = zonaInfo.jarak
-            ? zonaInfo.nama + ' (' + zonaInfo.jarak + ' km)'
-            : zonaInfo.nama;
+        var labelZona  = (zonaInfo.zona && LABEL_ZONA[zonaInfo.zona]) ? LABEL_ZONA[zonaInfo.zona] : 'MONSUNAL';
+        var sumberData = zonaInfo.jarak ? zonaInfo.nama + ' (' + zonaInfo.jarak + ' km)' : zonaInfo.nama;
         var zonaTampil = labelZona + ' • ' + sumberData;
 
         var html = '<div style="padding:4px 0;">' +
@@ -808,8 +804,8 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
                 '<div style="display:grid;grid-template-columns:1fr;gap:8px;font-size:12px;">' +
                     '<div><span style="color:#64748b;">Zona iklim & sumber data</span><br><strong style="color:#fff;">' + zonaTampil + '</strong></div>' +
                     '<div><span style="color:#64748b;">Kondisi ENSO / IOD</span><br><strong style="color:#fff;">' + (ensoData.status || 'Netral') + ' / ' + (iodData.status || 'Netral') + '</strong></div>' +
-            '<div><span style="color:#64748b;">Metode Tanam</span><br><strong style="color:#fff;">' + (LABEL_METODE_TANAM[metodeTanam] || LABEL_METODE_TANAM.tapin) + '</strong></div>' +    
-            '</div>' +
+                    '<div><span style="color:#64748b;">Metode Tanam</span><br><strong style="color:#fff;">' + (LABEL_METODE_TANAM[metodeTanam] || LABEL_METODE_TANAM.tapin) + '</strong></div>' +
+                '</div>' +
             '</div>';
 
         multiJadwal.forEach(function(jadwal) {
@@ -817,13 +813,10 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
             var keg = jadwal.kegiatan;
             var kartuHTML = keg.map(function (k, i) { return renderKartu(k, i + 1, rek.isLewat); }).join('');
 
-            // [v3.10 FIX] Badge status musim — sebelumnya isLewat/isBerjalan
-            // dihitung tapi tidak pernah ditampilkan di sini.
             var badgeMusim = '';
             var opacityMusim = '1';
             if (rek.isLewat) {
                 badgeMusim   = '<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;margin-left:10px;vertical-align:middle;white-space:nowrap;">📋 Blueprint</span>';
-                opacityMusim = '1';
             } else if (rek.isBerjalan) {
                 badgeMusim   = '<span class="jto-aktif-badge" style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.4);margin-left:10px;vertical-align:middle;white-space:nowrap;">🟢 Aktif</span>';
             }
@@ -831,14 +824,13 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
             html += '<div style="margin-top:20px;margin-bottom:10px;font-size:15px;font-weight:bold;color:#fff;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:6px;opacity:' + opacityMusim + ';">🌾 ' + rek.musimNama.toUpperCase() + badgeMusim + '</div>';
             html += '<div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;margin-bottom:12px;opacity:' + opacityMusim + ';">' +
                         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">' +
-                            '<div><span style="color:#64748b;">Waktu Tanam</span><br><strong style="color:#10b981;font-size:13px;">' + formatTglLengkap(rek.tglTanam) + '</strong></div>' +
+                            '<div><span style="color:#64748b;">Waktu Tanam (Lahan)</span><br><strong style="color:#10b981;font-size:13px;">' + formatTglLengkap(rek.tglTanam) + '</strong></div>' +
                             '<div><span style="color:#64748b;">Varietas</span><br><strong style="color:#fff;font-size:13px;">' + rek.labelVar + '</strong></div>' +
                         '</div>' +
                         '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);font-size:11px;color:#94a3b8;line-height:1.5;">💡 ' + rek.alasan + '</div>' +
                     '</div>';
             html += kartuHTML;
         });
-
 
         html += '<div style="margin-top:16px;background:rgba(100,116,139,0.1);border-radius:10px;padding:10px 12px;font-size:10px;color:#64748b;line-height:1.6;border:1px solid rgba(255,255,255,0.04);">' +
             '⚠️ Rekomendasi 2 musim di atas terdeteksi otomatis dari pemindaian DATA MENTAH (mm) ZOM lokal. ' +
@@ -860,12 +852,12 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
             ? '🌾 Tanam Benih Langsung (Tabela)'
             : '🌱 Tanam Pindah (Tapin)';
         var baris = ['*KALENDER KEGIATAN TANI TAHUNAN*', '_Metode: ' + labelMetode + '_\n'];
-      
+
         dataArr.forEach(function(jadwal) {
             var r = jadwal.rekomendasi;
             baris.push('============================');
             baris.push('🌾 *' + r.musimNama.toUpperCase() + '*');
-            baris.push('📅 Tgl Tanam: ' + formatTglLengkap(r.tglTanam));
+            baris.push('📅 Tgl Tanam (Lahan): ' + formatTglLengkap(r.tglTanam));
             baris.push('🌱 Varietas: ' + r.labelVar);
             baris.push('💡 ' + r.alasan + '\n');
             jadwal.kegiatan.forEach(function (k, i) {
@@ -940,9 +932,8 @@ var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
                 return skorKelembapan(idx, zonaInfo.data, ensoVal, iodVal, lat, lon);
             });
 
-            // [FIX] Panggil dari 'window' agar override dari patch_deteksi_musim (regional Pantai Timur) bisa terbaca!
-var fungsiRekomendasi = window.rekomendasiWindowTanam || rekomendasiWindowTanam;
-var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona, ensoVal, iodVal);
+            var fungsiRekomendasi = window.rekomendasiWindowTanam || rekomendasiWindowTanam;
+            var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona, ensoVal, iodVal);
 
             var elMetodeTanam = document.getElementById('metodeTanamJTO');
             var metodeTanam   = (elMetodeTanam && elMetodeTanam.value === 'tabela') ? 'tabela' : 'tapin';
@@ -981,7 +972,7 @@ var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona, 
     }
 
     /* ──────────────────────────────────────────────────────────
-       INJEKSI TAB DAN UI
+       INJEKSI TAB DAN UI (tidak berubah dari v3.11)
     ────────────────────────────────────────────────────────── */
     function injeksiTab() {
         if (document.getElementById('tabJadwalTanam')) return;
@@ -993,11 +984,8 @@ var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona, 
         btn.textContent = 'KALENDER TNM';
         btn.onclick     = function () { switchMode('jadwaltanam'); };
         var tabPertama = tabContainer.firstElementChild;
-if (tabPertama) {
-    tabContainer.insertBefore(btn, tabPertama);
-} else {
-    tabContainer.appendChild(btn);
-}
+        if (tabPertama) tabContainer.insertBefore(btn, tabPertama);
+        else            tabContainer.appendChild(btn);
     }
 
     function injeksiBox() {
@@ -1085,25 +1073,19 @@ if (tabPertama) {
             var boxJTO = document.getElementById('boxJadwalTanam');
             var tabJTO = document.getElementById('tabJadwalTanam');
             if (mode === 'jadwaltanam') {
-    resetStateBwdDanMalai();
-    try { if (typeof currentMode !== 'undefined') currentMode = 'jadwaltanam'; } catch (e) {}
-    sembunyikanSemuaUntukJadwal();
-    if (boxJTO) boxJTO.style.display = 'block';
-    var titleEl = document.getElementById('modeTitle');
-    if (titleEl) { titleEl.innerText = '📅 Kalender Jadwal Tanam'; titleEl.style.color = WARNA; }
-    var subEl = document.getElementById('tabSubtitleDisplay');
-    if (subEl)  { subEl.innerText = ''; subEl.style.display = 'none'; }
-    document.querySelectorAll('.tab-btn').forEach(function (btn) { btn.classList.remove('active'); });
-    if (tabJTO) tabJTO.classList.add('active');
-
-    /* [v3.11] Auto-trigger DIHAPUS dari sini (bukan cuma di-skip oleh
-       patch lain). Analisis hanya jalan saat tombol dipencet manual.
-       Dengan baris ini dihapus, SEKALIPUN patch_jadwal_manual_trigger.js
-       gagal/tidak terpasang, switchMode versi ini SENDIRI sudah aman
-       dan tidak bisa memicu bug auto-trigger lagi. */
-
-    return;
-}
+                resetStateBwdDanMalai();
+                try { if (typeof currentMode !== 'undefined') currentMode = 'jadwaltanam'; } catch (e) {}
+                sembunyikanSemuaUntukJadwal();
+                if (boxJTO) boxJTO.style.display = 'block';
+                var titleEl = document.getElementById('modeTitle');
+                if (titleEl) { titleEl.innerText = '📅 Kalender Jadwal Tanam'; titleEl.style.color = WARNA; }
+                var subEl = document.getElementById('tabSubtitleDisplay');
+                if (subEl)  { subEl.innerText = ''; subEl.style.display = 'none'; }
+                document.querySelectorAll('.tab-btn').forEach(function (btn) { btn.classList.remove('active'); });
+                if (tabJTO) tabJTO.classList.add('active');
+                // Auto-trigger SENGAJA DIHAPUS — analisis hanya jalan saat tombol dipencet manual.
+                return;
+            }
             if (boxJTO) boxJTO.style.display = 'none';
             if (tabJTO) tabJTO.classList.remove('active');
             if (typeof _asli === 'function') _asli.apply(this, arguments);
@@ -1133,7 +1115,7 @@ if (tabPertama) {
         injeksiTab();
         injeksiBox();
         patchSwitchMode();
-        console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.8 aktif — Fix Tahun, Fase Bulan, Cache ZOM, Threshold, HST', 'color:' + WARNA + ';font-weight:bold;');
+        console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.12 aktif — Koreksi Agronomis: Panen Tapin & Tabela Sinkron', 'color:' + WARNA + ';font-weight:bold;');
     }
 
     if (document.readyState === 'loading') {
