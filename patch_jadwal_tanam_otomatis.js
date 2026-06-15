@@ -861,7 +861,7 @@
             var r = jadwal.rekomendasi;
             baris.push('============================');
             baris.push('🌾 *' + r.musimNama.toUpperCase() + '*');
-            baris.push('📅 Tgl Tanam Pindah: ' + formatTglLengkap(r.tglTanam));
+            baris.push('📅 Tgl Tanam: ' + formatTglLengkap(r.tglTanam));
             baris.push('🌱 Varietas: ' + r.labelVar);
             baris.push('💡 ' + r.alasan + '\n');
             jadwal.kegiatan.forEach(function (k, i) {
