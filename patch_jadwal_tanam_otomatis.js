@@ -537,12 +537,16 @@
         var tglI2     = tambahHari(tglTanam, of.i2);
         var tglFung   = tambahHari(tglTanam, of.fung);
 
-        // [v3.11] of.panen = umur total varietas dihitung dari hari ke-0
-        // (semai utk tapin / sebar utk tabela).
-        //  - Tabela : tglTanam = hari ke-0 → panen = tglTanam + of.panen
-        //  - Tapin  : tglTanam = hari ke-(of.benih) → panen = tglTanam + (of.panen - of.benih)
-        var sisaUmurSampaiPanen = isTabela ? of.panen : (of.panen - of.benih);
-        var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
+        // [v3.12 FIX] Koreksi Agronomis: 
+// Tapin mengalami 'Transplanting Shock' (Lag Phase) ±7 hari akibat stres pindah tanam.
+// Tabela tumbuh kontinyu tanpa stres akar.
+var faktorAdaptasi = isTabela ? 0 : 7; 
+
+// Jika Tabela: Umur varietas dihitung penuh (of.panen)
+// Jika Tapin: (Umur varietas - umur bibit) + masa pemulihan stres (7 hari)
+var sisaUmurSampaiPanen = (isTabela ? of.panen : (of.panen - of.benih)) + faktorAdaptasi;
+
+var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
 
         // -------------------------------------------------------------
         // SINKRONISASI TANGGAL TIKUS DARI "OTAK" v3.0
