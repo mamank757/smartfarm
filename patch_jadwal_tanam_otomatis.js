@@ -922,7 +922,7 @@ if (tabPertama) {
         box.style.display = 'none';
         box.innerHTML =
             '<div style="background:rgba(6,182,212,0.07);border:1px solid rgba(6,182,212,0.2);border-left:4px solid ' + WARNA + ';border-radius:14px;padding:13px 15px;margin-bottom:16px;">' +
-                '<strong style="color:' + WARNA + ';display:block;margin-bottom:5px;">📅 Kalender Tani Dinamis Tahunan</strong>' +
+                '<strong style="color:' + WARNA + ';display:block;margin-bottom:5px;">Kalender Rekomendasi Tanam Dinamis Tahunan</strong>' +
                 '<span style="font-size:0.78rem;color:#cbd5e1;line-height:1.6;">' +
                     'Sistem akan memindai ZOM lokal, membaca data ENSO/IOD, lalu secara cerdas mendeteksi bulan terbaik untuk Musim Utama (Rendeng) dan Musim Kedua (Gadu) di wilayah Anda.' +
                 '</span>' +
@@ -930,7 +930,7 @@ if (tabPertama) {
             '<button id="btnJadwalOtomatis" class="jto-pulse" style="' +
                 'width:100%;padding:15px;background:linear-gradient(135deg,' + WARNA + ',#0891b2);' +
                 'color:#fff;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:0.5px;margin-bottom:16px;' +
-            '">🤖 ANALISIS & BUAT JADWAL OTOMATIS</button>' +
+            '">ANALISIS & LIHAT JADWAL OTOMATIS</button>' +
             '<div id="jtoStatus" style="text-align:center;padding:4px 0 10px;font-size:13px;min-height:24px;"></div>' +
             '<div id="jtoHasil" style="display:none;"><div id="jtoTeks"></div></div>';
 
