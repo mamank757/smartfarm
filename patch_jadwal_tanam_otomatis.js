@@ -64,6 +64,11 @@
         lokal:      'LOKAL'
     };
 
+    // [v3.11] Label tampilan untuk pilihan metode tanam
+    var LABEL_METODE_TANAM = {
+        tapin:  '🌱 Tanam Pindah (Tapin)',
+        tabela: '🌾 Tanam Benih Langsung (Tabela)'
+    };
     /* ──────────────────────────────────────────────────────────
        UTILITAS TANGGAL & FASE BULAN
     ────────────────────────────────────────────────────────── */
@@ -498,18 +503,28 @@
     /* ──────────────────────────────────────────────────────────
        BANGUN DAFTAR KEGIATAN (tidak berubah dari v3.7)
     ────────────────────────────────────────────────────────── */
-    function bangunKegiatan(rek, skorBulan) {
-        // Ekstrak data dari Otak v3.0
+    function bangunKegiatan(rek, skorBulan, metodeTanam) {
         var tglTanam = rek.tglTanam;
         var varietas = rek.varietas;
-        var tglOlah  = rek.tglOlahTanah; // Pakai jadwal bajak asli
-        var jt       = rek.jadwalTikus;  // Pakai jadwal tikus asli
+        var tglOlah  = rek.tglOlahTanah;
+        var jt       = rek.jadwalTikus;
 
-        var of = {
+        // [v3.11] DUA SISTEM TANAM DENGAN JADWAL BERBEDA
+        var isTabela = (metodeTanam === 'tabela');
+
+        var TABEL_TAPIN = {
             genjah: { benih:14, p1:7,  p2:28, p3:45, i1:20, i2:45, fung:55, panen:90  },
             sedang: { benih:21, p1:7,  p2:30, p3:55, i1:25, i2:55, fung:65, panen:110 },
             dalam:  { benih:28, p1:7,  p2:35, p3:65, i1:30, i2:65, fung:75, panen:125 }
-        }[varietas] || { benih:21, p1:7, p2:30, p3:55, i1:25, i2:55, fung:65, panen:110 };
+        };
+        var TABEL_TABELA = {
+            genjah: { benih:2, p1:7,  p2:28, p3:45, i1:20, i2:45, fung:55, panen:90  },
+            sedang: { benih:2, p1:7,  p2:30, p3:55, i1:25, i2:55, fung:65, panen:110 },
+            dalam:  { benih:2, p1:7,  p2:35, p3:65, i1:30, i2:65, fung:75, panen:125 }
+        };
+
+        var of = (isTabela ? TABEL_TABELA : TABEL_TAPIN)[varietas] ||
+                 (isTabela ? TABEL_TABELA.sedang : TABEL_TAPIN.sedang);
 
         // -------------------------------------------------------------
         // VARIABEL TANGGAL KEGIATAN UMUM
@@ -521,22 +536,23 @@
         var tglI1     = tambahHari(tglTanam, of.i1);
         var tglI2     = tambahHari(tglTanam, of.i2);
         var tglFung   = tambahHari(tglTanam, of.fung);
-        var tglPanen  = tambahHari(tglTanam, of.panen);
+
+        // [v3.11] of.panen = umur total varietas dihitung dari hari ke-0
+        // (semai utk tapin / sebar utk tabela).
+        //  - Tabela : tglTanam = hari ke-0 → panen = tglTanam + of.panen
+        //  - Tapin  : tglTanam = hari ke-(of.benih) → panen = tglTanam + (of.panen - of.benih)
+        var sisaUmurSampaiPanen = isTabela ? of.panen : (of.panen - of.benih);
+        var tglPanen = tambahHari(tglTanam, sisaUmurSampaiPanen);
 
         // -------------------------------------------------------------
         // SINKRONISASI TANGGAL TIKUS DARI "OTAK" v3.0
         // -------------------------------------------------------------
-        // 1. Gropyokan & Sanitasi (Fase Bera / Pra-Olah)
         var tglGropyokM = jt ? jt.gropyokan.tglMulai : tambahHari(tglOlah, -14);
         var tglGropyokS = jt ? jt.sanitasiPematang.tglSelesai : tambahHari(tglOlah, -1);
-        
-        // 2. TBS (Dipasang saat tanam, dimonitor sampai vegetatif akhir)
         var tglTBSM = jt ? jt.pasangTBS.tglMulai : tglTanam;
         var tglTBSS = jt ? jt.monitorTBS.tglSelesai : tambahHari(tglTanam, 30);
-
-        // 3. Umpan Racun (Mulai H+1 Tanam sampai kanopi menutup)
-        var tglRacunM   = jt ? jt.umpanRacun.tglMulai : tambahHari(tglTanam, 1);
-        var tglRacunS   = jt ? jt.umpanRacun.tglSelesai : tambahHari(tglTanam, 21);
+        var tglRacunM = jt ? jt.umpanRacun.tglMulai : tambahHari(tglTanam, 1);
+        var tglRacunS = jt ? jt.umpanRacun.tglSelesai : tambahHari(tglTanam, 21);
 
         [tglI1, tglI2].forEach(function (t, idx) {
             var f = hariFaseBulan(t);
@@ -549,12 +565,56 @@
         function sk(tgl) { return skorBulan[tgl.getMonth()]; }
 
         // -------------------------------------------------------------
+        // [v3.11] AKTIVITAS PERSIAPAN BENIH & TANAM — BERBEDA PER METODE
+        // -------------------------------------------------------------
+        var aktivitasBenih, aktivitasTanam;
+        if (isTabela) {
+            aktivitasBenih = {
+                nama:'Rendam & Peram Benih', ikon:'💧', deskripsi:'Rendam 24 jam, peram sampai berkecambah',
+                tglMulai: tglBenih, tglSelesai: tglTanam,
+                risiko: risikoBenih(sk(tglBenih)),
+                tips:[
+                    'Rendam benih 24 jam dalam air, lalu peram (bungkus karung lembap) ±24 jam hingga kecambah ±1-2 mm.',
+                    'Dosis benih Tabela: 50–60 kg/ha (drum seeder/larikan) atau hingga 100 kg/ha (sebar/hambur manual).'
+                ]
+            };
+            aktivitasTanam = {
+                nama:'Tanam Benih Langsung (Tabela)', ikon:'🌾', deskripsi:'Sebar benih berkecambah ke lahan utama',
+                tglMulai: tglTanam, tglSelesai: tambahHari(tglTanam, 1),
+                risiko: risikoTanam(sk(tglTanam)),
+                tips:[
+                    'Lahan macak-macak (jenuh air, tidak tergenang) saat sebar agar benih tidak hanyut/mengumpul.',
+                    'Jarak larikan drum seeder: 20–25 cm antar baris.'
+                ]
+            };
+        } else {
+            aktivitasBenih = {
+                nama:'Pembibitan Benih', ikon:'🌱', deskripsi:'Seleksi, rendam, kecambah, semai',
+                tglMulai: tglBenih, tglSelesai: tambahHari(tglBenih, 7),
+                risiko: risikoBenih(sk(tglBenih)),
+                tips:[
+                    'Inkubasi lembap 48 jam hingga kecambah 2–3 mm, lalu semai di bedeng persemaian.',
+                    'Dosis semai (Tapin): 25–35 kg/ha. Pindah tanam saat bibit umur ' + of.benih + ' HSS.'
+                ]
+            };
+            aktivitasTanam = {
+                nama:'Tanam Pindah', ikon:'🌾', deskripsi:'Penanaman bibit ke lahan utama',
+                tglMulai: tglTanam, tglSelesai: tambahHari(tglTanam, 3),
+                risiko: risikoTanam(sk(tglTanam)),
+                tips:[
+                    'Umur bibit optimal: ' + of.benih + ' HSS (tapin).',
+                    'Jarak Legowo 2:1: (25 × 12,5) × 50 cm.'
+                ]
+            };
+        }
+
+        // -------------------------------------------------------------
         // SUSUNAN KARTU UI BERDASARKAN URUTAN KRONOLOGIS AGRONOMI
         // -------------------------------------------------------------
         var daftar = [
             {
                 nama:'Gropyokan & Sanitasi', ikon:'🐀', deskripsi:'Gropyokan massal & bersihkan pematang',
-                tglMulai: tglGropyokM, tglSelesai: tglGropyokS, 
+                tglMulai: tglGropyokM, tglSelesai: tglGropyokS,
                 risiko: risikoTikus(hariFaseBulan(tglGropyokM)),
                 tips:[
                     'Lakukan saat lahan masih bera/kosong sebelum traktor turun.',
@@ -563,34 +623,18 @@
             },
             {
                 nama:'Pengolahan Lahan', ikon:'🚜', deskripsi:'Bajak, garu, pemerataan petakan',
-                tglMulai: tglOlah, tglSelesai: tambahHari(tglOlah, 7), 
+                tglMulai: tglOlah, tglSelesai: tambahHari(tglOlah, 7),
                 risiko: risikoOlah(sk(tglOlah)),
                 tips:[
                     'Olah lahan utama 14 hari sebelum tanam (biarkan gulma membusuk sementara bibit tumbuh di persemaian).',
                     'pH < 5,5 → tambahkan dolomit 500–1.000 kg/ha saat bajak pertama.'
                 ]
             },
-            {
-                nama:'Pembibitan Benih', ikon:'🌱', deskripsi:'Seleksi, rendam, kecambah, semai',
-                tglMulai: tglBenih, tglSelesai: tambahHari(tglBenih, 7),
-                risiko: risikoBenih(sk(tglBenih)),
-                tips:[
-                    'Inkubasi lembap 48 jam hingga kecambah 2–3 mm.',
-                    'Dosis semai: 25–35 kg/ha (tapin) atau 50–100 kg/ha (tabela).'
-                ]
-            },
-            {
-                nama:'Tanam Pindah / Tabela', ikon:'🌾', deskripsi:'Penanaman bibit ke lahan utama',
-                tglMulai: tglTanam, tglSelesai: tambahHari(tglTanam, 3),
-                risiko: risikoTanam(sk(tglTanam)),
-                tips:[
-                    'Umur bibit optimal: ' + of.benih + ' HSS (tapin).',
-                    'Jarak Legowo 2:1: (25 × 12,5) × 50 cm.'
-                ]
-            },
+            aktivitasBenih,
+            aktivitasTanam,
             {
                 nama:'Pasang & Monitor TBS', ikon:'🚧', deskripsi:'Trap Barrier System untuk tangkal tikus',
-                tglMulai: tglTBSM, tglSelesai: tglTBSS, 
+                tglMulai: tglTBSM, tglSelesai: tglTBSS,
                 risiko: risikoTikus(hariFaseBulan(tglTBSM)),
                 tips:[
                     'Pasang TBS di sudut petakan (plastik setinggi 60 cm) bersamaan dengan waktu tanam.',
@@ -599,7 +643,7 @@
             },
             {
                 nama:'Umpan Racun Tikus', ikon:'☠️', deskripsi:'Rodentisida antikoagulan di liang aktif',
-                tglMulai: tglRacunM, tglSelesai: tglRacunS, 
+                tglMulai: tglRacunM, tglSelesai: tglRacunS,
                 risiko: risikoTikus(hariFaseBulan(tglRacunM)),
                 tips:[
                     'Gunakan Brodifacoum / Bromadiolon (antikoagulan).',
@@ -745,7 +789,7 @@
         '</div>';
     }
 
-    function renderOutput(multiJadwal, zonaInfo, ensoData, iodData) {
+    function renderOutput(multiJadwal, zonaInfo, ensoData, iodData, metodeTanam) {
         window._jtoData = multiJadwal;
 
         var labelZona = (zonaInfo.zona && LABEL_ZONA[zonaInfo.zona]) ? LABEL_ZONA[zonaInfo.zona] : 'MONSUNAL';
@@ -760,7 +804,8 @@
                 '<div style="display:grid;grid-template-columns:1fr;gap:8px;font-size:12px;">' +
                     '<div><span style="color:#64748b;">Zona iklim & sumber data</span><br><strong style="color:#fff;">' + zonaTampil + '</strong></div>' +
                     '<div><span style="color:#64748b;">Kondisi ENSO / IOD</span><br><strong style="color:#fff;">' + (ensoData.status || 'Netral') + ' / ' + (iodData.status || 'Netral') + '</strong></div>' +
-                '</div>' +
+            '<div><span style="color:#64748b;">Metode Tanam</span><br><strong style="color:#fff;">' + (LABEL_METODE_TANAM[metodeTanam] || LABEL_METODE_TANAM.tapin) + '</strong></div>' +    
+            '</div>' +
             '</div>';
 
         multiJadwal.forEach(function(jadwal) {
@@ -807,7 +852,11 @@
     window._jtoKirimWA = function () {
         var dataArr = window._jtoData;
         if (!dataArr || !dataArr.length) return;
-        var baris = ['*KALENDER KEGIATAN TANI TAHUNAN*\n'];
+        var labelMetode = (window._jtoMetodeTanam === 'tabela')
+            ? '🌾 Tanam Benih Langsung (Tabela)'
+            : '🌱 Tanam Pindah (Tapin)';
+        var baris = ['*KALENDER KEGIATAN TANI TAHUNAN*', '_Metode: ' + labelMetode + '_\n'];
+      
         dataArr.forEach(function(jadwal) {
             var r = jadwal.rekomendasi;
             baris.push('============================');
@@ -891,10 +940,14 @@
 var fungsiRekomendasi = window.rekomendasiWindowTanam || rekomendasiWindowTanam;
 var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona, ensoVal, iodVal);
 
+            var elMetodeTanam = document.getElementById('metodeTanamJTO');
+            var metodeTanam   = (elMetodeTanam && elMetodeTanam.value === 'tabela') ? 'tabela' : 'tapin';
+            window._jtoMetodeTanam = metodeTanam;
+
             var multiJadwal = rekomendasiArr.map(function(rek) {
                 return {
                     rekomendasi: rek,
-                    kegiatan: bangunKegiatan(rek, skorBulan) // BENAR: Kirim seluruh objek rek!
+                    kegiatan: bangunKegiatan(rek, skorBulan, metodeTanam)
                 };
             });
 
@@ -906,7 +959,7 @@ var rekomendasiArr = fungsiRekomendasi(skorBulan, zonaInfo.data, zonaInfo.zona, 
                 btnJTO.classList.remove('jto-pulse');
             }
 
-            teksEl.innerHTML = renderOutput(multiJadwal, zonaInfo, ensoData, iodData);
+            teksEl.innerHTML = renderOutput(multiJadwal, zonaInfo, ensoData, iodData, metodeTanam);
 
         } catch (err) {
             console.error('[JadwalOtomatis]', err);
@@ -956,6 +1009,13 @@ if (tabPertama) {
                 '<span style="font-size:0.78rem;color:#cbd5e1;line-height:1.6;">' +
                     'Sistem akan memindai ZOM lokal, membaca data ENSO/IOD, lalu secara cerdas mendeteksi bulan terbaik untuk Musim Utama (Rendeng) dan Musim Kedua (Gadu) di wilayah Anda.' +
                 '</span>' +
+            '</div>' +
+            '<div class="form-group" style="margin-bottom:14px;">' +
+                '<label class="form-label">🌱 METODE TANAM</label>' +
+                '<select id="metodeTanamJTO" class="form-select" style="margin-bottom:0;">' +
+                    '<option value="tapin">Tanam Pindah (Tapin — via Persemaian)</option>' +
+                    '<option value="tabela">Tanam Benih Langsung (Tabela)</option>' +
+                '</select>' +
             '</div>' +
             '<button id="btnJadwalOtomatis" class="jto-pulse" style="' +
                 'width:100%;padding:15px;background:linear-gradient(135deg,' + WARNA + ',#0891b2);' +
