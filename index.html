@@ -5679,23 +5679,6 @@ function tambahkanPesanLayar(pengirim, teks, warnaAksen) {
     areaPesan.scrollTop = areaPesan.scrollHeight;
 }
 
-function startBWDCamera() {
-    const video = document.getElementById('videoElement');
-    if (!video) return;
-
-    navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment" } 
-    })
-    .then(stream => {
-        currentStream = stream;
-        video.srcObject = stream;
-    })
-    .catch(err => {
-        console.error("Camera error:", err);
-        alert("Gagal mengakses kamera. Pastikan izin kamera diberikan.");
-    });
-}
-
 // ====================================================================
 // KODE FULL HARGA PESTISIDA & HARGA GABAH (SUDAH DIPERBAIKI)
 // ====================================================================
