@@ -270,9 +270,8 @@
             startGadu = (startRendeng + 6) % 12;
         }
 
-        // FIX: Jendela pencarian diperluas menjadi 6 bulan agar bulan transisi (Mei) ikut dievaluasi
-        var rendengBulan = [startRendeng, (startRendeng+1)%12, (startRendeng+2)%12, (startRendeng+3)%12, (startRendeng+4)%12, (startRendeng+5)%12];
-        var gaduBulan    = [startGadu,    (startGadu+1)%12,    (startGadu+2)%12,    (startGadu+3)%12,    (startGadu+4)%12,    (startGadu+5)%12];
+        var rendengBulan = [startRendeng, (startRendeng+1)%12, (startRendeng+2)%12, (startRendeng+3)%12];
+        var gaduBulan    = [startGadu,    (startGadu+1)%12,    (startGadu+2)%12,    (startGadu+3)%12];
 
         var MUSIM = [
             { nama: 'MT I — Musim Utama (Puncak Hujan)',   kode: 'rendeng', bulanTanam: rendengBulan },
@@ -302,18 +301,12 @@
 
                     var skorGen   = skorBulan[bGenIdx];
                     var skorPanen = skorBulan[bPanenIdx];
-                    var bVeg1     = (bTanam + 1) % 12;
 
                     var nilaiGen   = 100 - Math.abs(skorGen - 40);
                     var nilaiPanen = 100 - skorPanen;
-                    
-                    // FIX KRITIS: Tambahkan penilaian positif untuk fase Vegetatif (Butuh genangan air)
-                    // Skor akan sangat tinggi jika bulan Tanam dan bulan setelahnya sangat basah (seperti Mei & Juni)
-                    var nilaiVeg = (skorTanam + skorBulan[bVeg1]) / 2; 
+                    var nilaiTotal = (nilaiGen * 0.55) + (nilaiPanen * 0.45);
 
-                    // Bobot diseimbangkan: Vegetatif 30% (Kritis air awal), Generatif 35%, Panen 35% (Kering)
-                    var nilaiTotal = (nilaiVeg * 0.30) + (nilaiGen * 0.35) + (nilaiPanen * 0.35);
-
+                    var bVeg1 = (bTanam + 1) % 12;
                     if (skorBulan[bVeg1] < 20) nilaiTotal -= 15;
                     if (skorTanam < 20) nilaiTotal -= (20 - skorTanam) * 1.5;
 
