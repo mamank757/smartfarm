@@ -954,7 +954,7 @@
             '<div class="form-group" style="margin-bottom:14px;">' +
                 '<label class="form-label">🌱 METODE TANAM</label>' +
                 '<select id="metodeTanamJTO" class="form-select" style="margin-bottom:0;">' +
-                    '<option value="tapin">Tanam Pindah (Tapin — via Persemaian)</option>' +
+                    '<option value="tapin">Tanam Pindah (Tapin — Persemaian)</option>' +
                     '<option value="tabela">Tanam Benih Langsung (Tabela)</option>' +
                 '</select>' +
             '</div>' +
