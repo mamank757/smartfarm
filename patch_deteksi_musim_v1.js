@@ -54,7 +54,7 @@
         {
             latMin: -6.0,  latMaks: -3.5,  lonMin: 119.0, lonMaks: 119.99,
             polaPuncak: 'barat',
-            rendengMulai: 10, gaduMulai: 4,
+            rendengMulai: 11, gaduMulai: 5,
             namaRendeng: 'MT I — Musim Utama', namaGadu: 'MT II — Musim Kedua',
             maxOnsetGeser: 1
         },
