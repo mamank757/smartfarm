@@ -1,15 +1,15 @@
 /**
- * patch_bwd_fix.js  (REVISI — Perbaikan "Kamera Belum Siap")
- * ============================================================
- * Masalah yang diperbaiki:
- *  1. Cek video.videoWidth selalu = 0 saat tombol diklik karena
- *     browser belum render frame pertama → diganti cek video.readyState
- *  2. Sisa kode analisis RGB lokal (BWD_STANDAR, analisisWarnaDaun,
- *     cariSkalaTerdekatViaRasio, showLeafAnalysisResult) dinonaktifkan
- *  3. Listener asli dari HTML dihapus via clone, lalu diganti listener
- *     bersih yang langsung fetch ke URL_BWD (AppScript)
+ * patch_bwd_fix.js  v3 — Fix total BWD: kamera + AppScript + render hasil
+ * =========================================================================
+ * Perbaikan:
+ *  1. Hapus cek video.videoWidth (selalu 0) → ganti tunggu readyState
+ *  2. Pastikan fetch ke URL_BWD dengan format { image: base64 }
+ *  3. Parse respons { leafColors, detections, outputImage } dari AppScript
+ *  4. Render hasil langsung (tidak bergantung tampilkanHasil yang mungkin
+ *     salah karena currentMode race condition)
+ *  5. Nonaktifkan kode RGB lama
  *
- * Pasang PALING BAWAH, setelah semua patch lain:
+ * Pasang PALING BAWAH di HTML:
  *   <script src="patch_bwd_fix.js"></script>
  *
  * PPL Milenial Wajo — Smart Farming
@@ -19,281 +19,312 @@
     'use strict';
 
     /* ============================================================
-       1. NONAKTIFKAN FUNGSI LAMA BERBASIS RGB
+       1. MATIKAN FUNGSI RGB LAMA
        ============================================================ */
-
-    window.analisisWarnaDaun = function () {
-        console.warn('[BWD] analisisWarnaDaun() dinonaktifkan — sudah diganti AppScript.');
-    };
-    window.cariSkalaTerdekatViaRasio = function () {
-        console.warn('[BWD] cariSkalaTerdekatViaRasio() dinonaktifkan.');
-        return 3;
-    };
-    window.showLeafAnalysisResult = function () {
-        console.warn('[BWD] showLeafAnalysisResult() dinonaktifkan.');
-    };
-    if (Array.isArray(window.BWD_STANDAR)) {
-        window.BWD_STANDAR = [];
-    }
+    window.analisisWarnaDaun       = function () {};
+    window.cariSkalaTerdekatViaRasio = function () { return 3; };
+    window.showLeafAnalysisResult   = function () {};
+    if (Array.isArray(window.BWD_STANDAR)) window.BWD_STANDAR = [];
 
     /* ============================================================
-       2. FUNGSI BANTU: cek apakah kamera sudah benar-benar siap
-          readyState >= 2 (HAVE_CURRENT_DATA) artinya sudah ada data
-          frame yang bisa dibaca, meski videoWidth mungkin masih 0
-          di beberapa browser.  Fallback: cek tracks aktif.
+       2. KONSTANTA TAMPILAN (sesuai format kelas Roboflow)
+          Kelas: "Nitrogen 0.50", "Nitrogen 1.20", dst
+          mapNitrogenToColor() di AppScript sudah mengubahnya ke:
+          "yellow" | "yellowish green" | "light green" | "green" | "dark green"
        ============================================================ */
-    function kameraSiap(video) {
-        if (!video) return false;
+    var WARNA_INDO = {
+        'yellow':         'Kuning (Defisiensi Berat)',
+        'yellowish green':'Hijau Kekuningan',
+        'light green':    'Hijau Muda',
+        'green':          'Hijau (Optimal)',
+        'dark green':     'Hijau Tua (N Berlebih)'
+    };
 
-        // Cek readyState: 2=HAVE_CURRENT_DATA, 3=HAVE_FUTURE_DATA, 4=HAVE_ENOUGH_DATA
-        if (video.readyState >= 2) return true;
-
-        // Fallback: cek lewat currentStream tracks
-        var stream = window.currentStream;
-        if (stream) {
-            var tracks = stream.getVideoTracks();
-            if (tracks.length > 0 && tracks[0].readyState === 'live') return true;
-        }
-
-        return false;
-    }
+    var REKOMENDASI_BWD = {
+        'yellow':         { skala: 1, badge: 'skala-1', saran: '🚨 Defisiensi N Berat. Segera beri Urea 150 kg/ha.' },
+        'yellowish green':{ skala: 2, badge: 'skala-2', saran: '⚠️ N Rendah. Tambahkan Urea 100 kg/ha.' },
+        'light green':    { skala: 3, badge: 'skala-3', saran: '✅ Cukup. Urea 50 kg/ha untuk pemeliharaan.' },
+        'green':          { skala: 4, badge: 'skala-4', saran: '🌟 Optimal. Tidak perlu tambahan Urea.' },
+        'dark green':     { skala: 5, badge: 'skala-5', saran: '⚡ N Berlebih. Hentikan Urea. Waspada Blast & Wereng.' }
+    };
 
     /* ============================================================
-       3. PASANG ULANG EVENT LISTENER btnCapture
-          Clone elemen untuk bersihkan semua listener lama sekaligus,
-          lalu pasang listener baru yang:
-            - Tidak pakai video.videoWidth untuk validasi
-            - Langsung kirim base64 ke URL_BWD via fetch POST
-            - Tampilkan hasil via tampilkanHasil(data)
+       3. FUNGSI RENDER HASIL BWD
+          Dipanggil setelah fetch AppScript berhasil.
+          Format data dari AppScript:
+          { leafColors: ["green","light green"], detections: [{class,confidence},...], outputImage: "..." }
        ============================================================ */
+    function renderHasilBWD(data) {
+        var outputDiv  = document.getElementById('outputBWD');
+        var resLabel   = document.getElementById('resLabel');
+        var resConf    = document.getElementById('resConf');
 
-    function pasangListenerCapture() {
-        var btnLama = document.getElementById('btnCapture');
-        if (!btnLama) {
-            console.warn('[BWD] #btnCapture tidak ditemukan, coba lagi 500ms...');
-            setTimeout(pasangListenerCapture, 500);
+        var colors     = data.leafColors  || [];
+        var detections = data.detections  || [];
+        var imgOutput  = data.outputImage || null;
+
+        /* Tangani kasus tidak ada daun terdeteksi */
+        if (colors.length === 0) {
+            if (outputDiv) outputDiv.innerHTML =
+                '<div class="info-box" style="border-left-color:var(--red-alert);">' +
+                '⚠️ Daun tidak terdeteksi. Arahkan kamera lebih dekat ke daun padi ' +
+                'dan pastikan daun berada di dalam kotak fokus hijau.</div>';
+            if (resLabel) resLabel.innerText = 'Daun Tidak Terdeteksi';
+            if (resConf)  { resConf.innerText = 'Tingkat Keyakinan: 0%'; resConf.style.display = 'block'; }
             return;
         }
 
-        // Clone → buang semua listener lama
+        /* Hitung mayoritas warna (voting) */
+        var voteCount = {};
+        colors.forEach(function (c) {
+            var key = (c || '').toLowerCase().trim();
+            voteCount[key] = (voteCount[key] || 0) + 1;
+        });
+
+        var winnerKey = 'green', maxVotes = 0;
+        Object.keys(voteCount).forEach(function (k) {
+            if (voteCount[k] > maxVotes) { maxVotes = voteCount[k]; winnerKey = k; }
+        });
+
+        /* Hitung confidence gabungan */
+        var probGagal = 1;
+        detections.forEach(function (d) {
+            var conf = d.confidence || 0.85;
+            if (conf > 1) conf = conf / 100;
+            probGagal *= (1 - conf);
+        });
+        var confGabungan = Math.min(((1 - probGagal) * 100), 99.9).toFixed(1);
+
+        /* Buat HTML kartu setiap deteksi */
+        var kartuHTML = '';
+        colors.forEach(function (c, i) {
+            var key  = (c || '').toLowerCase().trim();
+            var info = REKOMENDASI_BWD[key] || { skala: 3, badge: 'skala-3', saran: '-' };
+            var conf = detections[i] ? ((detections[i].confidence || 0.85) * 100).toFixed(1) : '-';
+            var namaKelas = detections[i] ? (detections[i]['class'] || key) : key;
+
+            kartuHTML +=
+                '<div class="leaf-card" style="margin-bottom:12px;">' +
+                  '<div class="badge ' + info.badge + '">BWD SKALA ' + info.skala + '</div>' +
+                  '<div style="margin-top:8px; font-size:0.85rem;">' +
+                    '<span>Warna: <b>' + (WARNA_INDO[key] || key) + '</b></span>' +
+                    '<br><span style="opacity:0.6; font-size:0.75rem;">Kelas AI: ' + namaKelas + ' — Akurasi: ' + conf + '%</span>' +
+                  '</div>' +
+                '</div>';
+        });
+
+        /* Rekomendasi utama (winner) */
+        var winInfo   = REKOMENDASI_BWD[winnerKey] || REKOMENDASI_BWD['green'];
+        var rekHTML   =
+            '<div class="recommendation-box" style="margin-top:12px;">' +
+              '<h4 style="color:var(--accent-green); margin:0 0 6px 0; font-size:0.95rem;">📋 Rekomendasi Utama:</h4>' +
+              '<div style="font-size:0.8rem; color:#fbbf24; margin-bottom:8px; font-weight:600;">' +
+                '📊 Mayoritas: ' + (WARNA_INDO[winnerKey] || winnerKey) + ' (' + maxVotes + ' dari ' + colors.length + ' deteksi)' +
+              '</div>' +
+              '<div style="font-size:0.85rem;">' + winInfo.saran + '</div>' +
+            '</div>';
+
+        /* Gambar output Roboflow (jika ada) */
+        var imgHTML = '';
+        if (imgOutput) {
+            imgHTML =
+                '<div style="margin-top:14px; border-radius:12px; overflow:hidden;">' +
+                  '<img src="data:image/jpeg;base64,' + imgOutput + '" ' +
+                       'style="width:100%; border-radius:12px;" ' +
+                       'alt="Hasil Anotasi AI">' +
+                  '<div style="font-size:0.7rem; color:#64748b; text-align:center; margin-top:4px;">Anotasi dari Roboflow AI</div>' +
+                '</div>';
+        }
+
+        /* Tombol uji ulang */
+        var btnUlangHTML =
+            '<button class="btn-main" onclick="ujiUlangBWD()" ' +
+                    'style="margin-top:14px; background:#0e7490; color:#fff;">🔄 UJI ULANG / DAUN LAIN</button>';
+
+        /* Render ke DOM */
+        if (outputDiv) outputDiv.innerHTML = kartuHTML + rekHTML + imgHTML + btnUlangHTML;
+        if (resLabel)  resLabel.innerText  = 'Hasil Analisis Warna Daun';
+        if (resConf) {
+            resConf.innerText      = 'Tingkat Keyakinan: ' + confGabungan + '%';
+            resConf.style.display  = 'block';
+        }
+
+        /* Pastikan boxBWD & result terlihat */
+        var boxBWD = document.getElementById('boxBWD');
+        var result = document.getElementById('result');
+        if (boxBWD) boxBWD.style.display = 'block';
+        if (result) result.style.display  = 'block';
+    }
+
+    /* ============================================================
+       4. PERBAIKI startBWDCamera
+          Simpan stream ke window.currentStream dengan benar,
+          tunggu video siap sebelum resolve.
+       ============================================================ */
+    window.startBWDCamera = async function () {
+        var video = document.getElementById('videoElement');
+        if (!video) return;
+
+        /* Hentikan stream lama */
+        if (window.currentStream) {
+            try { window.currentStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+            window.currentStream = null;
+        }
+
+        var stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false
+        });
+
+        window.currentStream = stream;
+        video.srcObject      = stream;
+
+        /* Tunggu hingga video benar-benar punya data */
+        await new Promise(function (resolve) {
+            if (video.readyState >= 2) { video.play().catch(function(){}); resolve(); return; }
+            video.addEventListener('loadeddata', function onData() {
+                video.removeEventListener('loadeddata', onData);
+                video.play().catch(function(){}).finally(resolve);
+            });
+            video.addEventListener('loadedmetadata', function onMeta() {
+                video.removeEventListener('loadedmetadata', onMeta);
+                if (video.readyState >= 2) { video.play().catch(function(){}).finally(resolve); }
+            });
+            /* Safety timeout 8 detik */
+            setTimeout(resolve, 8000);
+        });
+
+        console.log('[BWD] Kamera siap:', video.videoWidth, 'x', video.videoHeight,
+                    '| readyState:', video.readyState);
+    };
+
+    /* ============================================================
+       5. PASANG ULANG LISTENER btnCapture (hapus semua listener lama)
+       ============================================================ */
+    function pasangCapture() {
+        var btnLama = document.getElementById('btnCapture');
+        if (!btnLama) {
+            setTimeout(pasangCapture, 400);
+            return;
+        }
+
+        /* Clone → buang semua addEventListener lama */
         var btn = btnLama.cloneNode(true);
         btnLama.parentNode.replaceChild(btn, btnLama);
 
-        btn.addEventListener('click', async function handleCapture() {
+        btn.addEventListener('click', async function () {
             var video      = document.getElementById('videoElement');
             var canvas     = document.getElementById('hiddenCanvas');
             var previewImg = document.getElementById('bwdPreviewImage');
             var focusBox   = document.getElementById('focusBox');
             var outputDiv  = document.getElementById('outputBWD');
 
-            /* ── Validasi kamera siap ── */
-            if (!kameraSiap(video)) {
-                // Beri waktu ekstra lalu coba lagi otomatis (tidak alert dulu)
-                outputDiv.innerHTML =
-                    '<div style="text-align:center; padding:20px; color:var(--accent-bwd);">' +
-                    '⏳ Kamera sedang inisialisasi, mencoba lagi...</div>';
-
-                // Tunggu hingga video benar-benar ready (max 5 detik)
-                var berhasil = await tungguKameraReady(video, 5000);
-                if (!berhasil) {
-                    outputDiv.innerHTML =
-                        '<div class="info-box" style="border-left-color:var(--red-alert);">' +
-                        '<strong>❌ Kamera tidak merespons.</strong><br>' +
-                        '<small>Coba klik tombol AKTIFKAN KAMERA sekali lagi, atau pastikan izin kamera sudah diberikan.</small>' +
-                        '</div>';
-                    return;
+            /* ── Tunggu kamera siap (max 6 detik, tanpa langsung alert) ── */
+            var siap = false;
+            var batasWaktu = Date.now() + 6000;
+            while (!siap && Date.now() < batasWaktu) {
+                if (video && video.readyState >= 2 && window.currentStream) {
+                    siap = true;
+                } else if (video && window.currentStream) {
+                    /* Stream ada tapi readyState belum — coba play ulang */
+                    try { await video.play(); } catch(e) {}
+                    siap = (video.readyState >= 2);
                 }
+                if (!siap) await new Promise(function(r){ setTimeout(r, 300); });
             }
 
-            if (!window.URL_BWD) {
-                alert('URL_BWD belum dikonfigurasi. Periksa kode JavaScript Anda.');
+            if (!siap) {
+                if (outputDiv) outputDiv.innerHTML =
+                    '<div class="info-box" style="border-left-color:var(--red-alert);">' +
+                    '<strong>❌ Kamera tidak merespons.</strong><br>' +
+                    '<small>Klik tombol <b>AKTIFKAN KAMERA</b> sekali lagi, atau periksa izin kamera di pengaturan browser.</small>' +
+                    '</div>';
                 return;
             }
 
-            /* ── Ambil frame dari video ke canvas ── */
-            var ctx = canvas.getContext('2d');
-
-            // Gunakan ukuran aktual video; fallback ke 640 jika 0
-            var vw = video.videoWidth  || 640;
-            var vh = video.videoHeight || 480;
+            /* ── Ambil frame dari video ── */
+            var vw  = video.videoWidth  || 640;
+            var vh  = video.videoHeight || 480;
             canvas.width  = vw;
             canvas.height = vh;
-            ctx.drawImage(video, 0, 0, vw, vh);
+            canvas.getContext('2d').drawImage(video, 0, 0, vw, vh);
 
             /* ── Center-crop + resize ke 640×640 ── */
-            var TARGET      = 640;
-            var exportCanvas = document.createElement('canvas');
-            var exportCtx    = exportCanvas.getContext('2d');
-            exportCanvas.width  = TARGET;
-            exportCanvas.height = TARGET;
+            var T   = 640;
+            var ec  = document.createElement('canvas');
+            ec.width = ec.height = T;
+            var ectx = ec.getContext('2d');
+            var ss   = Math.min(vw, vh);
+            var sx   = (vw - ss) / 2, sy = (vh - ss) / 2;
+            ectx.filter = 'brightness(1.05) contrast(1.1)';
+            ectx.drawImage(canvas, sx, sy, ss, ss, 0, 0, T, T);
 
-            var srcSize = Math.min(vw, vh);
-            var srcX    = (vw - srcSize) / 2;
-            var srcY    = (vh - srcSize) / 2;
+            var base64 = ec.toDataURL('image/jpeg', 0.82).split(',')[1];
 
-            exportCtx.filter = 'brightness(1.05) contrast(1.1)';
-            exportCtx.drawImage(canvas, srcX, srcY, srcSize, srcSize, 0, 0, TARGET, TARGET);
+            /* ── Preview foto ── */
+            if (previewImg) { previewImg.src = canvas.toDataURL('image/jpeg'); previewImg.style.display = 'block'; }
+            if (focusBox)   focusBox.style.display = 'none';
 
-            var base64Img = exportCanvas.toDataURL('image/jpeg', 0.82).split(',')[1];
-
-            /* ── Tampilkan preview ── */
-            if (previewImg) {
-                previewImg.src = canvas.toDataURL('image/jpeg');
-                previewImg.style.display = 'block';
-            }
-            if (focusBox) focusBox.style.display = 'none';
-
-            /* ── UI loading ── */
-            var originalText   = btn.innerText;
-            btn.innerHTML      = 'MENGANALISIS AI...';
-            btn.disabled       = true;
-            btn.style.opacity  = '0.7';
-
-            if (outputDiv) {
-                outputDiv.innerHTML =
-                    '<div style="text-align:center; color:var(--accent-bwd); margin-top:15px;">' +
-                    '<div class="animasi-loading-kalender" style="color:var(--accent-bwd);">' +
-                    'Mengirim gambar ke server AI...</div>' +
-                    '<div style="font-size:0.75rem; color:#64748b; margin-top:6px;">Mohon tunggu...</div>' +
-                    '</div>';
-            }
+            /* ── Loading UI ── */
+            var teksAsli = btn.innerText;
+            btn.innerHTML = 'MENGANALISIS AI...';
+            btn.disabled  = true;
+            btn.style.opacity = '0.7';
+            if (outputDiv) outputDiv.innerHTML =
+                '<div style="text-align:center; color:var(--accent-bwd); margin-top:15px;">' +
+                '<div class="animasi-loading-kalender" style="color:var(--accent-bwd);">' +
+                'Mengirim gambar ke Roboflow AI...</div>' +
+                '<div style="font-size:0.75rem; color:#64748b; margin-top:6px;">Mohon tunggu beberapa detik...</div>' +
+                '</div>';
 
             try {
-                /* ── Fetch ke AppScript URL_BWD ── */
-                var res  = await fetch(window.URL_BWD, {
-                    method : 'POST',
-                    body   : JSON.stringify({ image: base64Img })
-                });
+                /* ── Fetch ke AppScript → Roboflow ── */
+                var urlBWD = window.URL_BWD;
+                if (!urlBWD) throw new Error('URL_BWD belum didefinisikan di script utama.');
 
-                if (!res.ok) throw new Error('Server merespons HTTP ' + res.status);
+                var res  = await fetch(urlBWD, {
+                    method : 'POST',
+                    body   : JSON.stringify({ image: base64 })
+                });
+                if (!res.ok) throw new Error('Server HTTP ' + res.status);
 
                 var data = await res.json();
 
-                /* ── Hentikan kamera untuk hemat baterai ── */
+                /* Cek error dari AppScript */
+                if (data.error) throw new Error('AppScript: ' + data.error);
+
+                /* ── Hentikan kamera ── */
                 if (typeof window.stopCamera === 'function') window.stopCamera();
 
-                /* ── Tampilkan hasil ── */
-                if (typeof window.currentMode !== 'undefined') window.currentMode = 'bwd';
-                if (typeof window.tampilkanHasil === 'function') {
-                    window.tampilkanHasil(data);
-                } else {
-                    if (outputDiv) {
-                        outputDiv.innerHTML =
-                            '<div class="info-box" style="border-left-color:var(--accent-green);">' +
-                            '<strong>Respons Server:</strong><br>' +
-                            '<pre style="font-size:0.75rem; white-space:pre-wrap;">' +
-                            JSON.stringify(data, null, 2) + '</pre></div>';
-                    }
-                }
+                /* ── Render hasil langsung (lebih aman dari tampilkanHasil) ── */
+                renderHasilBWD(data);
 
             } catch (err) {
                 console.error('[BWD] Fetch gagal:', err);
-
-                if (outputDiv) {
-                    outputDiv.innerHTML =
-                        '<div class="info-box" style="border-left-color:var(--red-alert);">' +
-                        '<strong>❌ Gagal terhubung ke server analisis.</strong><br>' +
-                        '<small>' + (err.message || 'Periksa koneksi internet Anda.') + '</small>' +
-                        '</div>';
-                }
-
-                // Kembalikan tampilan kamera agar user bisa coba lagi
+                if (outputDiv) outputDiv.innerHTML =
+                    '<div class="info-box" style="border-left-color:var(--red-alert);">' +
+                    '<strong>❌ Gagal menganalisis gambar.</strong><br>' +
+                    '<small>' + (err.message || 'Periksa koneksi internet.') + '</small>' +
+                    '</div>';
                 if (previewImg) previewImg.style.display = 'none';
                 if (focusBox)   focusBox.style.display   = 'block';
-
             } finally {
-                btn.innerText     = originalText;
+                btn.innerText     = teksAsli;
                 btn.disabled      = false;
                 btn.style.opacity = '1';
             }
         });
 
-        console.log('[BWD] ✅ Listener btnCapture terpasang — alur: kamera → AppScript → tampilkanHasil()');
+        console.log('[BWD] ✅ Listener btnCapture terpasang — alur: video → AppScript → Roboflow → render');
     }
 
-    /* ============================================================
-       4. FUNGSI BANTU: tunggu hingga video siap (polling)
-          Mengembalikan Promise<boolean>:
-            true  → video siap dalam batas waktu
-            false → timeout habis
-       ============================================================ */
-    function tungguKameraReady(video, maxMs) {
-        return new Promise(function (resolve) {
-            var mulai    = Date.now();
-            var interval = setInterval(function () {
-                if (kameraSiap(video)) {
-                    clearInterval(interval);
-                    resolve(true);
-                } else if (Date.now() - mulai >= maxMs) {
-                    clearInterval(interval);
-                    resolve(false);
-                }
-            }, 200);
-        });
-    }
-
-    /* ============================================================
-       5. PERBAIKI startBWDCamera: simpan stream ke window.currentStream
-          dan pastikan video.play() dipanggil dengan benar
-       ============================================================ */
-    window.startBWDCamera = async function () {
-        var video = document.getElementById('videoElement');
-        if (!video) return;
-
-        // Hentikan stream lama jika masih ada
-        if (window.currentStream) {
-            window.currentStream.getTracks().forEach(function (t) { t.stop(); });
-            window.currentStream = null;
-        }
-
-        try {
-            var stream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    facingMode: { ideal: 'environment' },  // Kamera belakang
-                    width:  { ideal: 1280 },
-                    height: { ideal: 720 }
-                },
-                audio: false
-            });
-
-            window.currentStream = stream;
-            video.srcObject      = stream;
-
-            // Pastikan play() dipanggil setelah metadata siap
-            await new Promise(function (resolve) {
-                video.onloadedmetadata = function () {
-                    video.play().then(resolve).catch(resolve);
-                };
-                // Kalau metadata sudah siap, langsung resolve
-                if (video.readyState >= 1) {
-                    video.play().then(resolve).catch(resolve);
-                }
-            });
-
-            console.log('[BWD] ✅ Kamera aktif —', video.videoWidth, '×', video.videoHeight);
-
-        } catch (err) {
-            console.error('[BWD] Gagal akses kamera:', err);
-            var msg = err.name === 'NotAllowedError'
-                ? 'Izin kamera ditolak. Buka Pengaturan browser dan izinkan akses kamera.'
-                : 'Gagal mengakses kamera: ' + err.message;
-            alert(msg);
-            throw err;
-        }
-    };
-
-    /* ============================================================
-       6. JALANKAN
-       ============================================================ */
-
-    // Pasang listener setelah DOM siap
+    /* ── Jalankan setelah DOM & patch lain siap ── */
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', pasangListenerCapture);
+        document.addEventListener('DOMContentLoaded', function () { setTimeout(pasangCapture, 150); });
     } else {
-        // DOM sudah siap, tapi tunggu sedikit agar patch lain selesai
-        setTimeout(pasangListenerCapture, 100);
+        setTimeout(pasangCapture, 150);
     }
 
-    console.log('[BWD] patch_bwd_fix.js dimuat ✅');
+    console.log('[BWD] patch_bwd_fix.js v3 dimuat ✅');
 
 })();
