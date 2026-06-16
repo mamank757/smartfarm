@@ -61,7 +61,7 @@
         {
             latMin: -6.0,  latMaks: -3.5,  lonMin: 120.0, lonMaks: 120.79,
             polaPuncak: 'timur',
-            rendengMulai: 3, gaduMulai: 9,
+            rendengMulai: 2, gaduMulai: 8,
             namaRendeng: 'MT I — Musim Utama Lokal', namaGadu: 'MT II — Musim Kedua Lokal',
             maxOnsetGeser: 1
         },
