@@ -180,7 +180,7 @@ function hitungRisikoDinamis(bulanIndex, fase, ensoVal, iodVal, baselineData) {
     // Konversi jika data ZOM lokal masih dalam satuan mm
     // (Data pola nasional sudah indeks, tidak perlu konversi)
     if (baselineBulanIni > 10) {
-        baselineBulanIni = normalisasiCurahHujan(baselineBulanIni);
+        baselineBulanIni = normalisasiCurahHujan(baselineBulanIni, bulanIndex);
     }
 
     // Hitung wetnessScore dengan bobot dinamis
@@ -295,6 +295,11 @@ async function prosesAnalisisKalender() {
 
         // Simpan nilai anomali terkini
         const ensoVal = ensoData.latestAnomaly;
+        const bobotIod = (ensoVal > 0.5 && iodData.latestAnomaly > 0.4) ||
+                 (ensoVal < -0.5 && iodData.latestAnomaly < -0.4) ? 0.85
+               : (ensoVal > 0.5 && iodData.latestAnomaly < -0.4) ||
+                 (ensoVal < -0.5 && iodData.latestAnomaly > 0.4) ? 0.40
+               : 0.55;
         const iodVal  = iodData.latestAnomaly;
 
         // ── Tentukan baseline ZOM ─────────────────────────────
