@@ -68,7 +68,7 @@
         {
             latMin: -6.0,  latMaks: -2.5,  lonMin: 120.8, lonMaks: 124.5,
             polaPuncak: 'peralihan_sultra',
-            rendengMulai: 2, gaduMulai: 9,
+            rendengMulai: 2, gaduMulai: 8,
             namaRendeng: 'MT I — Musim Utama', namaGadu: 'MT II — Musim Kedua',
             maxOnsetGeser: 1
         },
