@@ -257,7 +257,7 @@ if (fase === "Panen") {
         ? Math.min(95, 20 + (wetnessScore - 0.3) * 107)
         : Math.max(10, 20 + wetnessScore * 14);
 }
-
+skor = parseFloat(skor.toFixed(1));
     return { skor, statusCuaca, masalah };
 }
 
