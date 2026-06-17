@@ -136,7 +136,7 @@ function tentukanZonaIklim(lat, lon) {
 // Hasil pengujian skenario El Nino moderat-kuat: mulai dari
 // 1.5 sudah membuat ENSO/IOD moderat mengubah klasifikasi,
 // tanpa membuat "Sangat Kering/Basah Ekstrem" jadi default.
-const AMPLIFIKASI_IKLIM = 1.5;
+const AMPLIFIKASI_IKLIM = 2.5;
 
 function hitungWetnessScore(baselineZOM, ensoVal, iodVal, lat, lon, bulanIndex) {
 
