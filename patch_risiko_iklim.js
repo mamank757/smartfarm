@@ -129,25 +129,45 @@ function tentukanZonaIklim(lat, lon) {
 //    Nol      = normal
 //    Positif  = cenderung basah
 // ============================================================
+// ── KONSTANTA KALIBRASI ─────────────────────────────────────
+// Naikkan jika pengaruh ENSO/IOD terasa terlalu lemah dibanding
+// baseline ZOM (mis. El Nino sudah dilaporkan BOM/NOAA tapi
+// statusCuaca tetap "Normal/Stabil"). Turunkan jika sebaliknya.
+// Hasil pengujian skenario El Nino moderat-kuat: mulai dari
+// 1.5 sudah membuat ENSO/IOD moderat mengubah klasifikasi,
+// tanpa membuat "Sangat Kering/Basah Ekstrem" jadi default.
+const AMPLIFIKASI_IKLIM = 1.5;
+
 function hitungWetnessScore(baselineZOM, ensoVal, iodVal, lat, lon, bulanIndex) {
 
     const zona   = tentukanZonaIklim(lat, lon);
     const w_enso = BOBOT_IKLIM[zona].enso[bulanIndex];
     const w_iod  = BOBOT_IKLIM[zona].iod[bulanIndex];
 
-    // Normalisasi total bobot agar ZOM tetap dominan
-    // dan jumlah seluruh bobot = 1
-    const total = 1 + w_enso + w_iod;
+    // [FIX] Normalisasi unit dulu: ONI (±2.0 = sangat kuat) dan
+    // DMI (±1.5 = sangat kuat) disetarakan ke skala "level kekuatan"
+    // yang sebanding dengan baselineZOM (±1.5), lalu dikuatkan
+    // dengan AMPLIFIKASI_IKLIM supaya tidak teredam saat dibagi bobot.
+    const ensoNorm = (ensoVal / 2.0) * AMPLIFIKASI_IKLIM;
+    const iodNorm  = (iodVal  / 1.5) * AMPLIFIKASI_IKLIM;
 
-    const score = (baselineZOM / total)
-                - (ensoVal * w_enso / total)
-                - (iodVal  * w_iod  / total);
+    // [FIX] totalBobot HANYA menormalisasi proporsi ENSO vs IOD
+    // satu sama lain — baseline TIDAK ikut dibagi, karena baseline
+    // adalah acuan klimatologi yang independen dari kekuatan
+    // ENSO/IOD bulan tersebut.
+    const totalBobot = w_enso + w_iod;
+    const koreksi = totalBobot > 0
+        ? ((ensoNorm * w_enso) + (iodNorm * w_iod)) / totalBobot
+        : 0;
+
+    const score = baselineZOM - (koreksi * totalBobot);
 
     // Log debug — bisa dimatikan di produksi
     console.log(
         `[WetnessScore] Zona: ${zona} | Bulan: ${bulanIndex + 1} | ` +
         `ZOM: ${baselineZOM} | ENSO: ${ensoVal}×${w_enso.toFixed(2)} | ` +
-        `IOD: ${iodVal}×${w_iod.toFixed(2)} | Score: ${score.toFixed(3)}`
+        `IOD: ${iodVal}×${w_iod.toFixed(2)} | AMPLIFIKASI: ${AMPLIFIKASI_IKLIM} | ` +
+        `Score: ${score.toFixed(3)}`
     );
 
     return score;
