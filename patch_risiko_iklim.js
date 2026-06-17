@@ -221,46 +221,56 @@ function hitungRisikoDinamis(bulanIndex, fase, ensoVal, iodVal, baselineData) {
     else if (wetnessScore <   1.0) statusCuaca = "Cenderung Basah";
     else                           statusCuaca = "Sangat Basah (Ekstrem)";
 
+    // ============================================================
+//  DI DALAM FUNGSI: hitungRisikoDinamis()
+// ============================================================
+
     // ── Skor risiko per fase ─────────────────────────────────
     let skor    = 20;
     let masalah = "Aman";
 
     // Generatif — optimal di 0, buruk di kedua ekstrem
-if (fase === "Generatif") {
-    skor = Math.min(95, 25 + Math.abs(wetnessScore) * 47);
-    masalah = wetnessScore < -0.3 ? "Waspada kekurangan air saat bunting."
-            : wetnessScore >  0.3 ? "Hujan lebat berisiko Blast leher malai."
-            : "Kondisi pengisian bulir optimal.";
-}
+    if (fase === "Generatif") {
+        skor = Math.min(95, 25 + Math.abs(wetnessScore) * 47);
+        masalah = wetnessScore < -0.3 ? "Waspada kekurangan air saat bunting."
+                : wetnessScore >  0.3 ? "Hujan lebat berisiko Blast leher malai."
+                : "Kondisi pengisian bulir optimal.";
+    }
 
-// Tanam — kering buruk, basah ekstrem buruk
-if (fase === "Tanam") {
-    skor = wetnessScore < 0
-        ? Math.min(85, 20 + (-wetnessScore) * 43)   // makin kering, makin tinggi
-        : wetnessScore > 1.0
-        ? Math.min(65, 20 + (wetnessScore - 1.0) * 45)
-        : 20;
-}
+    // Tanam — kering buruk, basah ekstrem buruk
+    if (fase === "Tanam") {
+        skor = wetnessScore < 0
+            ? Math.min(85, 20 + (-wetnessScore) * 43)   // makin kering, makin tinggi
+            : wetnessScore > 1.0
+            ? Math.min(65, 20 + (wetnessScore - 1.0) * 45)
+            : 20;
+    }
 
-// Vegetatif — kering buruk, basah ekstrem buruk
-if (fase === "Vegetatif") {
-    skor = wetnessScore < 0
-        ? Math.min(75, 30 + (-wetnessScore) * 30)
-        : wetnessScore > 1.0
-        ? Math.min(60, 30 + (wetnessScore - 1.0) * 30)
-        : 30;
-}
+    // Vegetatif — kering buruk, basah ekstrem buruk
+    if (fase === "Vegetatif") {
+        skor = wetnessScore < 0
+            ? Math.min(75, 30 + (-wetnessScore) * 30)
+            : wetnessScore > 1.0
+            ? Math.min(60, 30 + (wetnessScore - 1.0) * 30)
+            : 30;
+    }
 
-// Panen — basah buruk, kering baik
-if (fase === "Panen") {
-    skor = wetnessScore > 0.3
-        ? Math.min(95, 20 + (wetnessScore - 0.3) * 107)
-        : Math.max(10, 20 + wetnessScore * 14);
-}
-skor = parseFloat(skor.toFixed(1));
+    // Panen — basah buruk, kering baik
+    if (fase === "Panen") {
+        skor = wetnessScore > 0.3
+            ? Math.min(95, 20 + (wetnessScore - 0.3) * 107)
+            : Math.max(10, 20 + wetnessScore * 14);
+    }
+
+    // ✨ TAMBAHKAN BARIS INI UNTUK MEMBULATKAN SKOR ✨
+    // Membulatkan skor ke bilangan bulat terdekat agar grafik rapi
+    skor = Math.round(skor); 
+    
+    // Opsional: Jika kamu ingin menyisakan 1 angka di belakang koma saja (misal: 75.4)
+    // skor = parseFloat(skor.toFixed(1)); 
+
     return { skor, statusCuaca, masalah };
 }
-
 
 // ============================================================
 //  5. OVERRIDE prosesAnalisisKalender()
