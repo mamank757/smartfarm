@@ -40,39 +40,11 @@
      * =========================================================================
      */
     window.normalisasiCurahHujan = function(curahHujan, bulanIndex) {
-        // Jika bulan tidak dikirim, fallback ke perilaku lama (musim gadu)
-        if (bulanIndex === undefined || bulanIndex === null) {
-            bulanIndex = new Date().getMonth();
-        }
-
-        // Tentukan apakah bulan ini termasuk Musim Rendeng atau Gadu
-        // Rendeng = Nov(10), Des(11), Jan(0), Feb(1), Mar(2)
-        var musimRendeng = [0, 1, 2, 10, 11].includes(bulanIndex);
-
-        // Batas normal berbasis musim (mm/bulan)
-        var batasSangatKering, batasKering, batasNormalAtas, batasBasah;
-
-        if (musimRendeng) {
-            // Musim Rendeng — curah hujan jauh lebih tinggi
-            batasSangatKering = 75;   // < 75 mm = sangat kering di rendeng
-            batasKering       = 130;  // < 130 mm = kering di rendeng
-            batasNormalAtas   = 300;  // < 300 mm = masih normal di rendeng
-            batasBasah        = 450;  // < 450 mm = basah di rendeng
-        } else {
-            // Musim Gadu — curah hujan lebih rendah secara alami
-            batasSangatKering = 30;   // < 30 mm = sangat kering di gadu
-            batasKering       = 75;   // < 75 mm = kering di gadu
-            batasNormalAtas   = 150;  // < 150 mm = masih normal di gadu
-            batasBasah        = 250;  // < 250 mm = basah di gadu
-        }
-
-        if (curahHujan < batasSangatKering) return -1.5;
-        if (curahHujan < batasKering)       return -0.8;
-        if (curahHujan < batasNormalAtas)   return  0.0;
-        if (curahHujan < batasBasah)        return  0.8;
-        return 1.5;
-    };
-
+    const rendeng = [0,1,2,10,11].includes(bulanIndex);
+    const tengah  = rendeng ? 225 : 100;   // mm titik tengah "normal"
+    const rentang = rendeng ? 175 : 75;    // mm skala penuh
+    return Math.max(-1.5, Math.min(1.5, (curahHujan - tengah) / rentang));
+};
 
     /* =========================================================================
      * [2] hitungRisikoSheathBlight — PERBAIKAN FASE & THRESHOLD
