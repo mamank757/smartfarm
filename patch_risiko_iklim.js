@@ -205,29 +205,38 @@ function hitungRisikoDinamis(bulanIndex, fase, ensoVal, iodVal, baselineData) {
     let skor    = 20;
     let masalah = "Aman";
 
-    if (fase === "Tanam") {
-        if      (wetnessScore <= -1.0) { skor = 85; masalah = "Tanah retak parah, krisis air olah lahan (Tunda Tanam)."; }
-        else if (wetnessScore <  -0.3) { skor = 50; masalah = "Butuh pompanisasi ekstra untuk basahi lahan."; }
-        else if (wetnessScore >   1.0) { skor = 65; masalah = "Persemaian berisiko membusuk terendam genangan."; }
-        else                           { skor = 20; masalah = "Kondisi air ideal untuk pengolahan & tanam."; }
-    }
-    else if (fase === "Vegetatif") {
-        if      (wetnessScore <= -1.0) { skor = 75; masalah = "Pertumbuhan anakan padi kerdil akibat stres air."; }
-        else if (wetnessScore >   1.0) { skor = 60; masalah = "Curah hujan picu ledakan Hawar Pelepah & busuk akar."; }
-        else                           { skor = 30; masalah = "Kondisi pertumbuhan anakan produktif normal."; }
-    }
-    else if (fase === "Generatif") {
-        if      (wetnessScore <= -1.0) { skor = 95; masalah = "KRITIS: Padi hampa massal (Puso) akibat kekeringan parah saat bunting!"; }
-        else if (wetnessScore <  -0.3) { skor = 60; masalah = "Waspada malai tidak terisi penuh (kekurangan air)."; }
-        else if (wetnessScore >   1.0) { skor = 75; masalah = "Hujan lebat melunturkan serbuk sari & memicu Blast."; }
-        else                           { skor = 25; masalah = "Kondisi penyerbukan dan pengisian bulir optimal."; }
-    }
-    else if (fase === "Panen") {
-        if      (wetnessScore <= -1.0) { skor = 10; masalah = "Kondisi terik sangat ideal untuk jemur gabah."; }
-        else if (wetnessScore <  -0.3) { skor = 20; masalah = "Kondisi pengeringan gabah aman."; }
-        else if (wetnessScore >   1.0) { skor = 95; masalah = "KRITIS: Padi rebah, gabah tumbuh di sawah, Combine amblas!"; }
-        else if (wetnessScore >   0.3) { skor = 65; masalah = "Hujan mempersulit panen, wajib siapkan mesin Dryer."; }
-    }
+    // Generatif — optimal di 0, buruk di kedua ekstrem
+if (fase === "Generatif") {
+    skor = Math.min(95, 25 + Math.abs(wetnessScore) * 47);
+    masalah = wetnessScore < -0.3 ? "Waspada kekurangan air saat bunting."
+            : wetnessScore >  0.3 ? "Hujan lebat berisiko Blast leher malai."
+            : "Kondisi pengisian bulir optimal.";
+}
+
+// Tanam — kering buruk, basah ekstrem buruk
+if (fase === "Tanam") {
+    skor = wetnessScore < 0
+        ? Math.min(85, 20 + (-wetnessScore) * 43)   // makin kering, makin tinggi
+        : wetnessScore > 1.0
+        ? Math.min(65, 20 + (wetnessScore - 1.0) * 45)
+        : 20;
+}
+
+// Vegetatif — kering buruk, basah ekstrem buruk
+if (fase === "Vegetatif") {
+    skor = wetnessScore < 0
+        ? Math.min(75, 30 + (-wetnessScore) * 30)
+        : wetnessScore > 1.0
+        ? Math.min(60, 30 + (wetnessScore - 1.0) * 30)
+        : 30;
+}
+
+// Panen — basah buruk, kering baik
+if (fase === "Panen") {
+    skor = wetnessScore > 0.3
+        ? Math.min(95, 20 + (wetnessScore - 0.3) * 107)
+        : Math.max(10, 20 + wetnessScore * 14);
+}
 
     return { skor, statusCuaca, masalah };
 }
