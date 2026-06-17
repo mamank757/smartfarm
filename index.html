@@ -5511,13 +5511,14 @@ function renderKalenderChart(labels, dataSkor) {
                     cornerRadius: 12,
                     callbacks: {
                         label: function(context) {
-                            return ' Tingkat Risiko: ' + context.raw + '%';
+                            // ✨ TAMBAHKAN Math.round() DI SINI ✨
+                            return ' Tingkat Risiko: ' + Math.round(context.raw) + '%';
                         }
                     }
                 },
                 // --- EFEK FUTURISTIK 4: Angka di atas grafik ---
                 datalabels: {
-                    color: bgColors, // Angka mengikuti warna indikator bahaya
+                    color: bgColors, 
                     anchor: 'end',
                     align: 'top',
                     offset: 4,
@@ -5527,7 +5528,8 @@ function renderKalenderChart(labels, dataSkor) {
                         size: 11
                     },
                     formatter: function(value) {
-                        return value + '%';
+                        // ✨ TAMBAHKAN Math.round() DI SINI ✨
+                        return Math.round(value) + '%';
                     }
                 }
             },
