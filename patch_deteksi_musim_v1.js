@@ -61,7 +61,7 @@
         {
             latMin: -6.0,  latMaks: -3.5,  lonMin: 120.0, lonMaks: 120.79,
             polaPuncak: 'timur',
-            rendengMulai: 4, gaduMulai: 9,
+            rendengMulai: 3, gaduMulai: 9,
             namaRendeng: 'MT I — Musim Utama Lokal', namaGadu: 'MT II — Musim Kedua Lokal',
             maxOnsetGeser: 1
         },
@@ -411,9 +411,9 @@
         var gaduBulan    = [onsetGadu,    (onsetGadu    + 1) % 12, (onsetGadu    + 2) % 12];
 
         var varianArr = [
-            { kode: 'genjah', label: 'Genjah (< 95 HST)',   panen: 90,  persenGen: 0.55 },
-            { kode: 'sedang', label: 'Sedang (95–115 HST)', panen: 110, persenGen: 0.55 },
-            { kode: 'dalam',  label: 'Dalam (≥ 116 HST)',   panen: 125, persenGen: 0.55 }
+            { kode: 'genjah', label: 'Genjah (< 95 HST)',   panen: 90,  persenGen: 0.65 }, // Diubah ke 0.65
+            { kode: 'sedang', label: 'Sedang (95–115 HST)', panen: 110, persenGen: 0.60 }, // Diubah ke 0.60
+            { kode: 'dalam',  label: 'Dalam (≥ 116 HST)',   panen: 125, persenGen: 0.58 }  // Diubah ke 0.58
         ];
 
         function evaluasiKandidatMusim(bulanTanamArr) {
@@ -439,14 +439,25 @@
                     var bPanenIdx      = tambahHari(tglTanamDummy, v.panen).getMonth();
                     var bVeg1          = tambahHari(tglTanamDummy, 30).getMonth();
 
-                    var nilaiTanam  = skorTanam;
-                    var nilaiVeg1   = skorZOM[bVeg1];
-                    var nilaiGen    = 100 - Math.abs(skorZOM[bGenIdx] - 55);
-                    var nilaiPanen  = 100 - (skorZOM[bPanenIdx] * 0.5);
-                    var nilaiTotal  = (nilaiTanam * 0.45) + (nilaiVeg1 * 0.20) + (nilaiGen * 0.20) + (nilaiPanen * 0.15);
+                    var bVeg2 = tambahHari(tglTanamDummy, 60).getMonth();
+
+                    // ── PENYELESAIAN BUG 2: Rata-rata curah hujan 3 bulan untuk Vegetatif ──
+                    var nilaiVegGabungan = (skorTanam + skorZOM[bVeg1] + skorZOM[bVeg2]) / 3;
+                    
+                    var nilaiGen = 100 - Math.abs(skorZOM[bGenIdx] - 50);
+
+                    // ── TOLERANSI PANEN BASAH ──
+                    var sPanen = skorZOM[bPanenIdx];
+                    var nilaiPanen;
+                    if (sPanen <= 55) nilaiPanen = 80 + (55 - sPanen) * 0.36;
+                    else if (sPanen <= 75) nilaiPanen = 80 - (sPanen - 55) * 0.5;
+                    else nilaiPanen = Math.max(60, 70 - (sPanen - 75) * 0.5); // Dikunci di 60, tidak dibanting ke 25
+
+                    // ── BOBOT BARU (Air 50%) ──
+                    var nilaiTotal = (nilaiVegGabungan * 0.50) + (nilaiGen * 0.30) + (nilaiPanen * 0.20);
 
                     if (mmTanamSesuai < th.thresholdOnset) nilaiTotal -= (th.thresholdOnset - mmTanamSesuai) * 0.3;
-                    if (nilaiVeg1 < 25)                    nilaiTotal -= (25 - nilaiVeg1) * 1.0;
+                    if (skorZOM[bVeg1] < 25)               nilaiTotal -= (25 - skorZOM[bVeg1]) * 1.0;
 
                     kandidat.push({
                         bTanam       : bTanam,
