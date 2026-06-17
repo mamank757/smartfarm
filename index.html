@@ -825,6 +825,56 @@ body.light-mode .stat-card { background: #f8fafc; border-color: #cbd5e1; }
 body.light-mode .hpp-card .value, body.light-mode .stat-card .stat-val { color: #0f172a !important; }
 body.light-mode .harga-table td { color: #334155 !important; border-bottom: 1px solid #e2e8f0; }
     </style>
+    <style>
+    /* Standarisasi Latar Belakang Gelap */
+    body {
+        background-color: #0b1528;
+        color: #e0e0e0;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    /* Efek Glassmorphism untuk Kartu & Kontainer Grafik */
+    .glass-card {
+        background: rgba(17, 34, 64, 0.6);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(0, 255, 136, 0.3);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5), 0 0 10px rgba(0, 255, 136, 0.05);
+        transition: all 0.3s ease;
+    }
+
+    .glass-card:hover {
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 255, 136, 0.2);
+        border-color: rgba(0, 255, 136, 0.6);
+    }
+
+    /* Standarisasi Tombol Berbasis Teks Murni (Paste, Hapus, dll) */
+    .btn-text {
+        background: rgba(0, 255, 136, 0.1);
+        color: #00ff88;
+        border: 1px solid rgba(0, 255, 136, 0.4);
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        transition: all 0.2s ease;
+        display: inline-block;
+        text-align: center;
+        text-decoration: none;
+    }
+
+    .btn-text:hover {
+        background: rgba(0, 255, 136, 0.2);
+        box-shadow: 0 0 12px rgba(0, 255, 136, 0.4);
+        color: #ffffff;
+    }
+</style>
 </head>
 <body>
 
@@ -5322,7 +5372,65 @@ async function prosesAnalisisKalender() {
             const text = document.getElementById("outputHasilVarietas").innerText;
             navigator.clipboard.writeText(text).then(() => alert("📋 Rekomendasi varietas berhasil disalin!"));
         }
-        
+
+    // PATCH JS: Tambahkan opsi ini ke dalam konfigurasi Chart Anda (bagian 'options')
+const chartNeonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: {
+            labels: {
+                color: '#e0e0e0',
+                font: { size: 12 }
+            }
+        },
+        tooltip: {
+            backgroundColor: 'rgba(11, 21, 40, 0.9)',
+            titleColor: '#00ff88',
+            bodyColor: '#ffffff',
+            borderColor: 'rgba(0, 255, 136, 0.5)',
+            borderWidth: 1,
+            padding: 12,
+            callbacks: {
+                label: function(context) {
+                    let label = context.dataset.label || '';
+                    let skor = context.parsed.y;
+                    if (label) label += ': ';
+                    label += skor;
+                    
+                    // Rekomendasi dinamis saat grafik disentuh/di-hover
+                    if (skor > 70) return label + ' (Ancaman Tinggi - Antisipasi saluran drainase)';
+                    if (skor > 40) return label + ' (Waspada - Pantau curah hujan)';
+                    return label + ' (Aman)';
+                }
+            }
+        }
+    },
+    scales: {
+        x: {
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#a0aabf' }
+        },
+        y: {
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#a0aabf' },
+            beginAtZero: true
+        }
+    }
+};
+
+// PATCH JS: Tambahkan ke dalam dataset grafik Anda agar selaras dengan tema neon
+const datasetNeonStyle = {
+    borderColor: '#00ff88',
+    backgroundColor: 'rgba(0, 255, 136, 0.1)',
+    borderWidth: 2,
+    tension: 0.4, // Membuat garis grafik melengkung halus (smooth)
+    pointBackgroundColor: '#0b1528',
+    pointBorderColor: '#00ff88',
+    pointBorderWidth: 2,
+    pointRadius: 4,
+    pointHoverRadius: 6
+};
         // 1. Fungsi untuk merender grafik batang (Bar Chart) Kalender Iklim
 function renderKalenderChart(labels, dataSkor) {
     const ctx = document.getElementById('kalenderChart').getContext('2d');
