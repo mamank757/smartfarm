@@ -1,35 +1,25 @@
 /**
  * ============================================================
- *  patch_risiko_iklim_v2.js
- *  Versi: 2.0 — Risiko Curah Hujan Murni (Kekeringan & Banjir)
+ * patch_risiko_iklim_v2.js
+ * Versi: 2.0.1 — Risiko Curah Hujan Murni (FIX ERROR BENTROK)
  * ------------------------------------------------------------
- *  Menimpa fungsi di patch_risiko_iklim.js (versi sebelumnya)
+ * Menimpa fungsi di patch_risiko_iklim.js (versi sebelumnya)
  *
- *  PERUBAHAN UTAMA dari v1:
- *    ✅ hitungRisikoDinamis() → fokus MURNI pada curah hujan
- *       (kekeringan / banjir / genangan)
- *    ✅ Hapus semua pertimbangan hama & penyakit dari grafik
- *    ✅ Label & pesan disesuaikan ke bahasa petani
- *    ✅ Sumbu grafik diberi keterangan "Risiko Air" bukan "Risiko Gagal Panen"
- *    ✅ Semua logika ZOM + ENSO/IOD bobot dinamis tetap aktif
- *
- *  Cara pakai:
- *    Ganti baris: <script src="patch_risiko_iklim.js"></script>
- *    Menjadi:     <script src="patch_risiko_iklim_v2.js"></script>
- *    ATAU tambahkan setelah patch_risiko_iklim.js agar menimpa.
- *
- *  Sumber bobot zona iklim:
- *    - Aldrian & Susanto (2003), Int. Journal of Climatology
- *    - Nur'utami & Hidayat (2016), Procedia Environmental Sciences
- *    - Boer & Faqih (2004), AIACC Working Paper
+ * PERUBAHAN UTAMA dari v1:
+ * ✅ hitungRisikoDinamis() → fokus MURNI pada curah hujan
+ * (kekeringan / banjir / genangan)
+ * ✅ Hapus semua pertimbangan hama & penyakit dari grafik
+ * ✅ Label & pesan disesuaikan ke bahasa petani
+ * ✅ Sumbu grafik diberi keterangan "Risiko Air" bukan "Risiko Gagal Panen"
+ * ✅ FIX: Menghapus deklarasi ulang variabel agar tidak error di index.html
  * ============================================================
  */
 
 // ============================================================
 //  1. TABEL BOBOT KORELASI PER ZONA PER BULAN
-//     (Disalin dari v1 — tidak berubah)
+//     (Menggunakan var agar tidak error 'already declared')
 // ============================================================
-const BOBOT_IKLIM = {
+var BOBOT_IKLIM = {
     monsunal: {
         enso: [0.15, 0.15, 0.12, 0.10, 0.18, 0.35,
                0.45, 0.50, 0.45, 0.35, 0.20, 0.15],
@@ -58,7 +48,6 @@ const BOBOT_IKLIM = {
 
 // ============================================================
 //  2. PENENTUAN ZONA IKLIM BERDASARKAN KOORDINAT GPS
-//     (Disalin dari v1 — tidak berubah)
 // ============================================================
 function tentukanZonaIklim(lat, lon) {
     if (lon >= 128) return 'lokal';
@@ -68,13 +57,9 @@ function tentukanZonaIklim(lat, lon) {
 }
 
 // ============================================================
-//  3. HITUNG WETNESS SCORE
-//     (Disalin dari v1 — tidak berubah, ini sudah benar)
-// ============================================================
-// ============================================================
 //  3. HITUNG WETNESS SCORE (VERSI REVISI LEBIH SENSITIF)
 // ============================================================
-const AMPLIFIKASI_IKLIM = 5.5; // 🔥 Naikkan sensitivitas tarikan grafik
+var AMPLIFIKASI_IKLIM = 5.5; // 🔥 Naikkan sensitivitas tarikan grafik
 
 function hitungWetnessScore(baselineZOM, ensoVal, iodVal, lat, lon, bulanIndex) {
     const zona   = tentukanZonaIklim(lat, lon);
@@ -87,11 +72,10 @@ function hitungWetnessScore(baselineZOM, ensoVal, iodVal, lat, lon, bulanIndex) 
 
     const totalBobot = w_enso + w_iod;
 
-    // 🔥 Berikan pengali dinamis: jika bobot pengaruh bulan itu secara historis kecil (< 0.25),
-    // kita paksa naikkan (boost) sedikit agar peringatan bahayanya tidak tenggelam oleh ZOM.
+    // 🔥 Berikan pengali dinamis
     const penguatBobot = totalBobot < 0.25 ? 1.5 : 1.0;
 
-    // Hitung koreksi murni tanpa dibagi totalBobot lagi agar angkanya tidak mengecil
+    // Hitung koreksi murni tanpa dibagi totalBobot lagi
     const koreksi = totalBobot > 0 
         ? ((ensoNorm * w_enso) + (iodNorm * w_iod)) * penguatBobot
         : 0;
@@ -106,57 +90,22 @@ function hitungWetnessScore(baselineZOM, ensoVal, iodVal, lat, lon, bulanIndex) 
 
     return score;
 }
+
 // ============================================================
 //  4. FUNGSI UTAMA — hitungRisikoDinamis() VERSI BARU
 // ============================================================
-/**
- * Menghitung risiko CURAH HUJAN per fase tanam.
- *
- * Skema skor (0–100):
- *   0–20   → Aman / Optimal
- *   21–45  → Waspada Ringan
- *   46–70  → Waspada Sedang
- *   71–85  → Bahaya Kekeringan / Bahaya Genangan
- *   86–100 → KRITIS (Puso / Lahan Tidak Bisa Digarap)
- *
- * wetnessScore:
- *   ≤ -1.5  → Sangat Kering Ekstrem
- *   -1.5 s/d -0.5 → Kering
- *   -0.5 s/d +0.5 → Normal
- *   +0.5 s/d +1.5 → Basah
- *   ≥ +1.5  → Sangat Basah Ekstrem
- *
- * Setiap fase memiliki sensitivitas berbeda terhadap kekeringan vs banjir:
- *   - Tanam        : sensitif kekeringan (butuh air bajak) DAN basah ekstrem
- *   - Vegetatif    : sensitif kekeringan sedang, toleran basah moderat
- *   - Generatif    : PALING sensitif — kekeringan = puso, banjir = rebah
- *   - Panen        : toleran kering (bagus), sangat sensitif banjir
- *
- * @param {number} bulanIndex   - Indeks bulan fase (0=Jan, 11=Des)
- * @param {string} fase         - "Tanam" | "Vegetatif" | "Generatif" | "Panen"
- * @param {number} ensoVal      - Anomali ENSO terkini
- * @param {number} iodVal       - Anomali IOD terkini
- * @param {number[]} baselineData - Array 12 nilai ZOM (mm atau indeks)
- * @returns {{ skor, statusCuaca, masalah, tipeBahaya }}
- */
 function hitungRisikoDinamis(bulanIndex, fase, ensoVal, iodVal, baselineData) {
-
-    // ── Koordinat dari cache global ───────────────────────────────────
     const lat = (window._lokasiKalender && window._lokasiKalender.lat) || -5.0;
     const lon = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
 
-    // ── Ambil baseline bulan ini ──────────────────────────────────────
     let baselineBulanIni = parseFloat(baselineData[bulanIndex]);
 
-    // Konversi mm ZOM → indeks jika masih dalam satuan mm
     if (baselineBulanIni > 10) {
         baselineBulanIni = normalisasiCurahHujan(baselineBulanIni, bulanIndex);
     }
 
-    // ── Hitung wetness score ──────────────────────────────────────────
     const ws = hitungWetnessScore(baselineBulanIni, ensoVal, iodVal, lat, lon, bulanIndex);
 
-    // ── Klasifikasi kondisi curah hujan ──────────────────────────────
     let statusCuaca;
     if      (ws <= -1.0) statusCuaca = 'Sangat Kering Ekstrem';
     else if (ws <= -0.3) statusCuaca = 'Kering';
@@ -166,23 +115,13 @@ function hitungRisikoDinamis(bulanIndex, fase, ensoVal, iodVal, baselineData) {
     else if (ws <=  2.0) statusCuaca = 'Basah';
     else                 statusCuaca = 'Sangat Basah Ekstrem';
 
-    // ── Tentukan tipe bahaya dominan (untuk pewarnaan ikon) ──────────
-    let tipeBahaya = 'aman'; // 'kekeringan' | 'banjir' | 'aman'
+    let tipeBahaya = 'aman'; 
     if (ws < -0.3) tipeBahaya = 'kekeringan';
     else if (ws > 0.3) tipeBahaya = 'banjir';
 
-    // ================================================================
-    //  SKOR RISIKO PER FASE — fokus murni pada air/curah hujan
-    // ================================================================
     let skor    = 15;
     let masalah = 'Kondisi air optimal.';
 
-    // ──────────────────────────────────────────────────────────────────
-    //  FASE TANAM
-    //  Kebutuhan: cukup air untuk mengolah lahan & pesemaian.
-    //  Bahaya utama: KEKERINGAN (tanah retak, tidak bisa bajak)
-    //  Bahaya sekunder: BASAH EKSTREM (pesemaian tergenang, busuk)
-    // ──────────────────────────────────────────────────────────────────
     if (fase === 'Tanam') {
         if (ws <= -1.5) {
             skor    = 90;
@@ -208,15 +147,7 @@ function hitungRisikoDinamis(bulanIndex, fase, ensoVal, iodVal, baselineData) {
             masalah = 'Hujan sangat lebat. Risiko pesemaian terendam. Pertimbangkan tapin atau tunda sebar benih.';
             tipeBahaya = 'banjir';
         }
-    }
-
-    // ──────────────────────────────────────────────────────────────────
-    //  FASE VEGETATIF
-    //  Kebutuhan: air cukup untuk pertumbuhan anakan, tidak perlu tinggi.
-    //  Bahaya utama: KEKERINGAN (anakan kerdil, jumlah malai berkurang)
-    //  Bahaya sekunder: GENANGAN PANJANG > 7 hari (akar busuk, anakan mati)
-    // ──────────────────────────────────────────────────────────────────
-    else if (fase === 'Vegetatif') {
+    } else if (fase === 'Vegetatif') {
         if (ws <= -1.5) {
             skor    = 80;
             masalah = 'KRITIS: Kekeringan parah. Anakan padi tidak tumbuh, jumlah malai sangat sedikit.';
@@ -241,15 +172,7 @@ function hitungRisikoDinamis(bulanIndex, fase, ensoVal, iodVal, baselineData) {
             masalah = 'Hujan sangat lebat. Risiko genangan panjang — akar busuk dan anakan produktif berkurang.';
             tipeBahaya = 'banjir';
         }
-    }
-
-    // ──────────────────────────────────────────────────────────────────
-    //  FASE GENERATIF (Bunting & Pengisian Malai)
-    //  Ini fase PALING KRITIS terhadap air.
-    //  Kekurangan air saat bunting = PUSO (malai hampa total).
-    //  Genangan saat berbunga = serbuk sari rontok = spikelet kosong.
-    // ──────────────────────────────────────────────────────────────────
-    else if (fase === 'Generatif') {
+    } else if (fase === 'Generatif') {
         if (ws <= -1.5) {
             skor    = 95;
             masalah = 'KRITIS PUSO: Kekeringan parah saat bunting. Malai hampa massal, potensi gagal panen total.';
@@ -274,16 +197,7 @@ function hitungRisikoDinamis(bulanIndex, fase, ensoVal, iodVal, baselineData) {
             masalah = 'BAHAYA: Hujan deras dan angin kencang saat berbunga. Risiko rebah dan penyerbukan gagal massal.';
             tipeBahaya = 'banjir';
         }
-    }
-
-    // ──────────────────────────────────────────────────────────────────
-    //  FASE PANEN
-    //  Kondisi ideal: KERING (gabah mudah rontok, mesin bisa masuk).
-    //  Bahaya: BANJIR / HUJAN TERUS-MENERUS (gabah tumbuh di malai,
-    //          lahan becek, Combine Harvester amblas/tidak bisa masuk).
-    //  Kekeringan = bagus untuk panen, bukan bahaya.
-    // ──────────────────────────────────────────────────────────────────
-    else if (fase === 'Panen') {
+    } else if (fase === 'Panen') {
         if (ws <= -0.8) {
             skor    = 8;
             masalah = 'Kondisi terik dan kering. Sangat ideal untuk panen dan pengeringan gabah.';
@@ -306,16 +220,13 @@ function hitungRisikoDinamis(bulanIndex, fase, ensoVal, iodVal, baselineData) {
     }
 
     skor = Math.round(Math.max(0, Math.min(100, skor)));
-
     return { skor, statusCuaca, masalah, tipeBahaya };
 }
 
 // ============================================================
 //  5. OVERRIDE prosesAnalisisKalender()
-//     Menyesuaikan judul grafik & label tooltip
 // ============================================================
 async function prosesAnalisisKalender() {
-
     const tglInput = document.getElementById('inputTglTanam').value;
     if (!tglInput) {
         alert('Silakan masukkan tanggal awal tanam terlebih dahulu!');
@@ -330,30 +241,22 @@ async function prosesAnalisisKalender() {
     containerUtama.style.display = 'block';
 
     if (!judulChart.dataset.asli) {
-        // Ganti judul menjadi berbasis air/curah hujan
-        judulChart.dataset.asli =
-            '<span style="color:#38b6ff;">💧 Grafik Risiko Air per Fase Tanam</span>';
+        judulChart.dataset.asli = '<span style="color:#38b6ff;">💧 Grafik Risiko Air per Fase Tanam</span>';
     }
 
-    judulChart.innerHTML = `<div class="animasi-loading-kalender">
-        📡 MEMBACA GPS & MENYINKRONKAN...
-    </div>`;
+    judulChart.innerHTML = `<div class="animasi-loading-kalender">📡 MEMBACA GPS & MENYINKRONKAN...</div>`;
     bungkusChart.style.display = 'none';
     kontainerTeks.innerHTML    = '';
 
     try {
-
-        // ── Baca GPS ──────────────────────────────────────────────────
         const lokasi = await dapatkanLokasiOtomatis();
         window._lokasiKalender = { lat: lokasi.lat, lon: lokasi.lon };
 
         const lokasiSawahEl = document.getElementById('lokasiSawah');
         if (lokasiSawahEl && lokasiSawahEl.innerText === '-') {
-            lokasiSawahEl.innerText =
-                `${lokasi.lat.toFixed(5)}, ${lokasi.lon.toFixed(5)}`;
+            lokasiSawahEl.innerText = `${lokasi.lat.toFixed(5)}, ${lokasi.lon.toFixed(5)}`;
         }
 
-        // ── Tarik data ────────────────────────────────────────────────
         const [ensoData, iodData, resPola, resZom] = await Promise.all([
             getENSOAnomaly(),
             getIODAnomaly(),
@@ -368,10 +271,8 @@ async function prosesAnalisisKalender() {
         const ensoVal = ensoData.latestAnomaly;
         const iodVal  = iodData.latestAnomaly;
 
-        // ── Pilih baseline ZOM ────────────────────────────────────────
         let baselineData = [];
         let namaZona     = '';
-
         let jarakTerdekat = Infinity;
         let kabTerpilih   = null;
 
@@ -387,9 +288,7 @@ async function prosesAnalisisKalender() {
                 const latKab = parseFloat(kab.lat);
                 const lonKab = parseFloat(kab.lon);
                 if (!isNaN(latKab) && !isNaN(lonKab)) {
-                    const jarak = hitungJarakHaversine(
-                        lokasi.lat, lokasi.lon, latKab, lonKab
-                    );
+                    const jarak = hitungJarakHaversine(lokasi.lat, lokasi.lon, latKab, lonKab);
                     if (jarak < jarakTerdekat) {
                         jarakTerdekat = jarak;
                         kabTerpilih   = kab;
@@ -399,36 +298,21 @@ async function prosesAnalisisKalender() {
         }
 
         if (kabTerpilih && jarakTerdekat <= 150) {
-            namaZona = `WIL. ${kabTerpilih.kabupaten_kota.toUpperCase()} ` +
-                       `(${jarakTerdekat.toFixed(1)} km) — ` +
-                       `Zona: ${tentukanZonaIklim(lokasi.lat, lokasi.lon).toUpperCase()}`;
+            namaZona = `WIL. ${kabTerpilih.kabupaten_kota.toUpperCase()} (${jarakTerdekat.toFixed(1)} km) — Zona: ${tentukanZonaIklim(lokasi.lat, lokasi.lon).toUpperCase()}`;
             baselineData = [
-                parseFloat(kabTerpilih.jan), parseFloat(kabTerpilih.feb),
-                parseFloat(kabTerpilih.mar), parseFloat(kabTerpilih.apr),
-                parseFloat(kabTerpilih.mei), parseFloat(kabTerpilih.jun),
-                parseFloat(kabTerpilih.jul), parseFloat(kabTerpilih.agu),
-                parseFloat(kabTerpilih.sep), parseFloat(kabTerpilih.okt),
-                parseFloat(kabTerpilih.nov), parseFloat(kabTerpilih.des)
+                parseFloat(kabTerpilih.jan), parseFloat(kabTerpilih.feb), parseFloat(kabTerpilih.mar), parseFloat(kabTerpilih.apr),
+                parseFloat(kabTerpilih.mei), parseFloat(kabTerpilih.jun), parseFloat(kabTerpilih.jul), parseFloat(kabTerpilih.agu),
+                parseFloat(kabTerpilih.sep), parseFloat(kabTerpilih.okt), parseFloat(kabTerpilih.nov), parseFloat(kabTerpilih.des)
             ];
         } else {
             const zona = tentukanZonaIklim(lokasi.lat, lokasi.lon);
-            const peta = {
-                monsunal   : 'monsunal',
-                ekuatorial : 'ekuatorial',
-                lokal      : 'lokal',
-                peralihan  : 'peralihan'
-            };
-            const polaTerpilih = dbPola.find(p =>
-                p.pola.toLowerCase().includes(peta[zona])
-            ) || dbPola.find(p => p.pola.toLowerCase().includes('monsunal'));
-
+            const peta = { monsunal: 'monsunal', ekuatorial: 'ekuatorial', lokal: 'lokal', peralihan: 'peralihan' };
+            const polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes(peta[zona])) || dbPola.find(p => p.pola.toLowerCase().includes('monsunal'));
             namaZona     = `[FALLBACK] POLA MAKRO — ZONA: ${zona.toUpperCase()}`;
             baselineData = polaTerpilih.baseline;
         }
 
-        // ── Fase tanam ────────────────────────────────────────────────
         const umurPilihan = document.getElementById('umurVarietasKalender').value;
-
         let offsetVeg = 35, offsetGen = 50, offsetPanen = 110;
         if      (umurPilihan === 'genjah') { offsetVeg = 25; offsetGen = 40; offsetPanen = 90;  }
         else if (umurPilihan === 'dalam')  { offsetVeg = 40; offsetGen = 60; offsetPanen = 125; }
@@ -441,40 +325,27 @@ async function prosesAnalisisKalender() {
         const formatTgl = d => d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
 
         const labels = [
-            `Tanam\n(${formatTgl(awalTanam)})`,
-            `Vegetatif\n(${formatTgl(tglVegetatif)})`,
-            `Generatif\n(${formatTgl(tglGeneratif)})`,
-            `Panen\n(${formatTgl(tglPanen)})`
+            `Tanam\n(${formatTgl(awalTanam)})`, `Vegetatif\n(${formatTgl(tglVegetatif)})`,
+            `Generatif\n(${formatTgl(tglGeneratif)})`, `Panen\n(${formatTgl(tglPanen)})`
         ];
 
-        // ── Hitung risiko tiap fase ───────────────────────────────────
-        const riskTanam = hitungRisikoDinamis(
-            awalTanam.getMonth(),    'Tanam',      ensoVal, iodVal, baselineData);
-        const riskVeg   = hitungRisikoDinamis(
-            tglVegetatif.getMonth(), 'Vegetatif',  ensoVal, iodVal, baselineData);
-        const riskGen   = hitungRisikoDinamis(
-            tglGeneratif.getMonth(), 'Generatif',  ensoVal, iodVal, baselineData);
-        const riskPanen = hitungRisikoDinamis(
-            tglPanen.getMonth(),     'Panen',      ensoVal, iodVal, baselineData);
+        const riskTanam = hitungRisikoDinamis(awalTanam.getMonth(),    'Tanam',      ensoVal, iodVal, baselineData);
+        const riskVeg   = hitungRisikoDinamis(tglVegetatif.getMonth(), 'Vegetatif',  ensoVal, iodVal, baselineData);
+        const riskGen   = hitungRisikoDinamis(tglGeneratif.getMonth(), 'Generatif',  ensoVal, iodVal, baselineData);
+        const riskPanen = hitungRisikoDinamis(tglPanen.getMonth(),     'Panen',      ensoVal, iodVal, baselineData);
 
-        const dataSkor  = [riskTanam.skor, riskVeg.skor, riskGen.skor, riskPanen.skor];
+        const dataSkor   = [riskTanam.skor, riskVeg.skor, riskGen.skor, riskPanen.skor];
         const dataStatus = [riskTanam.statusCuaca, riskVeg.statusCuaca, riskGen.statusCuaca, riskPanen.statusCuaca];
         const dataTipe   = [riskTanam.tipeBahaya,   riskVeg.tipeBahaya,  riskGen.tipeBahaya,  riskPanen.tipeBahaya];
 
-        // ── Render grafik ─────────────────────────────────────────────
         judulChart.innerHTML    = judulChart.dataset.asli;
         bungkusChart.style.display = 'block';
 
-        // Panggil renderKalenderChart dengan override warna berdasarkan tipe bahaya
         renderKalenderChartV2(labels, dataSkor, dataStatus, dataTipe);
-
-        // Muat grafik iklim makro & SST lokal
         loadGlobalClimateIndices();
 
-        // ── Teks analisis per fase ────────────────────────────────────
         const zonaLabel = tentukanZonaIklim(lokasi.lat, lokasi.lon).toUpperCase();
 
-        // Helper: ikon berdasarkan tipe bahaya
         function ikonTipe(tipe) {
             if (tipe === 'kekeringan') return '☀️';
             if (tipe === 'banjir')     return '🌊';
@@ -482,82 +353,39 @@ async function prosesAnalisisKalender() {
         }
 
         kontainerTeks.innerHTML = `
-            <div style="
-                text-align:center; font-size:0.8rem;
-                margin-bottom:15px; color:#38b6ff;
-                border-bottom:1px dashed rgba(255,255,255,0.1);
-                padding-bottom:8px;">
+            <div style="text-align:center; font-size:0.8rem; margin-bottom:15px; color:#38b6ff; border-bottom:1px dashed rgba(255,255,255,0.1); padding-bottom:8px;">
                 📍 Zona Iklim: <b>${zonaLabel}</b><br>
                 <span style="font-size:0.72rem; color:#64748b;">${namaZona}</span>
             </div>
-
-            <div class="info-box"
-                style="border-left-color:${getWarnaRisikoAir(riskVeg.skor, riskVeg.tipeBahaya)};">
-                <strong>${ikonTipe(riskVeg.tipeBahaya)} Vegetatif
-                    (${tglVegetatif.toLocaleDateString('id-ID',{month:'long'})})
-                </strong><br>
-                <span style="color:#38b6ff; font-size:0.75rem; font-weight:bold;">
-                    Curah Hujan: ${riskVeg.statusCuaca}
-                </span><br>
-                <span style="color:#cbd5e1; font-size:0.8rem;">
-                    ${riskVeg.masalah}
-                </span>
+            <div class="info-box" style="border-left-color:${getWarnaRisikoAir(riskVeg.skor, riskVeg.tipeBahaya)};">
+                <strong>${ikonTipe(riskVeg.tipeBahaya)} Vegetatif (${tglVegetatif.toLocaleDateString('id-ID',{month:'long'})})</strong><br>
+                <span style="color:#38b6ff; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskVeg.statusCuaca}</span><br>
+                <span style="color:#cbd5e1; font-size:0.8rem;">${riskVeg.masalah}</span>
             </div>
-
-            <div class="info-box"
-                style="border-left-color:${getWarnaRisikoAir(riskGen.skor, riskGen.tipeBahaya)};">
-                <strong>${ikonTipe(riskGen.tipeBahaya)} Generatif / Bunting
-                    (${tglGeneratif.toLocaleDateString('id-ID',{month:'long'})})
-                </strong><br>
-                <span style="color:#38b6ff; font-size:0.75rem; font-weight:bold;">
-                    Curah Hujan: ${riskGen.statusCuaca}
-                </span><br>
-                <span style="color:#cbd5e1; font-size:0.8rem;">
-                    <b>${riskGen.masalah}</b>
-                </span>
+            <div class="info-box" style="border-left-color:${getWarnaRisikoAir(riskGen.skor, riskGen.tipeBahaya)};">
+                <strong>${ikonTipe(riskGen.tipeBahaya)} Generatif / Bunting (${tglGeneratif.toLocaleDateString('id-ID',{month:'long'})})</strong><br>
+                <span style="color:#38b6ff; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskGen.statusCuaca}</span><br>
+                <span style="color:#cbd5e1; font-size:0.8rem;"><b>${riskGen.masalah}</b></span>
             </div>
-
-            <div class="info-box"
-                style="border-left-color:${getWarnaRisikoAir(riskPanen.skor, riskPanen.tipeBahaya)};">
-                <strong>${ikonTipe(riskPanen.tipeBahaya)} Panen
-                    (${tglPanen.toLocaleDateString('id-ID',{month:'long'})})
-                </strong><br>
-                <span style="color:#38b6ff; font-size:0.75rem; font-weight:bold;">
-                    Curah Hujan: ${riskPanen.statusCuaca}
-                </span><br>
-                <span style="color:#cbd5e1; font-size:0.8rem;">
-                    ${riskPanen.masalah}
-                </span>
+            <div class="info-box" style="border-left-color:${getWarnaRisikoAir(riskPanen.skor, riskPanen.tipeBahaya)};">
+                <strong>${ikonTipe(riskPanen.tipeBahaya)} Panen (${tglPanen.toLocaleDateString('id-ID',{month:'long'})})</strong><br>
+                <span style="color:#38b6ff; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskPanen.statusCuaca}</span><br>
+                <span style="color:#cbd5e1; font-size:0.8rem;">${riskPanen.masalah}</span>
             </div>
-
-            <div style="
-                margin-top:12px; padding:10px 12px;
-                background:rgba(255,255,255,0.02);
-                border-radius:10px; border:1px solid rgba(255,255,255,0.05);
-                font-size:0.72rem; color:#64748b; line-height:1.6;">
-                ☀️ = Risiko Kekeringan &nbsp;&nbsp;
-                🌊 = Risiko Banjir/Genangan &nbsp;&nbsp;
-                ✅ = Kondisi Aman<br>
+            <div style="margin-top:12px; padding:10px 12px; background:rgba(255,255,255,0.02); border-radius:10px; border:1px solid rgba(255,255,255,0.05); font-size:0.72rem; color:#64748b; line-height:1.6;">
+                ☀️ = Risiko Kekeringan &nbsp;&nbsp; 🌊 = Risiko Banjir/Genangan &nbsp;&nbsp; ✅ = Kondisi Aman<br>
                 📚 Sumber: Aldrian & Susanto (2003) • Nur'utami & Hidayat (2016)
             </div>
         `;
-
     } catch (errorMesej) {
         console.error('[patch_risiko_iklim_v2]', errorMesej);
         alert('Gagal Membaca Lokasi!\n\n' + errorMesej);
-
         judulChart.innerHTML       = judulChart.dataset.asli || '💧 Grafik Risiko Air per Fase Tanam';
         bungkusChart.style.display = 'none';
-
         kontainerTeks.innerHTML = `
-            <div class="info-box"
-                style="border-left-color:var(--red-alert); text-align:center;">
+            <div class="info-box" style="border-left-color:var(--red-alert); text-align:center;">
                 <strong>⚠️ Akses Lokasi Ditolak / Gagal</strong><br>
-                <span style="font-size:0.85rem; color:#cbd5e1;">
-                    Aplikasi memerlukan koordinat GPS untuk menganalisis
-                    risiko curah hujan di hamparan lahanmu.
-                    Coba muat ulang halaman.
-                </span>
+                <span style="font-size:0.85rem; color:#cbd5e1;">Aplikasi memerlukan koordinat GPS untuk menganalisis risiko curah hujan di hamparan lahanmu. Coba muat ulang halaman.</span>
             </div>`;
     }
 }
@@ -565,56 +393,40 @@ async function prosesAnalisisKalender() {
 // ============================================================
 //  6. HELPER: warna garis berdasarkan tipe bahaya & skor
 // ============================================================
-/**
- * Warna berbeda untuk kekeringan (oranye/merah) vs banjir (biru)
- * vs aman (hijau). Lebih informatif daripada satu warna merah saja.
- */
 function getWarnaRisikoAir(skor, tipeBahaya) {
-    if (skor < 25) return 'var(--accent-green)';          // Aman
-
+    if (skor < 25) return 'var(--accent-green)';          
     if (tipeBahaya === 'kekeringan') {
-        if (skor >= 70) return '#ef4444';                  // Kekeringan kritis — merah
-        if (skor >= 45) return '#f97316';                  // Kekeringan sedang — oranye
-        return '#f59e0b';                                  // Kekeringan ringan — kuning
+        if (skor >= 70) return '#ef4444';                  
+        if (skor >= 45) return '#f97316';                  
+        return '#f59e0b';                                  
     }
-
     if (tipeBahaya === 'banjir') {
-        if (skor >= 70) return '#3b82f6';                  // Banjir kritis — biru tua
-        if (skor >= 45) return '#38b6ff';                  // Banjir sedang — biru terang
-        return '#67e8f9';                                  // Banjir ringan — cyan
+        if (skor >= 70) return '#3b82f6';                  
+        if (skor >= 45) return '#38b6ff';                  
+        return '#67e8f9';                                  
     }
-
     return 'var(--accent-green)';
 }
 
 // ============================================================
-//  7. renderKalenderChartV2() — grafik dengan warna dua tipe bahaya
+//  7. renderKalenderChartV2()
 // ============================================================
-/**
- * Versi baru: warna titik (pointBorderColor) mencerminkan tipe bahaya:
- *   ☀️ Kekeringan → oranye/merah
- *   🌊 Banjir     → biru
- *   ✅ Aman       → hijau
- *
- * Label di atas titik menampilkan: persentase skor + status cuaca ringkas.
- * Tooltip menampilkan tipe bahaya secara eksplisit.
- */
-let kalenderChartInstance = null; // Variabel ini mungkin sudah ada di HTML asli
+// ⚠️ FIX: Deklarasi "let kalenderChartInstance = null;" DIHAPUS.
+// Sistem akan otomatis menggunakan variabel dari HTML utama (sudah ada).
 
 function renderKalenderChartV2(labels, dataSkor, dataStatus, dataTipe) {
     const ctx = document.getElementById('kalenderChart').getContext('2d');
 
-    if (kalenderChartInstance) {
+    // Mencegah error jika variabel belum terdefinisi di HTML utama
+    if (typeof kalenderChartInstance !== 'undefined' && kalenderChartInstance !== null) {
         kalenderChartInstance.destroy();
     }
 
-    // Warna titik berdasarkan tipe bahaya
     const bgColors = dataSkor.map((skor, i) => {
         const tipe = dataTipe ? dataTipe[i] : 'aman';
         return getWarnaRisikoAir(skor, tipe);
     });
 
-    // Singkatkan label status untuk tampil di atas grafik
     const singkatkanStatus = (status) => {
         if (!status) return '';
         const s = status.toLowerCase();
@@ -628,7 +440,6 @@ function renderKalenderChartV2(labels, dataSkor, dataStatus, dataTipe) {
     };
     const labelSingkat = dataStatus ? dataStatus.map(singkatkanStatus) : [];
 
-    // Gradient fill — biru untuk mencerminkan tema air/curah hujan
     const gradientFill = ctx.createLinearGradient(0, 0, 0, 300);
     gradientFill.addColorStop(0,   'rgba(56, 182, 255, 0.55)');
     gradientFill.addColorStop(0.8, 'rgba(56, 182, 255, 0.00)');
@@ -645,6 +456,7 @@ function renderKalenderChartV2(labels, dataSkor, dataStatus, dataTipe) {
         afterDatasetsDraw: (chart) => { chart.ctx.restore(); }
     };
 
+    // ⚠️ FIX: Memperbarui chart langsung ke variabel global
     kalenderChartInstance = new Chart(ctx, {
         type: 'line',
         plugins: [neonGlowPlugin, ChartDataLabels],
@@ -744,8 +556,7 @@ function renderKalenderChartV2(labels, dataSkor, dataStatus, dataTipe) {
 }
 
 // ============================================================
-//  8. Pastikan getWarnaRisiko lama tetap berfungsi untuk
-//     bagian kode lain yang memanggilnya (backward compat)
+//  8. Backward Compat
 // ============================================================
 function getWarnaRisiko(skor) {
     if (skor >= 70) return 'var(--red-alert)';
@@ -753,10 +564,7 @@ function getWarnaRisiko(skor) {
     return 'var(--accent-green)';
 }
 
-// ============================================================
-//  9. KONFIRMASI
-// ============================================================
 console.log(
-    '%c✅ patch_risiko_iklim.js aktif — Risiko Air Murni (Kekeringan & Banjir)',
+    '%c✅ patch_risiko_iklim_v2.js aktif — Risiko Air Murni (Fix Bentrok Variabel)',
     'color:#38b6ff; font-weight:bold;'
 );
