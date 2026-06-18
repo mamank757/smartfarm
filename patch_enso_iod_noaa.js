@@ -19,6 +19,15 @@
 // ============================================================
 
 // ── KONSTANTA URL ──────────────────────────────────────────
+//
+//  [FIX v2] Dibungkus IIFE untuk mencegah `const NAMA_BULAN` bentrok
+//  dengan deklarasi lain di scope global. Fungsi yang dibutuhkan
+//  diekspos via window: getENSOAnomaly, getIODAnomaly, updateENSOIODStatus.
+// ============================================================
+
+(function () {
+    'use strict';
+
 const NOAA_ONI_URL  = 'https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt';
 const NOAA_DMI_URL  = 'https://psl.noaa.gov/gcos_wgsp/Timeseries/Data/dmi.had.long.data';
 const PROXY_BASE    = 'https://api.allorigins.win/get?url=';
@@ -435,3 +444,18 @@ function updateENSOIODStatus(enso, iod) {
         `Sumber ENSO: ${enso.sumber || '-'} &nbsp;|&nbsp; Sumber IOD: ${iod.sumber || '-'}` +
         `</span>`;
 }
+
+    // ── EKSPOS KE WINDOW ──────────────────────────────────────
+    // Hanya 3 fungsi ini yang dipakai dari luar (index.html).
+    // Semua helper (parseONI, parseDMI, proyeksikanTren, dsb.)
+    // tetap privat dalam IIFE agar tidak mencemari global scope.
+    window.getENSOAnomaly       = getENSOAnomaly;
+    window.getIODAnomaly        = getIODAnomaly;
+    window.updateENSOIODStatus  = updateENSOIODStatus;
+
+    console.log(
+        '%c✅ patch_enso_iod_noaa.js v2 aktif (IIFE — tidak cemari global scope)',
+        'color:#38b6ff; font-weight:bold;'
+    );
+
+})(); // IIFE — tidak mencemari global scope
