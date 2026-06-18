@@ -777,7 +777,7 @@
             html += '<div style="margin-top:20px;margin-bottom:10px;font-size:15px;font-weight:bold;color:#fff;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:6px;opacity:' + opacityMusim + ';">🌾 ' + rek.musimNama.toUpperCase() + badgeMusim + '</div>';
             html += '<div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;margin-bottom:12px;opacity:' + opacityMusim + ';">' +
                         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">' +
-                            '<div><span style="color:#64748b;">Masuk Lahan Utama</span><br><strong style="color:#10b981;font-size:13px;">' + formatTglLengkap(rek.tglTanam) + '</strong></div>' +
+                            '<div><span style="color:#64748b;">Masuk Lahan Utama</span><br><strong style="color:#10b981;font-size:13px;">' + formatTglLengkap(metodeTanam === 'tabela' ? rek.tglTanam : tambahHari(rek.tglTanam, -8)) + '</strong></div>' +
                             '<div><span style="color:#64748b;">Varietas</span><br><strong style="color:#fff;font-size:13px;">' + rek.labelVar + '</strong></div>' +
                         '</div>' +
                         '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);font-size:11px;color:#94a3b8;line-height:1.5;">💡 ' + rek.alasan + '</div>' +
@@ -810,7 +810,7 @@
             var r = jadwal.rekomendasi;
             baris.push('============================');
             baris.push('🌾 *' + r.musimNama.toUpperCase() + '*');
-            baris.push('📅 Masuk Lahan: ' + formatTglLengkap(r.tglTanam));
+            baris.push('📅 Masuk Lahan: ' + formatTglLengkap(window._jtoMetodeTanam === 'tabela' ? r.tglTanam : tambahHari(r.tglTanam, -8)));
             baris.push('🌱 Varietas: ' + r.labelVar);
             baris.push('💡 ' + r.alasan + '\n');
             jadwal.kegiatan.forEach(function (k, i) {
