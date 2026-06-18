@@ -78,8 +78,8 @@ function hitungWetnessScore(baselineZOM, ensoVal, iodVal, lat, lon, bulanIndex) 
     const w_enso = BOBOT_IKLIM[zona].enso[bulanIndex];
     const w_iod  = BOBOT_IKLIM[zona].iod[bulanIndex];
 
-    const ensoNorm = (ensoVal / 2.0) * AMPLIFIKASI_IKLIM;
-    const iodNorm  = (iodVal  / 1.5) * AMPLIFIKASI_IKLIM;
+    const ensoNorm = (ensoVal / 2.5) * AMPLIFIKASI_IKLIM;
+    const iodNorm  = (iodVal  / 2.0) * AMPLIFIKASI_IKLIM;
 
     const totalBobot = w_enso + w_iod;
     const koreksi = totalBobot > 0
