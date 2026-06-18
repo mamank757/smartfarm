@@ -40,9 +40,13 @@
      * =========================================================================
      */
     window.normalisasiCurahHujan = function(curahHujan, bulanIndex) {
+    if (bulanIndex === undefined || bulanIndex === null || isNaN(bulanIndex)) {
+        console.warn('[normalisasi] bulanIndex tidak dikirim — hasil mungkin tidak akurat');
+        bulanIndex = new Date().getMonth();
+    }
     const rendeng = [0,1,2,10,11].includes(bulanIndex);
-    const tengah  = rendeng ? 225 : 100;   // mm titik tengah "normal"
-    const rentang = rendeng ? 175 : 75;    // mm skala penuh
+    const tengah  = rendeng ? 225 : 100;
+    const rentang = rendeng ? 175 : 75;
     return Math.max(-1.5, Math.min(1.5, (curahHujan - tengah) / rentang));
 };
 
