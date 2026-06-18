@@ -410,44 +410,40 @@
 
 
     /* =========================================================================
-     * PATCH NORMALISASI: perbarui semua pemanggilan normalisasiCurahHujan
-     * di dalam prosesAnalisisKalender agar mengirimkan bulanIndex
+     * PATCH NORMALISASI — catatan arsitektur
      * =========================================================================
-     * Catatan: fungsi prosesAnalisisKalender memanggil normalisasiCurahHujan
-     * di dalam hitungRisikoDinamis(bulanIndex, fase). Karena bulanIndex
-     * sudah dikirim sebagai parameter pertama ke hitungRisikoDinamis,
-     * kita cukup memastikan bahwa di dalam hitungRisikoDinamis,
-     * normalisasiCurahHujan dipanggil dengan 2 argumen.
+     * [FIX DOKUMENTASI] Wrapper window.prosesAnalisisKalender yang ada di
+     * versi sebelumnya (hanya memanggil _prosesKalenderAsli tanpa perubahan)
+     * DIHAPUS karena:
      *
-     * Cara: wrap prosesAnalisisKalender untuk meng-inject versi
-     * hitungRisikoDinamis yang sudah diperbaiki.
+     *  1. Wrapper tersebut tidak melakukan apapun — isinya hanya
+     *     `return await _prosesKalenderAsli.apply(this, arguments)`
+     *     tanpa modifikasi argumen maupun hasil.
+     *
+     *  2. patch_risiko_iklim.js (load order berikutnya) mendefinisikan
+     *     ulang prosesAnalisisKalender via window assignment — wrapper
+     *     ini sudah ditimpa sebelum pernah bermanfaat.
+     *
+     *  3. Perbaikan normalisasiCurahHujan (2 argumen) SUDAH ditangani:
+     *     - [1] di atas: window.normalisasiCurachHujan menerima 2 args ✓
+     *     - patch_risiko_iklim.js: hitungRisikoDinamis memanggil
+     *       normalisasiCurachHujan(baselineBulanIni, bulanIndex) — 2 args ✓
+     *
+     *  Jika di masa depan perlu meng-extend prosesAnalisisKalender,
+     *  lakukan di sini dengan pola yang benar:
+     *
+     *    var _prev = window.prosesAnalisisKalender;
+     *    window.prosesAnalisisKalender = async function() {
+     *        // lakukan sesuatu SEBELUM
+     *        var result = await _prev.apply(this, arguments);
+     *        // lakukan sesuatu SESUDAH
+     *        return result;
+     *    };
+     *
+     *  Dan pastikan file ini di-load SETELAH patch_risiko_iklim.js
+     *  agar _prev menangkap versi yang benar.
      * =========================================================================
      */
-    var _prosesKalenderAsli = window.prosesAnalisisKalender;
-
-    window.prosesAnalisisKalender = async function() {
-        // Inject versi hitungRisikoDinamis yang sudah mengirim bulanIndex
-        // ke normalisasiCurahHujan.
-        // Kita tidak bisa mengakses closure hitungRisikoDinamis yang ada
-        // di dalam prosesAnalisisKalender, tapi kita bisa patch global
-        // normalisasiCurahHujan untuk menerima bulanIndex (sudah dilakukan
-        // di [1] di atas). Fungsi asli sudah memanggil:
-        //   normalisasiCurahHujan(baselineBulanIni)  ← 1 argumen
-        // Kita perlu menambahkan argumen bulanIndex.
-        //
-        // Solusi: wrap normalisasiCurahHujan agar jika hanya 1 argumen
-        // yang dikirim (panggilan lama), ia menebak bulanIndex dari
-        // konteks saat itu (tanggal tanam + offset fase yang sedang dihitung).
-        // Ini ditangani oleh fallback di [1]: jika bulanIndex tidak dikirim,
-        // pakai bulan sekarang — kurang ideal tapi lebih baik dari tidak ada.
-        //
-        // Untuk akurasi penuh, edit langsung di kode asli:
-        //   normalisasiCurahHujan(baselineBulanIni)
-        //   → normalisasiCurahHujan(baselineBulanIni, bulanIndex)
-        // 'bulanIndex' sudah tersedia sebagai parameter pertama
-        // di hitungRisikoDinamis(bulanIndex, fase).
-        return await _prosesKalenderAsli.apply(this, arguments);
-    };
 
     // Catat bahwa patch sudah dimuat
     window._patchIlmiahDimuat = true;
