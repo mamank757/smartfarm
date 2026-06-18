@@ -74,7 +74,7 @@ function tentukanZonaIklim(lat, lon) {
 // ============================================================
 //  3. HITUNG WETNESS SCORE (VERSI REVISI LEBIH SENSITIF)
 // ============================================================
-const AMPLIFIKASI_IKLIM = 4; // 🔥 Naikkan sensitivitas tarikan grafik
+const AMPLIFIKASI_IKLIM = 5.5; // 🔥 Naikkan sensitivitas tarikan grafik
 
 function hitungWetnessScore(baselineZOM, ensoVal, iodVal, lat, lon, bulanIndex) {
     const zona   = tentukanZonaIklim(lat, lon);
