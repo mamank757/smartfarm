@@ -158,12 +158,12 @@ function hitungRisikoDinamis(bulanIndex, fase, ensoVal, iodVal, baselineData) {
 
     // ── Klasifikasi kondisi curah hujan ──────────────────────────────
     let statusCuaca;
-    if      (ws <= -1.5) statusCuaca = 'Sangat Kering Ekstrem';
-    else if (ws <= -0.8) statusCuaca = 'Kering';
-    else if (ws <= -0.3) statusCuaca = 'Cenderung Kering';
-    else if (ws <=  0.3) statusCuaca = 'Normal';
-    else if (ws <=  0.8) statusCuaca = 'Cenderung Basah';
-    else if (ws <=  1.5) statusCuaca = 'Basah';
+    if      (ws <= -1.0) statusCuaca = 'Sangat Kering Ekstrem';
+    else if (ws <= -0.3) statusCuaca = 'Kering';
+    else if (ws <=  0.3) statusCuaca = 'Cenderung Kering';
+    else if (ws <=  0.8) statusCuaca = 'Normal';
+    else if (ws <=  1.5) statusCuaca = 'Cenderung Basah';
+    else if (ws <=  2.0) statusCuaca = 'Basah';
     else                 statusCuaca = 'Sangat Basah Ekstrem';
 
     // ── Tentukan tipe bahaya dominan (untuk pewarnaan ikon) ──────────
