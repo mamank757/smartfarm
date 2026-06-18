@@ -71,32 +71,41 @@ function tentukanZonaIklim(lat, lon) {
 //  3. HITUNG WETNESS SCORE
 //     (Disalin dari v1 — tidak berubah, ini sudah benar)
 // ============================================================
-const AMPLIFIKASI_IKLIM = 3;
+// ============================================================
+//  3. HITUNG WETNESS SCORE (VERSI REVISI LEBIH SENSITIF)
+// ============================================================
+const AMPLIFIKASI_IKLIM = 3.5; // 🔥 Naikkan sensitivitas tarikan grafik
 
 function hitungWetnessScore(baselineZOM, ensoVal, iodVal, lat, lon, bulanIndex) {
     const zona   = tentukanZonaIklim(lat, lon);
     const w_enso = BOBOT_IKLIM[zona].enso[bulanIndex];
     const w_iod  = BOBOT_IKLIM[zona].iod[bulanIndex];
 
-    const ensoNorm = (ensoVal / 2.5) * AMPLIFIKASI_IKLIM;
-    const iodNorm  = (iodVal  / 2.0) * AMPLIFIKASI_IKLIM;
+    // 🔥 Turunkan pembagi agar anomali skala sedang/moderat langsung terasa efeknya
+    const ensoNorm = (ensoVal / 1.5) * AMPLIFIKASI_IKLIM; 
+    const iodNorm  = (iodVal  / 1.0) * AMPLIFIKASI_IKLIM; 
 
     const totalBobot = w_enso + w_iod;
-    const koreksi = totalBobot > 0
-        ? ((ensoNorm * w_enso) + (iodNorm * w_iod)) / totalBobot
+
+    // 🔥 Berikan pengali dinamis: jika bobot pengaruh bulan itu secara historis kecil (< 0.25),
+    // kita paksa naikkan (boost) sedikit agar peringatan bahayanya tidak tenggelam oleh ZOM.
+    const penguatBobot = totalBobot < 0.25 ? 1.5 : 1.0;
+
+    // Hitung koreksi murni tanpa dibagi totalBobot lagi agar angkanya tidak mengecil
+    const koreksi = totalBobot > 0 
+        ? ((ensoNorm * w_enso) + (iodNorm * w_iod)) * penguatBobot
         : 0;
 
-    const score = baselineZOM - (koreksi * totalBobot);
+    const score = baselineZOM - koreksi;
 
     console.log(
-        `[WetnessScore v2] Zona:${zona} Bln:${bulanIndex+1} ZOM:${baselineZOM.toFixed(2)} ` +
-        `ENSO:${ensoVal}×${w_enso.toFixed(2)} IOD:${iodVal}×${w_iod.toFixed(2)} ` +
-        `→ Score:${score.toFixed(3)}`
+        `[WetnessScore v2.1] ZOM: ${baselineZOM.toFixed(2)} | ` +
+        `Koreksi ENSO/IOD: ${koreksi.toFixed(3)} | ` +
+        `Score Akhir: ${score.toFixed(3)}`
     );
 
     return score;
 }
-
 // ============================================================
 //  4. FUNGSI UTAMA — hitungRisikoDinamis() VERSI BARU
 // ============================================================
