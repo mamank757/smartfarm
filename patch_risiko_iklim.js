@@ -599,7 +599,7 @@ function getWarnaRisikoAir(skor, tipeBahaya) {
  * Label di atas titik menampilkan: persentase skor + status cuaca ringkas.
  * Tooltip menampilkan tipe bahaya secara eksplisit.
  */
-var kalenderChartInstance = window.kalenderChartInstance || null;
+let kalenderChartInstance = null; // Variabel ini mungkin sudah ada di HTML asli
 
 function renderKalenderChartV2(labels, dataSkor, dataStatus, dataTipe) {
     const ctx = document.getElementById('kalenderChart').getContext('2d');
