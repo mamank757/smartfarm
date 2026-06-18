@@ -16,8 +16,32 @@
  */
 
 // ============================================================
+//  [FIX KRITIS] Seluruh file dibungkus IIFE.
+//
+//  MASALAH SEBELUMNYA:
+//  File ini tidak punya IIFE — semua deklarasi (BOBOT_IKLIM,
+//  tentukanZonaIklim, prosesAnalisisKalender, dst) langsung
+//  masuk ke scope global window.
+//
+//  Dampak paling serius:
+//    `async function prosesAnalisisKalender()` di baris ~229
+//    adalah FUNCTION DECLARATION di global scope. Function
+//    declaration menimpa window.prosesAnalisisKalender tepat
+//    saat script ini dieksekusi — SETELAH patch_perbaikan_ilmiah.js
+//    sudah memasang wrapper-nya. Akibatnya wrapper ilmiah
+//    (yang mengaitkan chain normalisasiCurahHujan) ikut TERHAPUS.
+//
+//  SOLUSI:
+//  1. Bungkus dengan IIFE agar tidak ada function declaration
+//     yang menimpa window secara tak sengaja.
+//  2. Ekspor HANYA fungsi yang memang perlu global, secara
+//     eksplisit via window.xxx = ..., di akhir IIFE.
+// ============================================================
+(function () {
+'use strict';
+
+// ============================================================
 //  1. TABEL BOBOT KORELASI PER ZONA PER BULAN
-//     (Menggunakan var agar tidak error 'already declared')
 // ============================================================
 var BOBOT_IKLIM = {
     monsunal: {
@@ -225,8 +249,10 @@ function hitungRisikoDinamis(bulanIndex, fase, ensoVal, iodVal, baselineData) {
 
 // ============================================================
 //  5. OVERRIDE prosesAnalisisKalender()
+//     [FIX] Pakai window assignment, bukan function declaration,
+//     agar tidak menimpa wrapper yang dipasang patch sebelumnya.
 // ============================================================
-async function prosesAnalisisKalender() {
+window.prosesAnalisisKalender = async function prosesAnalisisKalender() {
     const tglInput = document.getElementById('inputTglTanam').value;
     if (!tglInput) {
         alert('Silakan masukkan tanggal awal tanam terlebih dahulu!');
@@ -359,17 +385,17 @@ async function prosesAnalisisKalender() {
             </div>
             <div class="info-box" style="border-left-color:${getWarnaRisikoAir(riskVeg.skor, riskVeg.tipeBahaya)};">
                 <strong>${ikonTipe(riskVeg.tipeBahaya)} Vegetatif (${tglVegetatif.toLocaleDateString('id-ID',{month:'long'})})</strong><br>
-                <span style="color:${getWarnaRisikoAir(riskVeg.skor, riskVeg.tipeBahaya)}; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskVeg.statusCuaca}</span><br>
+                <span style="color:#38b6ff; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskVeg.statusCuaca}</span><br>
                 <span style="color:#cbd5e1; font-size:0.8rem;">${riskVeg.masalah}</span>
             </div>
             <div class="info-box" style="border-left-color:${getWarnaRisikoAir(riskGen.skor, riskGen.tipeBahaya)};">
                 <strong>${ikonTipe(riskGen.tipeBahaya)} Generatif / Bunting (${tglGeneratif.toLocaleDateString('id-ID',{month:'long'})})</strong><br>
-                <span style="color:${getWarnaRisikoAir(riskGen.skor, riskGen.tipeBahaya)}; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskGen.statusCuaca}</span><br>
+                <span style="color:#38b6ff; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskGen.statusCuaca}</span><br>
                 <span style="color:#cbd5e1; font-size:0.8rem;"><b>${riskGen.masalah}</b></span>
             </div>
             <div class="info-box" style="border-left-color:${getWarnaRisikoAir(riskPanen.skor, riskPanen.tipeBahaya)};">
                 <strong>${ikonTipe(riskPanen.tipeBahaya)} Panen (${tglPanen.toLocaleDateString('id-ID',{month:'long'})})</strong><br>
-                <span style="color:${getWarnaRisikoAir(riskPanen.skor, riskPanen.tipeBahaya)}; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskPanen.statusCuaca}</span><br>
+                <span style="color:#38b6ff; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskPanen.statusCuaca}</span><br>
                 <span style="color:#cbd5e1; font-size:0.8rem;">${riskPanen.masalah}</span>
             </div>
             <div style="margin-top:12px; padding:10px 12px; background:rgba(255,255,255,0.02); border-radius:10px; border:1px solid rgba(255,255,255,0.05); font-size:0.72rem; color:#64748b; line-height:1.6;">
@@ -496,7 +522,9 @@ function renderKalenderChartV2(labels, dataSkor, dataStatus, dataTipe) {
                     displayColors    : false,
                     cornerRadius     : 12,
                     callbacks: {
-                        title: function(ctx) { return ctx[0].label.replace('\n', ' '); },
+                        title: function(ctx) {
+                            return ctx[0].label.replace('\n', ' ');
+                        },
                         label: function(ctx) {
                             const i    = ctx.dataIndex;
                             const skor = Math.round(ctx.raw);
@@ -514,12 +542,7 @@ function renderKalenderChartV2(labels, dataSkor, dataStatus, dataTipe) {
                     }
                 },
                 datalabels: {
-                    // --- PERBAIKAN DI SINI ---
-                    color: function(context) {
-                        // Memaksa kedua baris teks menggunakan warna dari titik data yang tepat
-                        return bgColors[context.dataIndex]; 
-                    },
-                    // -------------------------
+                    color     : bgColors,
                     anchor    : 'end',
                     align     : 'top',
                     offset    : 4,
@@ -571,3 +594,20 @@ console.log(
     '%c✅ patch_risiko_iklim_v2.js aktif — Risiko Air Murni (Fix Bentrok Variabel)',
     'color:#38b6ff; font-weight:bold;'
 );
+
+// ============================================================
+//  EKSPOR EKSPLISIT — hanya fungsi yang dipakai di luar IIFE
+// ============================================================
+// [FIX] Ekspor eksplisit menggantikan deklarasi global yang
+// sebelumnya mencemari window tanpa kendali.
+window.tentukanZonaIklim      = tentukanZonaIklim;
+window.hitungRisikoDinamis    = hitungRisikoDinamis;
+window.getWarnaRisikoAir      = getWarnaRisikoAir;
+window.renderKalenderChartV2  = renderKalenderChartV2;
+// getWarnaRisiko (backward compat) — pertahankan definisi di index.html,
+// hanya daftarkan kalau belum ada agar tidak menimpa versi lama.
+if (typeof window.getWarnaRisiko !== 'function') {
+    window.getWarnaRisiko = getWarnaRisiko;
+}
+
+})(); // tutup IIFE patch_risiko_iklim.js
