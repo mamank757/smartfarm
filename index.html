@@ -3109,6 +3109,7 @@ function isWilayahSulsel(lat, lon) {
 
                 // ─── AMBIL DATA: COBA OPEN-METEO, FALLBACK KE WTTR.IN ──────
                 let dataForecast, dataArchive;
+                let sumberDataCuaca = "openmeteo"; // "openmeteo" = data asli lengkap, "wttr" = fallback (CAPE & 850hPa adalah nilai dummy)
                 document.getElementById('resConf').innerText = "Menghubungi server cuaca...";
 
                 try {
@@ -3119,6 +3120,7 @@ function isWilayahSulsel(lat, lon) {
                     ]);
                     dataForecast = resF;
                     dataArchive = resA;
+                    sumberDataCuaca = "openmeteo";
                     console.log("✅ Data cuaca dari Open-Meteo");
                 } catch (errOpenMeteo) {
                     // Fallback ke wttr.in jika Open-Meteo gagal
@@ -3128,16 +3130,30 @@ function isWilayahSulsel(lat, lon) {
                         const wttrRaw = await fetchDenganRetry(urlWttr, 3, 2000);
                         dataForecast = konversiWttrKeOpenMeteo(wttrRaw);
                         dataArchive = { daily: { precipitation_sum: [] } };
-                        console.log("✅ Data cuaca dari wttr.in (fallback)");
+                        sumberDataCuaca = "wttr";
+                        console.log("✅ Data cuaca dari wttr.in (fallback) — CAPE & 850hPa adalah nilai dummy");
                     } catch (errWttr) {
                         throw new Error("Semua sumber cuaca tidak dapat dijangkau. Periksa koneksi internet Anda.");
                     }
                 }
-                
-                const cur = dataForecast.current; 
+                window._sumberDataCuacaAktif = sumberDataCuaca;
+
+                const labelLokasiEl = document.getElementById('alamatDesa');
+                if (sumberDataCuaca === "wttr" && labelLokasiEl) {
+                    labelLokasiEl.insertAdjacentHTML('afterend',
+                        `<div id="indikatorSumberCadangan" style="margin-top:6px; font-size:0.7rem; color: var(--accent-soil); font-weight:600;">
+                            ⚠️ Memakai server cuaca cadangan — sebagian parameter atmosfer (CAPE, suhu udara atas) menggunakan estimasi, akurasi prediksi hujan jangka pendek sedikit berkurang.
+                        </div>`
+                    );
+                } else {
+                    const existingIndikator = document.getElementById('indikatorSumberCadangan');
+                    if (existingIndikator) existingIndikator.remove();
+                }
+
+                const cur = dataForecast.current;
                 const hourly = dataForecast.hourly;
                 const daily = dataForecast.daily;
-
+               
                 const sekarang = new Date();
                 const tahun = sekarang.getFullYear();
                 const bulan = String(sekarang.getMonth() + 1).padStart(2, '0');
@@ -3227,10 +3243,19 @@ function isWilayahSulsel(lat, lon) {
 
                 let rainScore = 0;
                 const nextHourProb = hourly.precipitation_probability ? (hourly.precipitation_probability[activeIndex + 1] || 0) : 0;
-                if (nextHourProb >= 50) rainScore += 40;       // dari 30 → 50
-                if (currentCape >= 1500) rainScore += 30;      // dari 1000 → 1500
-                if (parseFloat(dpSpread) <= 1) rainScore += 20; // dari 2 → 1
-                if (cur.relative_humidity_2m >= 95) rainScore += 10; // dari 90 → 95
+                const sumberAktif = window._sumberDataCuacaAktif || "openmeteo";
+                const capeValid = (sumberAktif === "openmeteo"); // CAPE hanya dipercaya jika dari Open-Meteo asli
+
+                if (nextHourProb >= 50) rainScore += 40;
+                if (capeValid && currentCape >= 1500) {
+                    rainScore += 30;
+                } else if (!capeValid && nextHourProb >= 40) {
+                    // Kompensasi: tanpa CAPE valid, beri bobot tambahan pada probabilitas hujan
+                    // supaya prediksi tidak bias terlalu rendah saat fallback aktif
+                    rainScore += 15;
+                }
+                if (parseFloat(dpSpread) <= 1) rainScore += 20;
+                if (cur.relative_humidity_2m >= 95) rainScore += 10;
 
                 // Validator silang: jika hujan aktual saat ini 0mm DAN
                 // kode cuaca saat ini bukan presipitasi (code 0,1,2,3,45,48),
@@ -3238,7 +3263,7 @@ function isWilayahSulsel(lat, lon) {
                 const kodeNonPresipitasi = [0, 1, 2, 3, 45, 48].includes(cur.weather_code);
                 const tidakAdaHujanSaatIni = (cur.rain || 0) === 0;
                 if (kodeNonPresipitasi && tidakAdaHujanSaatIni && rainScore > 65) {
-                    rainScore = 65; // batasi maksimal ke ambang "Potensi", bukan "Sangat Mungkin"
+                    rainScore = 65;
                 }
 
                 const elHujan = document.getElementById('prediksiHujan');
