@@ -466,23 +466,26 @@
          karena umur varietas empiris lapangan sudah menyertakannya.
     ────────────────────────────────────────────────────────── */
     function bangunKegiatan(rek, skorBulan, metodeTanam) {
-        var tglTanam  = rek.tglTanam;          // tanggal masuk lahan utama
+        var isTabela       = (metodeTanam === 'tabela');
+        var tglAcuanTabela = rek.tglTanam;     // Engine merekomendasikan ini sebagai jadwal Tabela
+        
+        // LOGIKA BARU: Tapin dimundurkan 8 hari (kompensasi stagnasi) dari jadwal Tabela
+        var tglTanam       = isTabela ? tglAcuanTabela : tambahHari(tglAcuanTabela, -8); 
+
         var varietas  = rek.varietas;
         var tglOlah   = rek.tglOlahTanah;
         var jt        = rek.jadwalTikus;
-        var isTabela  = (metodeTanam === 'tabela');
 
         var vParam    = TABEL_VARIETAS[varietas] || TABEL_VARIETAS.sedang;
         var umurTotal = vParam.umurTotal;
         var umurBibit = vParam.umurBibit;       // hanya dipakai Tapin
 
         /* ── Tanggal-tanggal utama ── */
-        // tglPanen SAMA untuk Tapin & Tabela — kunci utama v3.12
-        var tglPanen = tambahHari(tglTanam, umurTotal);
+        // Panen dikunci serentak berdasarkan hitungan umur Tabela
+        var tglPanen = tambahHari(tglAcuanTabela, umurTotal);
 
-        // tglBenih: Tapin mulai semai umurBibit hari lebih awal
-        //           Tabela cukup rendam 2 hari sebelum sebar
-        var tglBenih  = tambahHari(tglTanam, isTabela ? -2 : -umurBibit);
+        // tglBenih menyesuaikan tglTanam masing-masing metode yang sudah dikoreksi
+        var tglBenih  = isTabela ? tambahHari(tglTanam, -2) : tambahHari(tglTanam, -umurBibit);
 
         // Kegiatan pasca-tanam dihitung dari tglTanam (hari ke-0 di lahan)
         var tglP1     = tambahHari(tglTanam, 7);
