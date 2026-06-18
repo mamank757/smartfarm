@@ -894,8 +894,7 @@
             var multiJadwal = rekomendasiArr.map(function (rek) {
                 return {
                     rekomendasi: rek,
-                    kegiatan: bangunKegiatan(rek, skorBulan, metodeTanam),
-                    _skorBulan: skorBulan  // [FIX] Simpan agar patch_jadwal_tapin_tabela_fix bisa re-hitung
+                    kegiatan: bangunKegiatan(rek, skorBulan, metodeTanam)
                 };
             });
 
@@ -975,12 +974,7 @@
         } else {
             card.appendChild(box);
         }
-        document.getElementById('btnJadwalOtomatis').addEventListener('click', function () {
-            // [FIX] Panggil lewat window.prosesJadwalOtomatis agar patch_jadwal_tapin_tabela_fix
-            //       dapat mengoverride fungsi ini. Sebelumnya memanggil closure lokal secara
-            //       langsung sehingga override dari luar tidak pernah efektif.
-            (window.prosesJadwalOtomatis || prosesJadwalOtomatis)();
-        });
+        document.getElementById('btnJadwalOtomatis').addEventListener('click', prosesJadwalOtomatis);
     }
 
     var ELEMEN_TERSEMBUNYI_JADWAL = [
@@ -1073,11 +1067,7 @@
         injeksiTab();
         injeksiBox();
         patchSwitchMode();
-        // [FIX] Expose prosesJadwalOtomatis ke window agar patch_jadwal_tapin_tabela_fix
-        //       bisa meng-override-nya. Sebelumnya fungsi ini private (IIFE closure)
-        //       sehingga override dari luar tidak pernah berjalan (dead code).
-        window.prosesJadwalOtomatis = prosesJadwalOtomatis;
-        console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.12.1 aktif — window.prosesJadwalOtomatis diekspos', 'color:' + WARNA + ';font-weight:bold;');
+        console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.12 aktif — Panen Tapin & Tabela SERENTAK', 'color:' + WARNA + ';font-weight:bold;');
     }
 
     if (document.readyState === 'loading') {
