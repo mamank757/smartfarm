@@ -359,17 +359,17 @@ async function prosesAnalisisKalender() {
             </div>
             <div class="info-box" style="border-left-color:${getWarnaRisikoAir(riskVeg.skor, riskVeg.tipeBahaya)};">
                 <strong>${ikonTipe(riskVeg.tipeBahaya)} Vegetatif (${tglVegetatif.toLocaleDateString('id-ID',{month:'long'})})</strong><br>
-                <span style="color:#38b6ff; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskVeg.statusCuaca}</span><br>
+                <span style="color:${getWarnaRisikoAir(riskVeg.skor, riskVeg.tipeBahaya)}; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskVeg.statusCuaca}</span><br>
                 <span style="color:#cbd5e1; font-size:0.8rem;">${riskVeg.masalah}</span>
             </div>
             <div class="info-box" style="border-left-color:${getWarnaRisikoAir(riskGen.skor, riskGen.tipeBahaya)};">
                 <strong>${ikonTipe(riskGen.tipeBahaya)} Generatif / Bunting (${tglGeneratif.toLocaleDateString('id-ID',{month:'long'})})</strong><br>
-                <span style="color:#38b6ff; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskGen.statusCuaca}</span><br>
+                <span style="color:${getWarnaRisikoAir(riskGen.skor, riskGen.tipeBahaya)}; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskGen.statusCuaca}</span><br>
                 <span style="color:#cbd5e1; font-size:0.8rem;"><b>${riskGen.masalah}</b></span>
             </div>
             <div class="info-box" style="border-left-color:${getWarnaRisikoAir(riskPanen.skor, riskPanen.tipeBahaya)};">
                 <strong>${ikonTipe(riskPanen.tipeBahaya)} Panen (${tglPanen.toLocaleDateString('id-ID',{month:'long'})})</strong><br>
-                <span style="color:#38b6ff; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskPanen.statusCuaca}</span><br>
+                <span style="color:${getWarnaRisikoAir(riskPanen.skor, riskPanen.tipeBahaya)}; font-size:0.75rem; font-weight:bold;">Curah Hujan: ${riskPanen.statusCuaca}</span><br>
                 <span style="color:#cbd5e1; font-size:0.8rem;">${riskPanen.masalah}</span>
             </div>
             <div style="margin-top:12px; padding:10px 12px; background:rgba(255,255,255,0.02); border-radius:10px; border:1px solid rgba(255,255,255,0.05); font-size:0.72rem; color:#64748b; line-height:1.6;">
@@ -496,9 +496,7 @@ function renderKalenderChartV2(labels, dataSkor, dataStatus, dataTipe) {
                     displayColors    : false,
                     cornerRadius     : 12,
                     callbacks: {
-                        title: function(ctx) {
-                            return ctx[0].label.replace('\n', ' ');
-                        },
+                        title: function(ctx) { return ctx[0].label.replace('\n', ' '); },
                         label: function(ctx) {
                             const i    = ctx.dataIndex;
                             const skor = Math.round(ctx.raw);
@@ -516,7 +514,12 @@ function renderKalenderChartV2(labels, dataSkor, dataStatus, dataTipe) {
                     }
                 },
                 datalabels: {
-                    color     : bgColors,
+                    // --- PERBAIKAN DI SINI ---
+                    color: function(context) {
+                        // Memaksa kedua baris teks menggunakan warna dari titik data yang tepat
+                        return bgColors[context.dataIndex]; 
+                    },
+                    // -------------------------
                     anchor    : 'end',
                     align     : 'top',
                     offset    : 4,
