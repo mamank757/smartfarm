@@ -3153,11 +3153,22 @@ function isWilayahSulsel(lat, lon) {
                 }
 
                 const dapatkanKondisiCuaca = (code) => {
+                    // Kode WMO 0: Cerah total
                     if ([0].includes(code)) return { teks: "Cerah", ikon: "☀️" };
+                    // Kode WMO 1-3: Berawan (tanpa presipitasi)
                     if ([1, 2, 3].includes(code)) return { teks: "Berawan", ikon: "☁️" };
+                    // Kode WMO 45,48: Kabut
                     if ([45, 48].includes(code)) return { teks: "Berkabut", ikon: "🌫️" };
-                    if ([51, 53, 55, 61, 63, 80, 81].includes(code)) return { teks: "Hujan Ringan/Sedang", ikon: "🌧️" };
+                    // Kode WMO 51,53,55: DRIZZLE/GERIMIS — dipisah dari hujan asli.
+                    // Drizzle sering muncul bersamaan kondisi mendung tebal/lembap
+                    // tanpa air jatuh yang terasa signifikan di lapangan.
+                    // Sumber kebingungan utama "katanya hujan padahal cuma mendung".
+                    if ([51, 53, 55].includes(code)) return { teks: "Mendung Lembap / Gerimis Tipis", ikon: "🌥️" };
+                    // Kode WMO 61,63,80,81: Hujan ringan-sedang yang benar (presipitasi nyata)
+                    if ([61, 63, 80, 81].includes(code)) return { teks: "Hujan Ringan/Sedang", ikon: "🌧️" };
+                    // Kode WMO 65,82: Hujan lebat
                     if ([65, 82].includes(code)) return { teks: "Hujan Lebat", ikon: "🌧️" };
+                    // Kode WMO 95,96,99: Badai petir
                     if ([95, 96, 99].includes(code)) return { teks: "Hujan Petir", ikon: "⛈️" };
                     return { teks: "Berawan", ikon: "⛅" };
                 };
@@ -3216,23 +3227,32 @@ function isWilayahSulsel(lat, lon) {
 
                 let rainScore = 0;
                 const nextHourProb = hourly.precipitation_probability ? (hourly.precipitation_probability[activeIndex + 1] || 0) : 0;
-                if (nextHourProb >= 30) rainScore += 40;
-                if (currentCape >= 1000) rainScore += 30;
-                if (parseFloat(dpSpread) <= 2) rainScore += 20;
-                if (cur.relative_humidity_2m >= 90) rainScore += 10;
+                if (nextHourProb >= 50) rainScore += 40;       // dari 30 → 50
+                if (currentCape >= 1500) rainScore += 30;      // dari 1000 → 1500
+                if (parseFloat(dpSpread) <= 1) rainScore += 20; // dari 2 → 1
+                if (cur.relative_humidity_2m >= 95) rainScore += 10; // dari 90 → 95
+
+                // Validator silang: jika hujan aktual saat ini 0mm DAN
+                // kode cuaca saat ini bukan presipitasi (code 0,1,2,3,45,48),
+                // turunkan skor maksimal jadi "Sedang" agar tidak overclaim.
+                const kodeNonPresipitasi = [0, 1, 2, 3, 45, 48].includes(cur.weather_code);
+                const tidakAdaHujanSaatIni = (cur.rain || 0) === 0;
+                if (kodeNonPresipitasi && tidakAdaHujanSaatIni && rainScore > 65) {
+                    rainScore = 65; // batasi maksimal ke ambang "Potensi", bukan "Sangat Mungkin"
+                }
 
                 const elHujan = document.getElementById('prediksiHujan');
                 const txtHujan = document.getElementById('hujanNext');
                 if (elHujan) {
                     elHujan.style.display = 'block';
                     if (rainScore >= 70) {
-                        txtHujan.innerHTML = `⛈️ <b>Hujan Sangat Mungkin</b><br><small>(Skor: ${rainScore}/100)</small>`;
+                        txtHujan.innerHTML = `⛈️ <b>Indikasi Hujan Kuat (1 Jam ke Depan)</b><br><small>Prediksi berbasis model atmosfer • Skor: ${rainScore}/100</small>`;
                         elHujan.style.borderLeftColor = 'var(--red-alert)';
-                    } else if (rainScore >= 40) {
-                        txtHujan.innerHTML = `🌦️ <b>Potensi Hujan Lokal</b><br><small>(Skor: ${rainScore}/100)</small>`;
+                    } else if (rainScore >= 45) {
+                        txtHujan.innerHTML = `🌦️ <b>Indikasi Potensi Hujan Lokal (1 Jam ke Depan)</b><br><small>Prediksi berbasis model atmosfer • Skor: ${rainScore}/100</small>`;
                         elHujan.style.borderLeftColor = 'var(--accent-soil)';
                     } else {
-                        txtHujan.innerHTML = `🌤️ <b>Cerah / Berawan</b><br><small>(Skor: ${rainScore}/100)</small>`;
+                        txtHujan.innerHTML = `🌤️ <b>Cerah / Berawan, Hujan Tidak Diprediksi</b><br><small>Skor: ${rainScore}/100</small>`;
                         elHujan.style.borderLeftColor = 'var(--accent-green)';
                     }
                 }
