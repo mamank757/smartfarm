@@ -5263,15 +5263,11 @@ async function prosesAnalisisKalender() {
         const riskGen = hitungRisikoDinamis(tglGeneratif.getMonth(), "Generatif");
         const riskPanen = hitungRisikoDinamis(tglPanen.getMonth(), "Panen");
 
-                const dataSkor = [riskTanam.skor, riskVeg.skor, riskGen.skor, riskPanen.skor];
-        // Kumpulkan status cuaca singkat per fase, untuk ditampilkan
-        // berdampingan dengan persentase risiko di grafik.
-        const dataStatus = [riskTanam.statusCuaca, riskVeg.statusCuaca, riskGen.statusCuaca, riskPanen.statusCuaca];
+        const dataSkor = [riskTanam.skor, riskVeg.skor, riskGen.skor, riskPanen.skor];
         
         judulChart.innerHTML = judulChart.dataset.asli; // Kembalikan judul asli
         bungkusChart.style.display = "block";
-        renderKalenderChart(labels, dataSkor, dataStatus);
-
+        renderKalenderChart(labels, dataSkor);
         
         // Muat grafik iklim makro, SST lokal, dan anomali suhu laut
         loadGlobalClimateIndices();
@@ -5481,24 +5477,13 @@ const datasetNeonStyle = {
     pointHoverRadius: 6
 };
         // 1. Fungsi untuk merender grafik batang (Bar Chart) Kalender Iklim
-function renderKalenderChart(labels, dataSkor, dataStatus = []) {
+function renderKalenderChart(labels, dataSkor) {
     const ctx = document.getElementById('kalenderChart').getContext('2d');
     
     // Hancurkan chart lama jika sudah ada agar tidak menumpuk/glitch
     if (kalenderChartInstance) {
         kalenderChartInstance.destroy();
     }
-    const singkatkanStatus = (status) => {
-        if (!status) return "";
-        const s = status.toLowerCase();
-        if (s.includes("sangat kering")) return "Kering Ekstrem";
-        if (s.includes("cenderung kering")) return "Kering";
-        if (s.includes("sangat basah")) return "Basah Ekstrem";
-        if (s.includes("cenderung basah")) return "Basah";
-        if (s.includes("normal")) return "Normal";
-        return status;
-    };
-    const labelStatusSingkat = dataStatus.map(singkatkanStatus);
 
     // --- EFEK FUTURISTIK 1: Gradient Fill Neon ---
     const gradientFill = ctx.createLinearGradient(0, 0, 0, 300);
@@ -5577,7 +5562,7 @@ function renderKalenderChart(labels, dataSkor, dataStatus = []) {
                     }
                 },
                 // --- EFEK FUTURISTIK 4: Angka di atas grafik ---
-                                datalabels: {
+                datalabels: {
                     color: bgColors, 
                     anchor: 'end',
                     align: 'top',
@@ -5585,17 +5570,13 @@ function renderKalenderChart(labels, dataSkor, dataStatus = []) {
                     font: {
                         family: "'Plus Jakarta Sans', sans-serif",
                         weight: '800',
-                        size: 10
+                        size: 11
                     },
-                    textAlign: 'center',
-                    formatter: function(value, context) {
-                        const persen = Math.round(value) + '%';
-                        const status = labelStatusSingkat[context.dataIndex] || '';
-                        // Dua baris: persentase di atas, keterangan kategori di bawah
-                        return status ? [persen, status] : persen;
+                    formatter: function(value) {
+                        // ✨ TAMBAHKAN Math.round() DI SINI ✨
+                        return Math.round(value) + '%';
                     }
                 }
-
             },
             scales: {
                 y: { 
