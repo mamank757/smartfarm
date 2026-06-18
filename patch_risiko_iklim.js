@@ -757,6 +757,6 @@ function getWarnaRisiko(skor) {
 //  9. KONFIRMASI
 // ============================================================
 console.log(
-    '%c✅ patch_risiko_iklim_v2.js aktif — Risiko Air Murni (Kekeringan & Banjir)',
+    '%c✅ patch_risiko_iklim.js aktif — Risiko Air Murni (Kekeringan & Banjir)',
     'color:#38b6ff; font-weight:bold;'
 );
