@@ -1494,7 +1494,7 @@ window.cekPengingatHariIni = function() {
                     ${jadwalHariIni.judul.toUpperCase()}
                 </span>
                 <span style="display: block; color: #cbd5e1; font-size: 0.9rem; line-height: 1.6; margin-bottom: 15px;">
-                    Tabe', untuk lahan <strong>"${lahan.nama}"</strong> hari ini memasuki umur <b style="color:#fff;">${hariIni} HST</b>.<br><br>
+                    Perhatian! Untuk lahan <strong>"${lahan.nama}"</strong> hari ini memasuki umur <b style="color:#fff;">${hariIni} HST</b>.<br><br>
                     ${jadwalHariIni.pesan}
                 </span>
                 <button onclick="document.getElementById('customAlertModal').style.display='none'" 
