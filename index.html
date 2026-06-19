@@ -3210,7 +3210,7 @@ function isWilayahSulsel(lat, lon) {
                     dailyContainer.innerHTML = '';
                     const namaHari = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
                     for (let j = 0; j < daily.time.length; j++) {
-                        const dObj = new Date(daily.time[j]);
+                        const d = new Date(daily.time[j] + 'T00:00:00+08:00');
                         let hariTeks = namaHari[dObj.getDay()];
                         if (j === 0) hariTeks = "Hari Ini";
                         const cuacaHari = dapatkanKondisiCuaca(daily.weather_code[j]);
