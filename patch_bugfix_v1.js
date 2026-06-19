@@ -366,9 +366,7 @@
     // ── 6. INJEKSI ───────────────────────────────────────────────
     function injeksi() {
         // Override window.rekomendasiWindowTanam dengan versi fixed
-        // [FIX] Baris ini sebelumnya KOSONG — menyebabkan rekomendasiWindowTanamFixed
-        //       tidak pernah aktif. Bug 1/2/3 tidak terperbaiki sampai fix ini.
-        window.rekomendasiWindowTanam = rekomendasiWindowTanamFixed;
+        
 
         // Expose tabel offset agar bisa dipakai patch lain
         window.OFFSET_GEN_PER_VARIETAS = OFFSET_GEN_PER_VARIETAS;
@@ -386,7 +384,7 @@
         });
 
         console.log(
-            '%c✅ patch_bugfix_v1.js v1.1 aktif (FIX: override aktif)\n' +
+            '%c✅ patch_bugfix_v1.js aktif\n' +
             '\n  ╔══ 3 BUG DIPERBAIKI ════════════════════╗\n' +
             '  ║ ✅ [BUG 1] Offset gen per varietas      \n' +
             '  ║    genjah: 55%→65% (+9 hari ke fase bunting)\n' +
