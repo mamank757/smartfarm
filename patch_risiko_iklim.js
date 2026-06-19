@@ -420,7 +420,8 @@ window.prosesAnalisisKalender = async function prosesAnalisisKalender() {
 //  6. HELPER: warna garis berdasarkan tipe bahaya & skor
 // ============================================================
 function getWarnaRisikoAir(skor, tipeBahaya) {
-    if (skor < 25) return 'var(--accent-green)';          
+    // Gunakan HEX hijau terang agar terbaca jelas di dark mode dan dikenali Canvas
+    if (skor < 25) return '#10b981';          
     if (tipeBahaya === 'kekeringan') {
         if (skor >= 70) return '#ef4444';                  
         if (skor >= 45) return '#f97316';                  
@@ -431,9 +432,9 @@ function getWarnaRisikoAir(skor, tipeBahaya) {
         if (skor >= 45) return '#38b6ff';                  
         return '#67e8f9';                                  
     }
-    return 'var(--accent-green)';
+    // Ganti juga fallback di bagian bawah
+    return '#10b981';
 }
-
 // ============================================================
 //  7. renderKalenderChartV2()
 // ============================================================
