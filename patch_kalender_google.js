@@ -2,7 +2,7 @@
  * ============================================================
  *  PATCH: Tombol "Simpan ke Kalender Google" di Pop-Up Pengingat
  *  PPL Milenial Wajo — Smart Farming
- *  Versi: 2.0
+ *  Versi: 3.0
  * ============================================================
  *
  *  CARA PASANG:
@@ -13,10 +13,10 @@
  *    <script src="patch_kalender_google.js"></script>
  *
  *  CARA KERJA:
- *  Patch ini menggantikan fungsi cekPengingatHariIni() agar
- *  pop-up pengingat pemupukan langsung menampilkan tombol
- *  "📅 Simpan ke Google Calendar" di bawah tombol tutup.
- *  Petani tidak perlu buka menu lain — langsung dari notifikasi.
+ *  Menggunakan window.open() bukan <a href> — di Android WebView,
+ *  URL calendar.google.com yang dibuka via window.open() akan
+ *  ditangkap sistem Android dan diteruskan ke app Google Calendar
+ *  yang sudah terinstall, bukan ke browser.
  * ============================================================
  */
 
@@ -31,7 +31,7 @@
         { hari: 90, judul: '🚜 Persiapan Panen',     pesan: 'Kurangi pengairan lahan. Siapkan jadwal Combine Harvester.' },
     ];
 
-    // ─── HELPER: Buat URL Google Calendar untuk satu event ───────────────────
+    // ─── HELPER: Buat URL Google Calendar ────────────────────────────────────
     function buatUrlKalender(namaLahan, jadwal, tglTanamStr) {
         const tglTanam = new Date(tglTanamStr);
         tglTanam.setHours(7, 0, 0, 0);
@@ -44,12 +44,8 @@
             `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
             `T${pad(d.getHours())}${pad(d.getMinutes())}00`;
 
-        const tglMulai = fmt(tglEvent);
-        const tglSelesai = (() => {
-            const akhir = new Date(tglEvent);
-            akhir.setHours(8, 0, 0, 0);
-            return fmt(akhir);
-        })();
+        const tglSelesai = new Date(tglEvent);
+        tglSelesai.setHours(8, 0, 0, 0);
 
         const judul = `${jadwal.judul} — ${namaLahan}`;
         const deskripsi =
@@ -59,20 +55,78 @@
         return (
             `https://calendar.google.com/calendar/render?action=TEMPLATE` +
             `&text=${encodeURIComponent(judul)}` +
-            `&dates=${tglMulai}/${tglSelesai}` +
+            `&dates=${fmt(tglEvent)}/${fmt(tglSelesai)}` +
             `&details=${encodeURIComponent(deskripsi)}` +
             `&reminder=1440`
         );
     }
 
+    // ─── BUKA KALENDER VIA window.open() ─────────────────────────────────────
+    // window.open() di Android WebView memicu App Chooser sistem —
+    // jika Google Calendar terinstall, Android langsung buka app-nya,
+    // bukan browser. Inilah yang membuat event tersimpan ke kalender HP.
+    window.bukaKalenderEvent = function (urlKalender) {
+        window.open(urlKalender, '_blank');
+    };
+
+    // ─── FUNGSI: Tampilkan daftar semua jadwal untuk dipilih ─────────────────
+    window.tampilkanPilihJadwal = function (namaLahan, tglTanam, warna) {
+        const modal   = document.getElementById('customAlertModal');
+        const icon    = document.getElementById('customAlertIcon');
+        const message = document.getElementById('customAlertMessage');
+        if (!modal) return;
+
+        const items = JADWAL.map((j, i) => {
+            const tgl = new Date(tglTanam);
+            tgl.setDate(tgl.getDate() + j.hari);
+            const tglStr = tgl.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+            const url = buatUrlKalender(namaLahan, j, tglTanam);
+            return `
+                <button onclick="bukaKalenderEvent('${url}')"
+                    style="width:100%; box-sizing:border-box; display:flex; align-items:center;
+                           gap:10px; background:#111c2e; border:1px solid rgba(255,255,255,0.07);
+                           border-radius:10px; padding:11px 12px; color:#fff; cursor:pointer;
+                           font-family:inherit; font-size:0.8rem; font-weight:600;
+                           text-align:left; margin-bottom:8px;">
+                    <span style="font-size:1.1rem; flex-shrink:0;">📅</span>
+                    <span style="flex:1; line-height:1.4;">
+                        ${j.judul}<br>
+                        <span style="font-size:0.7rem; color:#64748b; font-weight:400;">${tglStr} (Hari ke-${j.hari})</span>
+                    </span>
+                    <span style="font-size:0.7rem; color:#3b82f6; flex-shrink:0;">Simpan →</span>
+                </button>
+            `;
+        }).join('');
+
+        icon.innerHTML = '📅';
+        message.innerHTML = `
+            <div style="font-size:1rem; font-weight:800; color:${warna};
+                        margin-bottom:12px; text-align:center; letter-spacing:0.5px;">
+                PILIH JADWAL YANG AKAN DISIMPAN
+            </div>
+            <div style="font-size:0.78rem; color:#94a3b8; margin-bottom:14px;
+                        line-height:1.5; text-align:center;">
+                Ketuk jadwal → Google Calendar terbuka → klik <b style="color:#10b981;">Simpan</b>
+            </div>
+            ${items}
+            <button onclick="document.getElementById('customAlertModal').style.display='none'"
+                    style="width:100%; box-sizing:border-box; background:transparent;
+                           border:1px solid rgba(255,255,255,0.15); color:#64748b;
+                           padding:11px; border-radius:10px; font-weight:700;
+                           cursor:pointer; font-family:inherit; font-size:0.82rem;
+                           margin-top:4px;">
+                ✕ TUTUP
+            </button>
+        `;
+        modal.style.display = 'flex';
+    };
+
     // ─── OVERRIDE cekPengingatHariIni ────────────────────────────────────────
-    // Simpan referensi asli (dari patch_smartfarming.js)
     const _cekPengingatAsli = window.cekPengingatHariIni;
 
     window.cekPengingatHariIni = function () {
         const lahan = (typeof getLahanAktif === 'function') ? getLahanAktif() : null;
         if (!lahan || !lahan.tglTanam) {
-            // Tidak ada lahan aktif — jalankan fungsi asli saja
             if (typeof _cekPengingatAsli === 'function') _cekPengingatAsli();
             return;
         }
@@ -83,12 +137,10 @@
         sekarang.setHours(0, 0, 0, 0);
         const hariIni = Math.round((sekarang - awal) / 86400000);
 
-        // Cari jadwal yang cocok dengan hari ini
-        // Toleransi ±2 hari agar tidak terlewat jika petani jarang buka app
+        // Toleransi ±2 hari agar tidak terlewat
         const jadwalHariIni = JADWAL.find(j => Math.abs(j.hari - hariIni) <= 2);
 
         if (!jadwalHariIni) {
-            // Tidak ada jadwal hari ini — jalankan fungsi asli
             if (typeof _cekPengingatAsli === 'function') _cekPengingatAsli();
             return;
         }
@@ -98,13 +150,11 @@
         const message = document.getElementById('customAlertMessage');
         if (!modal) return;
 
-        // Tentukan warna berdasarkan jadwal
         const warnaMap = {
             7: '#10b981', 21: '#3b82f6', 45: '#f59e0b', 60: '#d946ef', 90: '#10b981'
         };
         const warna = warnaMap[jadwalHariIni.hari] || '#3b82f6';
 
-        // Selisih hari (positif = belum tiba, negatif = sudah lewat, 0 = hari ini)
         const selisih = jadwalHariIni.hari - hariIni;
         const labelWaktu = selisih === 0
             ? `hari ini (Hari ke-${hariIni} HST)`
@@ -112,8 +162,8 @@
                 ? `${selisih} hari lagi (Hari ke-${jadwalHariIni.hari} HST)`
                 : `${Math.abs(selisih)} hari lalu (Hari ke-${jadwalHariIni.hari} HST)`;
 
-        // Buat URL kalender khusus untuk jadwal ini saja
-        const urlKalender = buatUrlKalender(lahan.nama, jadwalHariIni, lahan.tglTanam);
+        // URL untuk jadwal yang sedang aktif
+        const urlKalenderAktif = buatUrlKalender(lahan.nama, jadwalHariIni, lahan.tglTanam);
 
         icon.innerHTML = '🚨';
         message.innerHTML = `
@@ -125,43 +175,50 @@
 
             <span style="display:block; color:#cbd5e1; font-size:0.88rem;
                          line-height:1.65; margin-bottom:16px;">
-                Untuk lahan <strong style="color:#fff;">"${lahan.nama}"</strong>
-                — jadwal ini jatuh <b style="color:${warna};">${labelWaktu}</b>.<br><br>
+                Lahan <strong style="color:#fff;">"${lahan.nama}"</strong>
+                — jadwal ini <b style="color:${warna};">${labelWaktu}</b>.<br><br>
                 ${jadwalHariIni.pesan}
             </span>
 
-            <!-- Tombol utama: Simpan ke Google Calendar -->
-            <a href="${urlKalender}" target="_blank" rel="noopener"
-               onclick="document.getElementById('customAlertModal').style.display='none'"
-               style="display:block; width:100%; box-sizing:border-box;
-                      background:linear-gradient(135deg,rgba(217,70,239,0.25),rgba(139,92,246,0.25));
-                      border:1px solid rgba(217,70,239,0.6); border-radius:12px;
-                      color:#d946ef; padding:14px; font-weight:800; font-size:0.88rem;
-                      text-decoration:none; text-align:center; letter-spacing:0.3px;
-                      margin-bottom:10px; cursor:pointer;">
-                📅 SIMPAN KE GOOGLE CALENDAR
-            </a>
+            <!-- Tombol utama: simpan jadwal ini langsung -->
+            <button onclick="bukaKalenderEvent('${urlKalenderAktif}')"
+                style="width:100%; box-sizing:border-box;
+                       background:linear-gradient(135deg,rgba(217,70,239,0.25),rgba(139,92,246,0.25));
+                       border:1px solid rgba(217,70,239,0.6); border-radius:12px;
+                       color:#d946ef; padding:14px; font-weight:800; font-size:0.9rem;
+                       cursor:pointer; font-family:inherit; letter-spacing:0.3px;
+                       margin-bottom:8px; display:block;">
+                📅 SIMPAN JADWAL INI KE KALENDER
+            </button>
 
-            <!-- Info kecil di bawah tombol kalender -->
+            <!-- Tombol sekunder: simpan semua jadwal -->
+            <button onclick="tampilkanPilihJadwal('${lahan.nama.replace(/'/g,"\\'")}','${lahan.tglTanam}','${warna}')"
+                style="width:100%; box-sizing:border-box;
+                       background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.3);
+                       border-radius:12px; color:#3b82f6; padding:11px; font-weight:700;
+                       font-size:0.82rem; cursor:pointer; font-family:inherit;
+                       margin-bottom:12px; display:block;">
+                📋 Simpan Semua 5 Jadwal Sekaligus
+            </button>
+
             <div style="font-size:0.7rem; color:#64748b; text-align:center;
                         margin-bottom:14px; line-height:1.5;">
-                Notifikasi otomatis di HP walau app ditutup.<br>
-                Pastikan izin notifikasi Google Calendar aktif.
+                Notifikasi otomatis muncul di HP walau app ditutup.<br>
+                Pastikan notifikasi Google Calendar diizinkan.
             </div>
 
             <!-- Tombol tutup -->
             <button onclick="document.getElementById('customAlertModal').style.display='none'"
                     style="background:transparent; border:1px solid ${warna};
                            color:${warna}; padding:11px 20px; border-radius:10px;
-                           font-weight:700; cursor:pointer; width:100%;
-                           font-family:inherit; font-size:0.85rem; transition:all 0.2s;">
+                           font-weight:700; cursor:pointer; width:100%; box-sizing:border-box;
+                           font-family:inherit; font-size:0.85rem;">
                 TUTUP PENGINGAT
             </button>
         `;
 
         modal.style.display = 'flex';
 
-        // Getar HP
         if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
 
         // Badge merah di navbar bawah
@@ -174,6 +231,6 @@
         }
     };
 
-    console.log('✅ Patch Kalender Google v2.0: Tombol Calendar langsung di pop-up pengingat aktif.');
+    console.log('✅ Patch Kalender Google v3.0: window.open() — membuka app Google Calendar di HP.');
 
 })();
