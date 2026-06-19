@@ -541,11 +541,11 @@
                             font    : { size: 10 }
                         },
                         grid : { color: 'rgba(255,255,255,0.05)', borderDash: [5, 5] },
-                        ticks: { color: '#64748b', font: { size: 9, weight: '400' } }
+                        ticks: { color: '#64748b', font: { size: 9, weight: '200' } }
                     },
                     x: {
                         grid : { display: false },
-                        ticks: { color: '#8da2be', font: { size: 9, weight: '400' } }
+                        ticks: { color: '#8da2be', font: { size: 9, weight: '200' } }
                     }
                 }
             }
