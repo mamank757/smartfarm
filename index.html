@@ -5314,100 +5314,134 @@ async function prosesAnalisisKalender() {
         switchMode('cuaca');
 
         async function analisisVarietasPadi() {
-            const divOutput = document.getElementById("outputHasilVarietas");
-            const btnWA = document.getElementById("btnKirimWAVarietas");
-            const btnCopy = document.getElementById("btnCopyVarietas");
-            
-            const targetUmur = parseInt(document.getElementById("input-umur-var").value);
-            const curahHujan = document.getElementById("input-hujan-var").value; 
-            const tipeLahan = document.getElementById("input-lahan-var").value;   
+    const divOutput = document.getElementById("outputHasilVarietas");
+    const btnWA = document.getElementById("btnKirimWAVarietas");
+    const btnCopy = document.getElementById("btnCopyVarietas");
+    
+    const targetUmur = parseInt(document.getElementById("input-umur-var").value);
+    const curahHujan = document.getElementById("input-hujan-var").value; 
+    const tipeLahan = document.getElementById("input-lahan-var").value;   
 
-            if (!targetUmur) {
-                alert("⚠️ Mohon isi Target Umur Panen!");
-                return;
+    if (!targetUmur) {
+        alert("⚠️ Mohon isi Target Umur Panen!");
+        return;
+    }
+
+    divOutput.style.display = "block";
+    divOutput.innerHTML = "🔍 Mengambil data & menganalisis kesesuaian lahan...";
+    if (btnWA) btnWA.style.display = "none";
+    if (btnCopy) btnCopy.style.display = "none";
+
+    try {
+        const URL_DB = "https://script.google.com/macros/s/AKfycbyZkUpdSU4mDLF53yaZHCbxW32V-gTGE9q_LorGMYrcul1cA3CEbOot-Ld-1e3flQn6vQ/exec";
+        const response = await fetch(URL_DB);
+        const data = await response.json();
+
+        const inputLahan = tipeLahan.toLowerCase();
+        const inputHujan = curahHujan.toLowerCase();
+
+        // 1. Berikan skor untuk setiap varietas berdasarkan kecocokan
+        let dataDenganSkor = data.map(item => {
+            let skor = 0;
+            const umurVarietas = parseInt(item.umur);
+
+            // Cek Umur (Bobot besar jika sangat mendekati target)
+            if (!isNaN(umurVarietas)) {
+                const selisihUmur = Math.abs(umurVarietas - targetUmur);
+                if (selisihUmur <= 3) skor += 40;       // Sangat cocok
+                else if (selisihUmur <= 7) skor += 25;  // Cocok
+                else if (selisihUmur <= 14) skor += 10; // Masih bisa ditoleransi
             }
 
-            divOutput.style.display = "block";
-            divOutput.innerHTML = "🔍 Mengambil data & menganalisis kesesuaian lahan...";
+            // Cek Lahan (Bobot besar)
+            if (item.lahan && item.lahan.toLowerCase().includes(inputLahan)) {
+                skor += 35;
+            }
+
+            // Cek Hujan (Bobot menengah)
+            if (item.curahHujanDb && item.curahHujanDb.toLowerCase().includes(inputHujan)) {
+                skor += 25;
+            }
+
+            return { ...item, skorKecocokan: skor };
+        });
+
+        // 2. Buang yang skornya terlalu rendah (misal di bawah 30, berarti tidak relevan)
+        let hasil = dataDenganSkor.filter(item => item.skorKecocokan >= 30);
+
+        // 3. Urutkan dari skor tertinggi. Jika skor sama, urutkan berdasarkan potensi hasil.
+        hasil.sort((a, b) => {
+            if (b.skorKecocokan !== a.skorKecocokan) {
+                return b.skorKecocokan - a.skorKecocokan;
+            }
+            // Tie-breaker: Potensi hasil (mengubah koma ke titik agar terbaca sebagai desimal)
+            const potA = parseFloat((a.potensi || "0").toString().replace(/,/g, '.')) || 0;
+            const potB = parseFloat((b.potensi || "0").toString().replace(/,/g, '.')) || 0;
+            return potB - potA;
+        });
+
+        // 4. Ambil maksimal 20 data teratas
+        hasil = hasil.slice(0, 20);
+
+        if (hasil.length > 0) {
+            let html = `<h4 style="color:var(--accent-green); margin-bottom:15px;">🌱 Top ${hasil.length} Rekomendasi Varietas Terbaik:</h4>`;
+            
+            hasilTeksWAVarietas = `*SMART FARMING - PPL BPP BOLA*\n` +
+                                  `*REKOMENDASI VARIETAS PADI*\n` +
+                                  `----------------------------------------\n` +
+                                  `⛰️ Tipe Lahan: ${tipeLahan.toUpperCase()}\n` +
+                                  `🌧️ Curah Hujan: ${curahHujan.toUpperCase()}\n` +
+                                  `⏱️ Target Umur: ${targetUmur} Hari\n` +
+                                  `----------------------------------------\n\n` +
+                                  `*Top ${hasil.length} Varietas yang Direkomendasikan:*\n\n`;
+
+            hasil.forEach((v, index) => {
+                html += `
+                <div class="leaf-card" style="border-left: 4px solid var(--accent-green); background: rgba(0, 0, 0, 0.4); padding: 15px; margin-bottom: 15px; border-radius: 10px;">
+                    <strong style="color: var(--accent-green); font-size: 1.2rem;">${index + 1}. ${v.nama}</strong> <span style="font-size:0.8rem; color:#888;">(Skor: ${v.skorKecocokan})</span><br>
+                    <small style="color: #ccc;">⏱️ Umur: <b>${v.umur} HST</b> | 📊 Potensi: <b>${v.potensi} Ton/Ha</b></small>
+                    <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0;">
+                    <small style="display: block; margin-bottom: 4px; color: #e0e0e0;">🛡️ <b>Tahan:</b> ${v.tahanHama || '-'} | ${v.tahanPenyakit || '-'}</small>
+                    <small style="display: block; margin-bottom: 4px; color: #ff5555;">⚠️ <b>Rentan:</b> ${v.rentanHama || '-'} | ${v.rentanPenyakit || '-'}</small>
+                    <small style="display: block; color: #00bfff;">🌍 <b>Adaptasi (m):</b> ${v.adaptasi || '-'}</small>
+                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.1);">
+                        <small style="color: #fbbf24; font-style: italic;">📝 <b>Catatan:</b> ${v.catatan || '-'}</small>
+                    </div>
+                </div>`;
+
+                hasilTeksWAVarietas += `${index + 1}. *${v.nama.toUpperCase()}* (Skor: ${v.skorKecocokan})\n` +
+                                       `    • Umur Panen: ${v.umur} HST\n` +
+                                       `    • Potensi Hasil: ${v.potensi} Ton/Ha\n` +
+                                       `    • Ketahanan: ${v.tahanHama || '-'} | ${v.tahanPenyakit || '-'}\n` +
+                                       `    • Kerentanan: ${v.rentanHama || '-'} | ${v.rentanPenyakit || '-'}\n` +
+                                       `    • Rekomendasi Lahan: ${v.adaptasi || '-'}\n` +
+                                       `    • Catatan Tambahan: ${v.catatan || '-'}\n\n`; 
+            });
+
+            hasilTeksWAVarietas += `_Diproduksi Otomatis oleh Sistem Aplikasi Penyuluh Milenial Wajo_`;
+
+            divOutput.innerHTML = html;
+            
+            if (btnWA) btnWA.style.display = "block";
+            if (btnCopy) btnCopy.style.display = "block";
+
+        } else {
+            divOutput.innerHTML = `
+                <div style="text-align:center; padding:20px; color:#ff5555;">
+                    ❌ Tidak ditemukan varietas yang memiliki tingkat kecocokan memadai untuk kondisi lahan <b>${tipeLahan}</b> dengan curah hujan <b>${curahHujan}</b> pada kisaran umur tersebut.
+                </div>`;
+            hasilTeksWAVarietas = "";
             if (btnWA) btnWA.style.display = "none";
             if (btnCopy) btnCopy.style.display = "none";
-
-            try {
-                const URL_DB = "https://script.google.com/macros/s/AKfycbyZkUpdSU4mDLF53yaZHCbxW32V-gTGE9q_LorGMYrcul1cA3CEbOot-Ld-1e3flQn6vQ/exec";
-                const response = await fetch(URL_DB);
-                const data = await response.json();
-
-                const hasil = data.filter(item => {
-                    const inputLahan = tipeLahan.toLowerCase();
-                    const inputHujan = curahHujan.toLowerCase();
-                    const umurVarietas = parseInt(item.umur);
-
-                    const cocokUmur = umurVarietas >= (targetUmur - 7) && umurVarietas <= (targetUmur + 7);
-                    const cocokLahan = item.lahan ? item.lahan.toLowerCase().includes(inputLahan) : true;
-                    const cocokHujan = item.curahHujanDb ? item.curahHujanDb.toLowerCase().includes(inputHujan) : true;
-
-                    return cocokUmur && cocokLahan && cocokHujan;
-                });
-
-                if (hasil.length > 0) {
-                    let html = `<h4 style="color:var(--accent-green); margin-bottom:15px;">🌱 Hasil Rekomendasi Varietas Cocok:</h4>`;
-                    
-                    hasilTeksWAVarietas = `*SMART FARMING - PPL BPP BOLA*\n` +
-                                          `*REKOMENDASI VARIETAS PADI SPEADSHEET*\n` +
-                                          `----------------------------------------\n` +
-                                          `⛰️ Tipe Lahan: ${tipeLahan.toUpperCase()}\n` +
-                                          `🌧️ Curah Hujan: ${curahHujan.toUpperCase()}\n` +
-                                          `⏱️ Target Umur: ${targetUmur} Hari (Batas Toleransi: ${targetUmur - 5}-${targetUmur + 5} hari)\n` +
-                                          `----------------------------------------\n\n` +
-                                          `*Daftar Varietas yang Direkomendasikan:*\n\n`;
-
-                    hasil.forEach((v, index) => {
-                        html += `
-                        <div class="leaf-card" style="border-left: 4px solid var(--accent-green); background: rgba(0, 0, 0, 0.4); padding: 15px; margin-bottom: 15px; border-radius: 10px;">
-                            <strong style="color: var(--accent-green); font-size: 1.2rem;">${index + 1}. ${v.nama}</strong><br>
-                            <small style="color: #ccc;">⏱️ Umur: <b>${v.umur} HST</b> | 📊 Potensi: <b>${v.potensi} Ton/Ha</b></small>
-                            <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0;">
-                            <small style="display: block; margin-bottom: 4px; color: #e0e0e0;">🛡️ <b>Tahan:</b> ${v.tahanHama || '-'} | ${v.tahanPenyakit || '-'}</small>
-                            <small style="display: block; margin-bottom: 4px; color: #ff5555;">⚠️ <b>Rentan:</b> ${v.rentanHama || '-'} | ${v.rentanPenyakit || '-'}</small>
-                            <small style="display: block; color: #00bfff;">🌍 <b>Adaptasi (m):</b> ${v.adaptasi || '-'}</small>
-                            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.1);">
-                                <small style="color: #fbbf24; font-style: italic;">📝 <b>Catatan:</b> ${v.catatan || '-'}</small>
-                            </div>
-                        </div>`;
-
-                        hasilTeksWAVarietas += `${index + 1}. *${v.nama.toUpperCase()}*\n` +
-                                               `    • Umur Panen: ${v.umur} Hari\n` +
-                                               `    • Potensi Hasil: ${v.potensi} Ton/Ha\n` +
-                                               `    • Ketahanan: ${v.tahanHama || '-'} | ${v.tahanPenyakit || '-'}\n` +
-                                               `    • Kerentanan: ${v.rentanHama || '-'} | ${v.rentanPenyakit || '-'}\n` +
-                                               `    • Rekomendasi Lahan: ${v.adaptasi || '-'}\n` +
-                                               `    • Catatan Tambahan: ${v.catatan || '-'}\n\n`; 
-                    });
-
-                    hasilTeksWAVarietas += `_Diproduksi Otomatis oleh Sistem Aplikasi Penyuluh Milenial Wajo_`;
-
-                    divOutput.innerHTML = html;
-                    
-                    if (btnWA) btnWA.style.display = "block";
-                    if (btnCopy) btnCopy.style.display = "block";
-
-                } else {
-                    divOutput.innerHTML = `
-                        <div style="text-align:center; padding:20px; color:#ff5555;">
-                            ❌ Tidak ditemukan varietas yang cocok di database untuk kondisi lahan <b>${tipeLahan}</b> dengan curah hujan <b>${curahHujan}</b> pada kisaran umur tersebut.
-                        </div>`;
-                    hasilTeksWAVarietas = "";
-                    if (btnWA) btnWA.style.display = "none";
-                    if (btnCopy) btnCopy.style.display = "none";
-                }
-
-            } catch (e) {
-                divOutput.innerHTML = `<div style="color:#ff5555;">❌ Gagal memuat database varietas: ${e.message}</div>`;
-                hasilTeksWAVarietas = "";
-                if (btnWA) btnWA.style.display = "none";
-                if (btnCopy) btnCopy.style.display = "none";
-            }
         }
+
+    } catch (e) {
+        divOutput.innerHTML = `<div style="color:#ff5555;">❌ Gagal memuat database varietas: ${e.message}</div>`;
+        hasilTeksWAVarietas = "";
+        if (btnWA) btnWA.style.display = "none";
+        if (btnCopy) btnCopy.style.display = "none";
+    }
+}
 
         function kirimVarietasKeWhatsApp() {
             if (!hasilTeksWAVarietas) { 
