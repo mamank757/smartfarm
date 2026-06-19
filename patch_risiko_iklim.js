@@ -157,7 +157,7 @@
                 tipeBahaya = 'banjir';
             } else {
                 skor    = 62;
-                masalah = 'Hujan sangat lebat. Risiko genangan panjang — akar busuk dan anakan produktif berkurang.';
+                masalah = 'Hujan sangat lebat. Risiko genangan panjang, akar busuk dan anakan produktif berkurang.';
                 tipeBahaya = 'banjir';
             }
         } else if (fase === 'Generatif') {
@@ -178,7 +178,7 @@
                 masalah = 'Kondisi curah hujan sangat ideal untuk penyerbukan dan pengisian bulir.';
             } else if (ws <= 1.2) {
                 skor    = 40;
-                masalah = 'Hujan lebat saat berbunga. Serbuk sari berpotensi rontok — amati persentase malai kosong.';
+                masalah = 'Hujan lebat saat berbunga. Serbuk sari berpotensi rontok, amati persentase malai kosong.';
                 tipeBahaya = 'banjir';
             } else {
                 skor    = 72;
@@ -194,7 +194,7 @@
                 masalah = 'Kondisi curah hujan normal. Panen aman, siapkan pengering cadangan (terpal/dryer).';
             } else if (ws <= 0.8) {
                 skor    = 48;
-                masalah = 'Curah hujan di atas normal. Lahan berpotensi becek — sulit diakses Combine Harvester.';
+                masalah = 'Curah hujan di atas normal. Lahan berpotensi becek, sulit diakses Combine Harvester.';
                 tipeBahaya = 'banjir';
             } else if (ws <= 1.5) {
                 skor    = 75;
@@ -229,7 +229,7 @@
         containerUtama.style.display = 'block';
     
         if (!judulChart.dataset.asli) {
-            judulChart.dataset.asli = '<span style="color:#38b6ff;">💧 Grafik Risiko Air per Fase Tanam</span>';
+            judulChart.dataset.asli = '<span style="color:#38b6ff;">💧 Grafik Risiko Ketersediaan Air per Fase Tanam</span>';
         }
     
         judulChart.innerHTML = `<div class="animasi-loading-kalender">📡 MEMBACA GPS & MENYINKRONKAN...</div>`;
