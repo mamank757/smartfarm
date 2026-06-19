@@ -3032,7 +3032,7 @@ function isWilayahSulsel(lat, lon) {
                 }
 
                 // ─── PROVIDER 1: Open-Meteo (Primary) ──────────────────────
-                const urlArchive = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${getFormatTanggal(30)}&end_date=${getFormatTanggal(1)}&daily=precipitation_sum&timezone=auto`;
+                const urlArchive = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${getFormatTanggal(38)}&end_date=${getFormatTanggal(8)}&daily=precipitation_sum&timezone=auto`;
                 const urlForecast = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=rain,temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_direction_10m,surface_pressure,weather_code&hourly=precipitation_probability,precipitation,temperature_850hPa,cape,temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto`;
 
                 // ─── PROVIDER 2: wttr.in (Fallback, tanpa API key) ──────────
@@ -3211,7 +3211,7 @@ function isWilayahSulsel(lat, lon) {
                     const namaHari = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
                     for (let j = 0; j < daily.time.length; j++) {
                         const d = new Date(daily.time[j] + 'T00:00:00+08:00');
-                        let hariTeks = namaHari[dObj.getDay()];
+                        let hariTeks = namaHari[d.getDay()];
                         if (j === 0) hariTeks = "Hari Ini";
                         const cuacaHari = dapatkanKondisiCuaca(daily.weather_code[j]);
                         const tMax = daily.temperature_2m_max[j].toFixed(0);
@@ -3286,7 +3286,9 @@ function isWilayahSulsel(lat, lon) {
                 const listHujanHarian = dailyData.precipitation_sum || [];
                 const totalHujanBulanan = listHujanHarian.reduce((total, nilai) => total + (nilai || 0), 0);
 
-                document.getElementById('rainNow').innerHTML = `${(cur.rain || 0).toFixed(1)} mm/jam`;
+                const rainPerJam = (cur.rain || 0) * 4;  // ×4 karena per 15mnt → per jam
+document.getElementById('rainNow').innerHTML = `${rainPerJam.toFixed(1)} mm/jam`;
+// gunakan rainPerJam untuk hitungRisiko*
                 document.getElementById('rainMonthly').innerHTML = `<b>${totalHujanBulanan.toFixed(1)} mm</b>`;
 
                 const getDirection = (degree) => ["Utara","Timur Laut","Timur","Tenggara","Selatan","Barat Daya","Barat","Barat Laut"][Math.round(degree/45)%8];
