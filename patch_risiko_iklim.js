@@ -509,26 +509,25 @@
                             size   : 10
                         },
                         textAlign  : 'center',
-                        formatter  : function(value, context) {
-                            const skor = Math.round(value);
-                            const persen = skor + '%';
-                            const status = labelSingkat[context.dataIndex] || 'NORMAL';
-                            
-                            // 🔥 Tambahan Logika Keterangan Dinamis Otomatis
-                            let tingkat = '(AMAN)';
-                            if (skor >= 70) {
-                                tingkat = '(KRITIS)';
-                            } else if (skor >= 45) {
-                                tingkat = '(BAHAYA)';
-                            } else if (skor >= 25) {
-                                tingkat = '(WASPADA)';
-                            }
-                            
-                            // Array 2 baris: 
-                            // Baris 1 -> "15%" 
-                            // Baris 2 -> "KERING (WASPADA)"
-                            return [persen, `${status.toUpperCase()} ${tingkat}`];
-                        }
+                        formatter: function(value, context) {
+    const skor = Math.round(value);
+    const persen = skor + '%';
+    const status = labelSingkat[context.dataIndex] || 'Normal';
+    
+    // 🔥 Tambahan Logika Keterangan Dinamis (Title Case)
+    let tingkat = '(Aman)';
+    if (skor >= 70) {
+        tingkat = '(Kritis)';
+    } else if (skor >= 45) {
+        tingkat = '(Bahaya)';
+    } else if (skor >= 25) {
+        tingkat = '(Waspada)';
+    }
+    
+    // Hapus .toUpperCase() agar status tetap Title Case
+    // Hasil: "Kering (Waspada)", "Basah Ekstrem (Kritis)", dll.
+    return [persen, `${status} ${tingkat}`];
+}
                     }
                 },
                 scales: {
