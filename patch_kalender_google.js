@@ -1,22 +1,22 @@
 /**
  * ============================================================
- *  PATCH: Tombol "Simpan ke Kalender Google" di Pop-Up Pengingat
- *  PPL Milenial Wajo — Smart Farming
- *  Versi: 3.0
+ * PATCH: Tombol "Simpan ke Kalender Google" di Pop-Up Pengingat
+ * PPL Milenial Wajo — Smart Farming
+ * Versi: 3.2 (Hapus opsi simpan 1 jadwal, sisa simpan semua)
  * ============================================================
  *
- *  CARA PASANG:
- *  Letakkan file ini di folder yang sama dengan index.html,
- *  lalu tambahkan baris ini sebelum </body> di index.html,
- *  SETELAH baris patch_smartfarming.js:
+ * CARA PASANG:
+ * Letakkan file ini di folder yang sama dengan index.html,
+ * lalu tambahkan baris ini sebelum </body> di index.html,
+ * SETELAH baris patch_smartfarming.js:
  *
- *    <script src="patch_kalender_google.js"></script>
+ * <script src="patch_kalender_google.js"></script>
  *
- *  CARA KERJA:
- *  Menggunakan window.open() bukan <a href> — di Android WebView,
- *  URL calendar.google.com yang dibuka via window.open() akan
- *  ditangkap sistem Android dan diteruskan ke app Google Calendar
- *  yang sudah terinstall, bukan ke browser.
+ * CARA KERJA:
+ * Menggunakan window.open() bukan <a href> — di Android WebView,
+ * URL calendar.google.com yang dibuka via window.open() akan
+ * ditangkap sistem Android dan diteruskan ke app Google Calendar
+ * yang sudah terinstall, bukan ke browser.
  * ============================================================
  */
 
@@ -62,9 +62,6 @@
     }
 
     // ─── BUKA KALENDER VIA window.open() ─────────────────────────────────────
-    // window.open() di Android WebView memicu App Chooser sistem —
-    // jika Google Calendar terinstall, Android langsung buka app-nya,
-    // bukan browser. Inilah yang membuat event tersimpan ke kalender HP.
     window.bukaKalenderEvent = function (urlKalender) {
         window.open(urlKalender, '_blank');
     };
@@ -162,9 +159,6 @@
                 ? `${selisih} hari lagi (Hari ke-${jadwalHariIni.hari} HST)`
                 : `${Math.abs(selisih)} hari lalu (Hari ke-${jadwalHariIni.hari} HST)`;
 
-        // URL untuk jadwal yang sedang aktif
-        const urlKalenderAktif = buatUrlKalender(lahan.nama, jadwalHariIni, lahan.tglTanam);
-
         icon.innerHTML = '🚨';
         message.innerHTML = `
             <span style="display:block; font-size:1.15rem; font-weight:800;
@@ -180,25 +174,14 @@
                 ${jadwalHariIni.pesan}
             </span>
 
-            <!-- Tombol utama: simpan jadwal ini langsung -->
-            <button onclick="bukaKalenderEvent('${urlKalenderAktif}')"
+            <button onclick="tampilkanPilihJadwal('${lahan.nama.replace(/'/g,"\\'")}','${lahan.tglTanam}','${warna}')"
                 style="width:100%; box-sizing:border-box;
                        background:linear-gradient(135deg,rgba(217,70,239,0.25),rgba(139,92,246,0.25));
                        border:1px solid rgba(217,70,239,0.6); border-radius:12px;
                        color:#d946ef; padding:14px; font-weight:800; font-size:0.9rem;
                        cursor:pointer; font-family:inherit; letter-spacing:0.3px;
-                       margin-bottom:8px; display:block;">
-                📅 SIMPAN JADWAL INI KE KALENDER
-            </button>
-
-            <!-- Tombol sekunder: simpan semua jadwal -->
-            <button onclick="tampilkanPilihJadwal('${lahan.nama.replace(/'/g,"\\'")}','${lahan.tglTanam}','${warna}')"
-                style="width:100%; box-sizing:border-box;
-                       background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.3);
-                       border-radius:12px; color:#3b82f6; padding:11px; font-weight:700;
-                       font-size:0.82rem; cursor:pointer; font-family:inherit;
                        margin-bottom:12px; display:block;">
-                📋 Simpan Semua 5 Jadwal Sekaligus
+                📋 SIMPAN SEMUA 5 JADWAL SEKALIGUS
             </button>
 
             <div style="font-size:0.7rem; color:#64748b; text-align:center;
@@ -207,7 +190,6 @@
                 Pastikan notifikasi Google Calendar diizinkan.
             </div>
 
-            <!-- Tombol tutup -->
             <button onclick="document.getElementById('customAlertModal').style.display='none'"
                     style="background:transparent; border:1px solid ${warna};
                            color:${warna}; padding:11px 20px; border-radius:10px;
@@ -231,6 +213,6 @@
         }
     };
 
-    console.log('✅ Patch Kalender Google v3.0: window.open() — membuka app Google Calendar di HP.');
+    console.log('✅ Patch Kalender Google v3.2: Tombol Simpan 1 Jadwal dihapus. Sisa Simpan Semua.');
 
 })();
