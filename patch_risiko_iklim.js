@@ -94,19 +94,19 @@
     
         const ws = hitungWetnessScore(baselineBulanIni, ensoVal, iodVal, lat, lon, bulanIndex);
     
-         let statusCuaca;
-        if      (ws <= -1.5) statusCuaca = 'Sangat Kering Ekstrem';
-        else if (ws <= -0.8) statusCuaca = 'Kering';
-        else if (ws <= -0.3) statusCuaca = 'Cenderung Kering';
-        else if (ws <=  0.3) statusCuaca = 'Normal';
-        else if (ws <=  0.8) statusCuaca = 'Cenderung Basah';
-        else if (ws <=  1.5) statusCuaca = 'Basah';
+        // UBAH BAGIAN INI (Lebih sensitif terhadap penyimpangan kecil)
+        let statusCuaca;
+        if      (ws <= -1.0) statusCuaca = 'Sangat Kering Ekstrem'; // Asalnya -1.5
+        else if (ws <= -0.5) statusCuaca = 'Kering';                // Asalnya -0.8
+        else if (ws <= -0.2) statusCuaca = 'Cenderung Kering';      // Asalnya -0.3
+        else if (ws <=  0.2) statusCuaca = 'Normal';                // Asalnya 0.3
+        else if (ws <=  0.5) statusCuaca = 'Cenderung Basah';       // Asalnya 0.8
+        else if (ws <=  1.0) statusCuaca = 'Basah';                 // Asalnya 1.5
         else                 statusCuaca = 'Sangat Basah Ekstrem';
-    
+        
         let tipeBahaya = 'aman'; 
-        if (ws < -0.3) tipeBahaya = 'kekeringan';
-        else if (ws > 0.3) tipeBahaya = 'banjir';
-    
+        if (ws < -0.2) tipeBahaya = 'kekeringan'; // Dibuat lebih cepat waspada
+        else if (ws > 0.2) tipeBahaya = 'banjir'; // Dibuat lebih cepat waspada    
         let skor    = 15;
         let masalah = 'Kondisi air optimal.';
     
