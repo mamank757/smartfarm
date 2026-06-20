@@ -1,39 +1,32 @@
 /**
  * ============================================================
  *  patch_jadwal_tanam_otomatis.js
- *  Versi: 3.12 — Koreksi Agronomis: Panen Tapin & Tabela Serentak
+ *  Versi: 3.13 — Transparansi Sumber Data ENSO/IOD
  * ------------------------------------------------------------
- *  PERBAIKAN v3.12 vs v3.10/v3.11:
+ *  PERBAIKAN v3.13 vs v3.12.1:
  *
- *  [FIX KRITIS — AGRONOMIS] Tapin & Tabela sekarang PANEN BERSAMAAN.
+ *  [BARU] Warning eksplisit di console kalau window.getENSOAnomaly /
+ *  window.getIODAnomaly tidak ditemukan saat tombol analisis diklik.
+ *  Sebelumnya kegagalan ini diam-diam jatuh ke nilai Netral tanpa
+ *  jejak apa pun — menyulitkan debug urutan <script> yang salah.
  *
- *  MASALAH di v3.10/v3.11:
- *    tglTanam dari engine dipakai LANGSUNG sebagai tanggal masuk
- *    lahan utama untuk KEDUA metode. Akibatnya:
- *      - Tabela panen = tglTanam + umurTotal
- *      - Tapin  panen = tglTanam + (umurTotal - umurBibit) + shock
- *    → Selisih panen = umurBibit − shock = 7–21 hari. SALAH.
+ *  [BARU] Kotak "INFORMASI IKLIM TAHUNAN" sekarang menampilkan
+ *  SUMBER data ENSO & IOD (mis. "NOAA CPC (resmi)" / "Open-Meteo
+ *  (fallback)" / "Statis (semua sumber gagal)"), dengan badge warna:
+ *    ✅ hijau  = data resmi NOAA
+ *    ⚠️ kuning = fallback Open-Meteo
+ *    ❌ merah  = statis / modul ENSO-IOD tidak termuat
+ *  Sebelumnya hanya status ("El Niño"/"Netral") yang tampil, jadi
+ *  pengguna tidak bisa membedakan "memang netral" vs "gagal ambil
+ *  data dan diam-diam pakai default".
  *
- *  SOLUSI v3.12 — SATU TITIK PANEN, DUA TITIK MULAI:
- *    tglTanam dari engine = "Tanggal Referensi Tabela" (sebar ke lahan).
+ *  [BARU] Sumber data ENSO/IOD ikut disertakan saat jadwal dikirim
+ *  ke WhatsApp, supaya transparansi terbawa sampai ke pengguna akhir.
  *
- *    Tabela:
- *      tglSebarLahan = tglTanam           (tidak berubah)
- *      tglPanen      = tglTanam + umurTotal
- *
- *    Tapin:
- *      tglPindahLahan = tglTanam          (tetap sama seperti Tabela)
- *      tglMulaiSemai  = tglTanam - umurBibit  ← DIMAJUKAN
- *      tglPanen       = tglTanam + umurTotal  ← SAMA PERSIS dgn Tabela
- *      (transplanting shock DIABAIKAN — sudah tercakup dalam
- *       umur varietas empiris/praktis lapangan)
- *
- *    Hasilnya: Tapin & Tabela panen di HARI YANG SAMA PERSIS. ✅
- *    Tapin hanya perlu MULAI SEMAI lebih awal (umurBibit hari).
- *
- *  [TETAP dari v3.10/v3.11] Badge status musim, statusWaktuTanam,
- *    cariTglFaseBulan + batasBulan, deteksi lembah ekuatorial,
- *    invalidasi cache ZOM, auto-trigger dihapus — semua tetap aktif.
+ *  [TETAP dari v3.12] Tapin & Tabela panen serentak, badge status
+ *  musim, statusWaktuTanam, cariTglFaseBulan + batasBulan, deteksi
+ *  lembah ekuatorial, invalidasi cache ZOM, auto-trigger dihapus —
+ *  semua tetap aktif tanpa perubahan.
  * ============================================================
  */
 
@@ -684,6 +677,20 @@
     }
 
     /* ──────────────────────────────────────────────────────────
+       GAYA BADGE SUMBER DATA (BARU v3.13)
+       ─────────────────────────────────────────────────────────
+       Dipakai untuk memberi warna/ikon pada label sumber data
+       ENSO/IOD, supaya pengguna bisa langsung lihat apakah data
+       berasal dari NOAA resmi, fallback Open-Meteo, atau statis.
+    ────────────────────────────────────────────────────────── */
+    function gayaSumberData(sumber) {
+        var s = (sumber || '').toLowerCase();
+        if (s.indexOf('resmi') !== -1)    return { warna: '#10b981', ikon: '✅' };
+        if (s.indexOf('fallback') !== -1) return { warna: '#f59e0b', ikon: '⚠️' };
+        return { warna: '#ef4444', ikon: '❌' }; // statis / tidak tersedia / gagal total
+    }
+
+    /* ──────────────────────────────────────────────────────────
        RENDER HTML OUTPUT
     ────────────────────────────────────────────────────────── */
     window._jtoToggle = function (headerEl) {
@@ -746,18 +753,31 @@
     }
 
     function renderOutput(multiJadwal, zonaInfo, ensoData, iodData, metodeTanam) {
-        window._jtoData = multiJadwal;
+        window._jtoData     = multiJadwal;
+        // [BARU v3.13] Simpan ensoData/iodData agar bisa dipakai _jtoKirimWA()
+        window._jtoEnsoData = ensoData;
+        window._jtoIodData  = iodData;
 
         var labelZona  = (zonaInfo.zona && LABEL_ZONA[zonaInfo.zona]) ? LABEL_ZONA[zonaInfo.zona] : 'MONSUNAL';
         var sumberData = zonaInfo.jarak ? zonaInfo.nama + ' (' + zonaInfo.jarak + ' km)' : zonaInfo.nama;
         var zonaTampil = labelZona + ' • ' + sumberData;
+
+        // [BARU v3.13] Badge sumber data ENSO/IOD
+        var gayaENSO = gayaSumberData(ensoData.sumber);
+        var gayaIOD  = gayaSumberData(iodData.sumber);
+        var sumberENSOHTML = ensoData.sumber
+            ? '<div style="margin-top:3px;font-size:10px;color:' + gayaENSO.warna + ';">' + gayaENSO.ikon + ' ENSO via ' + ensoData.sumber + '</div>'
+            : '';
+        var sumberIODHTML = iodData.sumber
+            ? '<div style="font-size:10px;color:' + gayaIOD.warna + ';">' + gayaIOD.ikon + ' IOD via ' + iodData.sumber + '</div>'
+            : '';
 
         var html = '<div style="padding:4px 0;">' +
             '<div style="background:rgba(6,182,212,0.09);border:1px solid rgba(6,182,212,0.25);border-left:4px solid ' + WARNA + ';border-radius:14px;padding:14px 16px;margin-bottom:14px;">' +
                 '<div style="font-size:11px;color:' + WARNA + ';font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">🤖 INFORMASI IKLIM TAHUNAN</div>' +
                 '<div style="display:grid;grid-template-columns:1fr;gap:8px;font-size:12px;">' +
                     '<div><span style="color:#64748b;">Zona iklim & sumber data</span><br><strong style="color:#fff;">' + zonaTampil + '</strong></div>' +
-                    '<div><span style="color:#64748b;">Kondisi ENSO / IOD</span><br><strong style="color:#fff;">' + (ensoData.status || 'Netral') + ' / ' + (iodData.status || 'Netral') + '</strong></div>' +
+                    '<div><span style="color:#64748b;">Kondisi ENSO / IOD</span><br><strong style="color:#fff;">' + (ensoData.status || 'Netral') + ' / ' + (iodData.status || 'Netral') + '</strong>' + sumberENSOHTML + sumberIODHTML + '</div>' +
                     '<div><span style="color:#64748b;">Metode Tanam</span><br><strong style="color:#fff;">' + (LABEL_METODE_TANAM[metodeTanam] || LABEL_METODE_TANAM.tapin) + '</strong></div>' +
                 '</div>' +
             '</div>';
@@ -804,7 +824,16 @@
         var labelMetode = (window._jtoMetodeTanam === 'tabela')
             ? '🌾 Tanam Benih Langsung (Tabela)'
             : '🌱 Tanam Pindah (Tapin)';
-        var baris = ['*KALENDER KEGIATAN TANI TAHUNAN*', '_Metode: ' + labelMetode + '_\n'];
+        var baris = ['*KALENDER KEGIATAN TANI TAHUNAN*', '_Metode: ' + labelMetode + '_'];
+
+        // [BARU v3.13] Sertakan sumber data ENSO/IOD di pesan WA untuk transparansi
+        var ensoD = window._jtoEnsoData, iodD = window._jtoIodData;
+        if (ensoD || iodD) {
+            baris.push('_Sumber ENSO: ' + (ensoD && ensoD.sumber ? ensoD.sumber : '-') +
+                       ' | Sumber IOD: ' + (iodD && iodD.sumber ? iodD.sumber : '-') + '_\n');
+        } else {
+            baris.push('');
+        }
 
         dataArr.forEach(function (jadwal) {
             var r = jadwal.rekomendasi;
@@ -870,13 +899,48 @@
 
             setStatus('<span style="color:' + WARNA + ';">🌐 Mengambil data ENSO/IOD & ZOM...</span>');
 
-            var getENSO = typeof window.getENSOAnomaly === 'function' ? window.getENSOAnomaly() : Promise.resolve({ latestAnomaly: 0, status: 'Netral' });
-            var getIOD  = typeof window.getIODAnomaly  === 'function' ? window.getIODAnomaly()  : Promise.resolve({ latestAnomaly: 0, status: 'Netral' });
+            // [BARU v3.13] Warning eksplisit kalau modul ENSO/IOD belum ter-load.
+            // Sebelumnya kegagalan ini diam-diam jatuh ke Netral tanpa jejak apa pun
+            // di console, menyulitkan debug urutan <script> yang salah.
+            var adaFungsiENSO = typeof window.getENSOAnomaly === 'function';
+            var adaFungsiIOD  = typeof window.getIODAnomaly  === 'function';
+
+            if (!adaFungsiENSO) {
+                console.warn(
+                    '[JadwalOtomatis] ⚠️ window.getENSOAnomaly tidak ditemukan. ' +
+                    'Pastikan patch_enso_iod_noaa.js di-load SEBELUM patch_jadwal_tanam_otomatis.js ' +
+                    'di urutan <script> pada HTML. Menggunakan nilai ENSO Netral statis sebagai fallback darurat.'
+                );
+            }
+            if (!adaFungsiIOD) {
+                console.warn(
+                    '[JadwalOtomatis] ⚠️ window.getIODAnomaly tidak ditemukan. ' +
+                    'Pastikan patch_enso_iod_noaa.js di-load SEBELUM patch_jadwal_tanam_otomatis.js ' +
+                    'di urutan <script> pada HTML. Menggunakan nilai IOD Netral statis sebagai fallback darurat.'
+                );
+            }
+
+            var FALLBACK_DARURAT = {
+                latestAnomaly: 0,
+                status: 'Netral',
+                statusSingkat: 'Netral',
+                sumber: 'Tidak tersedia (modul ENSO/IOD tidak termuat)'
+            };
+
+            var getENSO = adaFungsiENSO ? window.getENSOAnomaly() : Promise.resolve(FALLBACK_DARURAT);
+            var getIOD  = adaFungsiIOD  ? window.getIODAnomaly()  : Promise.resolve(FALLBACK_DARURAT);
 
             var results  = await Promise.all([getENSO, getIOD, getDataZOM(lat, lon)]);
             var ensoData = results[0], iodData = results[1], zonaInfo = results[2];
             var ensoVal  = ensoData.latestAnomaly || 0;
             var iodVal   = iodData.latestAnomaly  || 0;
+
+            // [BARU v3.13] Log ringkas sumber data yang benar-benar dipakai,
+            // supaya gampang dicek di console saat troubleshoot.
+            console.log(
+                '[JadwalOtomatis] Sumber ENSO: ' + (ensoData.sumber || '-') +
+                ' | Sumber IOD: ' + (iodData.sumber || '-')
+            );
 
             setStatus('<span style="color:' + WARNA + ';">🧮 Deteksi musim & menyusun kalender...</span>');
 
@@ -1077,7 +1141,7 @@
         //       bisa meng-override-nya. Sebelumnya fungsi ini private (IIFE closure)
         //       sehingga override dari luar tidak pernah berjalan (dead code).
         window.prosesJadwalOtomatis = prosesJadwalOtomatis;
-        console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.12.1 aktif — window.prosesJadwalOtomatis diekspos', 'color:' + WARNA + ';font-weight:bold;');
+        console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.13 aktif — transparansi sumber data ENSO/IOD ditambahkan', 'color:' + WARNA + ';font-weight:bold;');
     }
 
     if (document.readyState === 'loading') {
