@@ -323,7 +323,7 @@
             filterFn = isInsektisida;
             labelTarget.innerText = '🐛 TARGET HAMA SAAT INI';
             labelBahan.innerText  = '🧪 INSEKTISIDA TERAKHIR DIPAKAI';
-            placeholder = 'cth: Decis, Confidor, Klorpirifos...';
+            placeholder = 'ketik/cari, cth: Decis, Spontan, Virtako, ...';
         }
 
         selectTarget.innerHTML = daftarTarget.map(function (v) {
