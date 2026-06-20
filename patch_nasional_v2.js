@@ -388,29 +388,36 @@
         }
 
         async function getENSOViaOpenMeteoFixed() {
-            // [FIX LOGIKA-05] Baseline 1991–2020 NOAA ONI untuk Nino3.4
-            // Sumber: NOAA PSL — https://psl.noaa.gov/data/climadict/
+            // [FIX LOGIKA-05] Baseline Bulanan Dinamis NOAA 1991–2020 untuk Nino3.4
+            // Suhu normal laut bervariasi setiap bulan. Ini rahasia sensitivitasnya.
+            // Jan, Feb, Mar, Apr, Mei, Jun, Jul, Agu, Sep, Okt, Nov, Des
+            var BASELINE_BULANAN = [26.6, 26.7, 27.2, 27.8, 27.9, 27.7, 27.2, 26.8, 26.7, 26.7, 26.7, 26.6];
+            
             var y = new Date().getFullYear();
-            var BASELINE_NINO34;
-            if (y <= 2030) {
-                BASELINE_NINO34 = 28.0;  // FIX: dari 27.0 → 28.0
-            } else if (y <= 2040) {
-                BASELINE_NINO34 = 28.3;  // proyeksi CMIP6 warming
-            } else {
-                BASELINE_NINO34 = 28.5;
-            }
+            var warmingOffset = 0;
+            // Koreksi pemanasan global (CMIP6)
+            if (y > 2030 && y <= 2040) warmingOffset = 0.3;
+            else if (y > 2040) warmingOffset = 0.5;
 
-            // Ambil 6 bulan SST di titik pusat Nino3.4 (0°, 144.5°W)
             var promises = [];
+            var referensiBulan = []; // Menyimpan indeks bulan untuk mencocokkan baseline
+
             for (var i = 5; i >= 0; i--) {
                 var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-                // getNOAASST adalah fungsi global dari index.html
-                promises.push(getNOAASST(0, -144.5, d));
+                referensiBulan.push(d.getMonth()); 
+                promises.push(getNOAASST(0, -144.5, d)); // Fungsi dari index.html
             }
             var hasil = await Promise.all(promises);
 
-            var anomali = hasil.map(function (s) {
-                return parseFloat(((s !== null && s !== undefined ? s : BASELINE_NINO34) - BASELINE_NINO34).toFixed(2));
+            // Hitung anomali menggunakan baseline sesuai bulannya
+            var anomali = hasil.map(function (suhuMentah, index) {
+                var bulanData = referensiBulan[index];
+                var baselineBulanIni = BASELINE_BULANAN[bulanData] + warmingOffset;
+                
+                // Jika API gagal, anggap suhu sama dengan baseline (anomali 0)
+                var suhuAktual = (suhuMentah !== null && suhuMentah !== undefined) ? suhuMentah : baselineBulanIni;
+                
+                return parseFloat((suhuAktual - baselineBulanIni).toFixed(2));
             });
 
             var oni3 = (anomali[3] + anomali[4] + anomali[5]) / 3;
@@ -429,7 +436,7 @@
                 intensitas:    klasif.intensitas,
                 latestAnomaly: proyeksi[0],
                 oni3Bulan:     parseFloat(oni3.toFixed(2)),
-                sumber:        'Open-Meteo (fallback, baseline ' + BASELINE_NINO34 + '°C)'
+                sumber:        'Open-Meteo (Fallback + Baseline Dinamis Bulanan)'
             };
         }
 
