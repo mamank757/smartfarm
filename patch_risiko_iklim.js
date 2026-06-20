@@ -65,8 +65,8 @@
         const w_enso = BOBOT_IKLIM[zona].enso[bulanIndex];
         const w_iod  = BOBOT_IKLIM[zona].iod[bulanIndex];
     
-        const ensoNorm = (ensoVal / 1.0) * AMPLIFIKASI_IKLIM; 
-        const iodNorm  = (iodVal  / 1.0) * AMPLIFIKASI_IKLIM; 
+        const ensoNorm = (ensoVal / 0.7) * AMPLIFIKASI_IKLIM; 
+        const iodNorm  = (iodVal  / 0.8) * AMPLIFIKASI_IKLIM; 
     
         const totalBobot = w_enso + w_iod;
         const penguatBobot = totalBobot < 0.25 ? 1.5 : 1.0;
