@@ -388,36 +388,38 @@
         }
 
         async function getENSOViaOpenMeteoFixed() {
-            // [FIX LOGIKA-05] Baseline Bulanan Dinamis NOAA 1991–2020 untuk Nino3.4
-            // Suhu normal laut bervariasi setiap bulan. Ini rahasia sensitivitasnya.
-            // Jan, Feb, Mar, Apr, Mei, Jun, Jul, Agu, Sep, Okt, Nov, Des
+            // Baseline Bulanan Dinamis NOAA 1991–2020 untuk Nino3.4
             var BASELINE_BULANAN = [26.6, 26.7, 27.2, 27.8, 27.9, 27.7, 27.2, 26.8, 26.7, 26.7, 26.7, 26.6];
             
             var y = new Date().getFullYear();
             var warmingOffset = 0;
-            // Koreksi pemanasan global (CMIP6)
             if (y > 2030 && y <= 2040) warmingOffset = 0.3;
             else if (y > 2040) warmingOffset = 0.5;
 
             var promises = [];
-            var referensiBulan = []; // Menyimpan indeks bulan untuk mencocokkan baseline
+            var referensiBulan = []; 
 
             for (var i = 5; i >= 0; i--) {
                 var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
                 referensiBulan.push(d.getMonth()); 
-                promises.push(getNOAASST(0, -144.5, d)); // Fungsi dari index.html
+                promises.push(getNOAASST(0, -144.5, d)); 
             }
             var hasil = await Promise.all(promises);
 
-            // Hitung anomali menggunakan baseline sesuai bulannya
             var anomali = hasil.map(function (suhuMentah, index) {
                 var bulanData = referensiBulan[index];
                 var baselineBulanIni = BASELINE_BULANAN[bulanData] + warmingOffset;
                 
-                // Jika API gagal, anggap suhu sama dengan baseline (anomali 0)
                 var suhuAktual = (suhuMentah !== null && suhuMentah !== undefined) ? suhuMentah : baselineBulanIni;
+                var anomaliMentah = suhuAktual - baselineBulanIni;
+
+                // ======================================================
+                // KALIBRASI OFFSET (Mendekatkan Open-Meteo ke NOAA)
+                // Selisih aktual: NOAA (+0.16) vs OM (+0.03) = +0.13
+                // ======================================================
+                var OFFSET_KALIBRASI_ONI = 0.13;
                 
-                return parseFloat((suhuAktual - baselineBulanIni).toFixed(2));
+                return parseFloat((anomaliMentah + OFFSET_KALIBRASI_ONI).toFixed(2));
             });
 
             var oni3 = (anomali[3] + anomali[4] + anomali[5]) / 3;
@@ -436,7 +438,7 @@
                 intensitas:    klasif.intensitas,
                 latestAnomaly: proyeksi[0],
                 oni3Bulan:     parseFloat(oni3.toFixed(2)),
-                sumber:        'Open-Meteo (Fallback + Baseline Dinamis Bulanan)'
+                sumber:        'Open-Meteo (Dikalibrasi +0.13°C ke NOAA)'
             };
         }
 
@@ -570,7 +572,63 @@
                 'color:#10b981;font-weight:bold;');
         }
     })();
+// ══════════════════════════════════════════════════════════
+    //  BAGIAN G — [KALIBRASI] IOD (DMI) Open-Meteo Offset +0.36
+    //
+    //  Mencegat hasil window.getIODAnomaly(). Jika datanya 
+    //  berasal dari Open-Meteo, otomatis tambahkan offset +0.36
+    //  agar akurasinya menyamai satelit NOAA.
+    // ══════════════════════════════════════════════════════════
 
+    (function fixIODCalibration() {
+        var _getIODAsli = window.getIODAnomaly;
+        if (!_getIODAsli) return;
+
+        window.getIODAnomaly = async function () {
+            try {
+                var result = await _getIODAsli();
+                
+                // Cek apakah data fallback Open-Meteo yang sedang aktif
+                if (result && result.sumber && result.sumber.includes('Open-Meteo')) {
+                    var OFFSET_DMI = 0.36; // Kalibrasi agar sama dengan NOAA
+                    
+                    // 1. Tambahkan offset ke semua titik grafik proyeksi
+                    if (Array.isArray(result.anomalies)) {
+                        result.anomalies = result.anomalies.map(function(val) {
+                            return parseFloat((val + OFFSET_DMI).toFixed(2));
+                        });
+                    }
+                    
+                    // 2. Tambahkan offset ke nilai anomali saat ini
+                    if (typeof result.latestAnomaly === 'number') {
+                        result.latestAnomaly = parseFloat((result.latestAnomaly + OFFSET_DMI).toFixed(2));
+                        
+                        // 3. Perbarui status teks (Batas IOD biasanya +/- 0.4)
+                        if (result.latestAnomaly >= 0.4) {
+                            result.status = 'IOD Positif'; 
+                            result.statusSingkat = 'IOD+';
+                        } else if (result.latestAnomaly <= -0.4) {
+                            result.status = 'IOD Negatif'; 
+                            result.statusSingkat = 'IOD-';
+                        } else {
+                            result.status = 'Netral'; 
+                            result.statusSingkat = 'Netral';
+                        }
+                    }
+                    
+                    // 4. Update label sumber data
+                    result.sumber = 'Open-Meteo (Dikalibrasi +0.36°C ke NOAA)';
+                    
+                    console.log('%c✅ [KALIBRASI] DMI IOD Open-Meteo dikoreksi +0.36', 'color:#10b981;font-weight:bold;');
+                }
+                
+                return result;
+            } catch (e) {
+                console.error('Gagal memproses IOD:', e);
+                return _getIODAsli(); // Kembalikan apa adanya jika error
+            }
+        };
+    })();
     // ══════════════════════════════════════════════════════════
     //  LOG AKTIVASI
     // ══════════════════════════════════════════════════════════
