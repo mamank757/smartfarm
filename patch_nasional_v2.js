@@ -336,42 +336,27 @@
     };
 
     // ══════════════════════════════════════════════════════════
-    //  BAGIAN D — [LOGIKA-05] ENSO Baseline Layer 2 Fix
-    //
-    //  getENSOViaOpenMeteo() privat dalam IIFE patch_enso_iod_noaa,
-    //  tidak bisa di-override langsung. Solusi: override
-    //  window.getENSOAnomaly secara keseluruhan dengan versi yang
-    //  punya Layer 2 yang sudah diperbaiki baselinenya.
-    //
-    //  Baseline NOAA 1991–2020 untuk Nino3.4: ~28.0°C
-    //  (bukan 27.0°C yang hardcode di patch lama)
-    //  Sumber: NOAA CPC Nino3.4 SST Climatology
+    //  BAGIAN D — [LOGIKA-05] ENSO Baseline Dinamis (Kalibrasi +0.13)
     // ══════════════════════════════════════════════════════════
 
     (function fixENSOBaseline() {
         var _getENSOAsli = window.getENSOAnomaly;
 
-        // Salin fungsi-fungsi helper yang dibutuhkan
-        // (proyeksikanTren, klasifikasiENSO, buatLabelBulan diakses via closure
-        // jika ada di scope global, atau kita sediakan versi inline)
-
         function klasEnso(oni) {
             if (oni >= 2.0)  return { label: 'El Niño Sangat Kuat', singkat: 'El Niño Kuat',  intensitas: 'sangat kuat' };
-            if (oni >= 1.5)  return { label: 'El Niño Kuat',        singkat: 'El Niño Kuat',  intensitas: 'kuat'       };
-            if (oni >= 1.0)  return { label: 'El Niño Moderat',     singkat: 'El Niño',       intensitas: 'moderat'    };
-            if (oni >= 0.5)  return { label: 'El Niño Lemah',       singkat: 'El Niño Lemah', intensitas: 'lemah'      };
+            if (oni >= 1.5)  return { label: 'El Niño Kuat',        singkat: 'El Niño Kuat',  intensitas: 'kuat'        };
+            if (oni >= 1.0)  return { label: 'El Niño Moderat',     singkat: 'El Niño',       intensitas: 'moderat'     };
+            if (oni >= 0.5)  return { label: 'El Niño Lemah',       singkat: 'El Niño Lemah', intensitas: 'lemah'       };
             if (oni <= -2.0) return { label: 'La Niña Sangat Kuat', singkat: 'La Niña Kuat',  intensitas: 'sangat kuat'};
-            if (oni <= -1.5) return { label: 'La Niña Kuat',        singkat: 'La Niña Kuat',  intensitas: 'kuat'       };
-            if (oni <= -1.0) return { label: 'La Niña Moderat',     singkat: 'La Niña',       intensitas: 'moderat'    };
-            if (oni <= -0.5) return { label: 'La Niña Lemah',       singkat: 'La Niña Lemah', intensitas: 'lemah'      };
-            return            { label: 'Netral',                     singkat: 'Netral',        intensitas: ''           };
+            if (oni <= -1.5) return { label: 'La Niña Kuat',        singkat: 'La Niña Kuat',  intensitas: 'kuat'        };
+            if (oni <= -1.0) return { label: 'La Niña Moderat',     singkat: 'La Niña',       intensitas: 'moderat'     };
+            if (oni <= -0.5) return { label: 'La Niña Lemah',       singkat: 'La Niña Lemah', intensitas: 'lemah'       };
+            return            { label: 'Netral',                    singkat: 'Netral',        intensitas: ''            };
         }
 
         function proyeksiTren(nilai, tren, n, min, max) {
             var arr = [];
-            for (var i = 0; i < n; i++) {
-                arr.push(Math.max(min, Math.min(max, parseFloat((nilai + tren * (i + 1)).toFixed(2)))));
-            }
+            for (var i = 0; i < n; i++) arr.push(Math.max(min, Math.min(max, parseFloat((nilai + tren * (i + 1)).toFixed(2)))));
             arr.unshift(parseFloat(nilai.toFixed(2)));
             return arr;
         }
@@ -388,35 +373,27 @@
         }
 
         async function getENSOViaOpenMeteoFixed() {
-            // Baseline Bulanan Dinamis NOAA 1991–2020 untuk Nino3.4
             var BASELINE_BULANAN = [26.6, 26.7, 27.2, 27.8, 27.9, 27.7, 27.2, 26.8, 26.7, 26.7, 26.7, 26.6];
-            
             var y = new Date().getFullYear();
-            var warmingOffset = 0;
-            if (y > 2030 && y <= 2040) warmingOffset = 0.3;
-            else if (y > 2040) warmingOffset = 0.5;
-
+            var warmingOffset = (y > 2030 && y <= 2040) ? 0.3 : (y > 2040 ? 0.5 : 0);
+            
             var promises = [];
             var referensiBulan = []; 
 
             for (var i = 5; i >= 0; i--) {
                 var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
                 referensiBulan.push(d.getMonth()); 
-                promises.push(getNOAASST(0, -144.5, d)); 
+                promises.push(window.getNOAASST ? window.getNOAASST(0, -144.5, d) : null); 
             }
             var hasil = await Promise.all(promises);
 
             var anomali = hasil.map(function (suhuMentah, index) {
                 var bulanData = referensiBulan[index];
                 var baselineBulanIni = BASELINE_BULANAN[bulanData] + warmingOffset;
-                
                 var suhuAktual = (suhuMentah !== null && suhuMentah !== undefined) ? suhuMentah : baselineBulanIni;
                 var anomaliMentah = suhuAktual - baselineBulanIni;
 
-                // ======================================================
-                // KALIBRASI OFFSET (Mendekatkan Open-Meteo ke NOAA)
-                // Selisih aktual: NOAA (+0.16) vs OM (+0.03) = +0.13
-                // ======================================================
+                // KALIBRASI ENSO: Cukup +0.13 saja
                 var OFFSET_KALIBRASI_ONI = 0.13;
                 
                 return parseFloat((anomaliMentah + OFFSET_KALIBRASI_ONI).toFixed(2));
@@ -443,143 +420,46 @@
         }
 
         window.getENSOAnomaly = async function () {
-            // ── Layer 1: Coba implementasi asli (NOAA CPC) ──────────
-            // Kita tetap delegasikan ke fungsi asli dulu karena
-            // Layer 1-nya sudah benar (data ONI resmi dari NOAA CPC).
-            // Hanya Layer 2 yang bermasalah (baseline).
             try {
                 var result = await _getENSOAsli();
-                // Jika berhasil dari NOAA CPC (Layer 1), hasilnya sudah benar
-                if (result && result.sumber && result.sumber.includes('NOAA CPC')) {
-                    return result;
-                }
-                // Jika Layer 1 gagal dan Layer 2 (Open-Meteo) yang dipakai,
-                // kita override dengan baseline yang sudah diperbaiki
-                if (result && result.sumber && result.sumber.includes('Open-Meteo')) {
-                    console.warn('[LOGIKA-05] Layer 2 ENSO terdeteksi — mengganti dengan baseline 28.0°C');
-                    throw new Error('Layer 2 baseline lama, ganti ke versi fixed');
-                }
-                return result; // Layer 3 statis — biarkan
+                var s = (result && result.sumber) ? result.sumber.toLowerCase() : '';
+                if (s.includes('open') && s.includes('meteo')) throw new Error('Force Fallback V2');
+                return result;
             } catch (e) {
-                // Jika Layer 1 gagal atau Layer 2 lama terdeteksi:
-                // Coba Layer 2 versi baru (baseline 28.0°C)
-                try {
-                    var hasilFixed = await getENSOViaOpenMeteoFixed();
-                    console.log(
-                        '%c✅ [LOGIKA-05] ENSO Layer 2 fixed — baseline ' +
-                        (new Date().getFullYear() <= 2030 ? '28.0' : '28.3') + '°C',
-                        'color:#10b981;font-weight:bold;'
-                    );
-                    return hasilFixed;
-                } catch (e2) {
-                    // Layer 3: statis netral
-                    return {
-                        labels:        labelBulan(4),
-                        anomalies:     [0, 0, 0, 0],
-                        status:        'Netral',
-                        statusSingkat: 'Netral',
-                        intensitas:    '',
-                        latestAnomaly: 0,
-                        oni3Bulan:     0,
-                        sumber:        'Statis (semua sumber gagal)'
-                    };
-                }
+                return await getENSOViaOpenMeteoFixed();
             }
         };
-
-        console.log('%c✅ [LOGIKA-05] getENSOAnomaly diperbarui — BASELINE_NINO34: 27.0 → 28.0°C',
-            'color:#10b981;font-weight:bold;');
     })();
 
     // ══════════════════════════════════════════════════════════
-    //  BAGIAN E — [LOGIKA-04] wetnessScore Bobot Regional
-    //
-    //  prosesAnalisisKalender() di index.html memakai:
-    //    wetnessScore = baselineBulanIni - (ensoVal*0.2) - (iodVal*0.1)
-    //  tanpa koreksi zona iklim. patch_risiko_iklim.js sudah punya
-    //  hitungWetnessScore() yang benar — tapi prosesAnalisisKalender
-    //  asli di index.html tidak memakainya.
-    //
-    //  Fix: override window.prosesAnalisisKalender. Karena
-    //  patch_risiko_iklim.js SUDAH mengoverride fungsi ini dengan
-    //  versi yang lebih baik (termasuk hitungWetnessScore per zona),
-    //  yang perlu kita lakukan hanyalah MEMASTIKAN bahwa override
-    //  dari patch_risiko_iklim.js tidak ditimpa lagi setelah ini.
-    //
-    //  Cara aman: simpan referensi window.prosesAnalisisKalender
-    //  yang ada sekarang (sudah dioverride oleh patch_risiko_iklim)
-    //  dan re-assign ke window agar tidak ditimpa oleh kode lain.
+    //  BAGIAN E & F — (Wetness & Warna Jadwal Tanam)
     // ══════════════════════════════════════════════════════════
-
     (function fixWetnessRegional() {
-        // Jika patch_risiko_iklim.js sudah override prosesAnalisisKalender,
-        // simpan referensinya agar tidak hilang
         if (typeof window.prosesAnalisisKalender === 'function') {
             var _saved = window.prosesAnalisisKalender;
-
-            // Re-wrap dengan log konfirmasi
             window.prosesAnalisisKalender = async function () {
-                console.log(
-                    '%c🌐 [LOGIKA-04] prosesAnalisisKalender — wetnessScore via BOBOT_IKLIM zona dinamis',
-                    'color:#3b82f6;font-weight:bold;'
-                );
+                console.log('%c🌐 [LOGIKA-04] prosesAnalisisKalender (zona terkunci)', 'color:#3b82f6;font-weight:bold;');
                 return _saved.apply(this, arguments);
             };
-
-            console.log('%c✅ [LOGIKA-04] prosesAnalisisKalender — terkunci ke versi bobot-zona dari patch_risiko_iklim',
-                'color:#10b981;font-weight:bold;');
-        } else {
-            console.warn('[LOGIKA-04] prosesAnalisisKalender belum tersedia saat patch v2 dimuat — pastikan patch_risiko_iklim.js dimuat lebih dulu.');
         }
     })();
-
-    // ══════════════════════════════════════════════════════════
-    //  BAGIAN F — [BUG-02] Warna modeTitle Jadwal Tanam
-    //
-    //  patch_jadwal_manual_trigger.js v1.1 klaim warna cyan
-    //  (#3b82f6) tapi var WARNA = '#3b82f6' (biru).
-    //  Fix: intercept window.switchMode dan perbaiki warna
-    //  setelah mode 'jadwaltanam' aktif.
-    // ══════════════════════════════════════════════════════════
 
     (function fixWarnaJadwal() {
         var _switchModePrev = window.switchMode;
-        if (typeof _switchModePrev !== 'function') {
-            // Belum tersedia — pasang nanti setelah DOM siap
-            document.addEventListener('DOMContentLoaded', function () {
-                setTimeout(function () {
-                    if (typeof window.switchMode === 'function') {
-                        pasangFixWarna(window.switchMode);
-                    }
-                }, 300);
-            });
-            return;
-        }
-        pasangFixWarna(_switchModePrev);
-
-        function pasangFixWarna(prev) {
-            window.switchMode = function (mode) {
-                var result = prev.apply(this, arguments);
-                if (mode === 'jadwaltanam') {
-                    var titleEl = document.getElementById('modeTitle');
-                    if (titleEl) {
-                        titleEl.style.color = WARNA_CYAN_JADWAL; // #3b82f6
-                    }
-                }
-                return result;
-            };
-            console.log('%c✅ [BUG-02] modeTitle jadwaltanam warna diperbaiki → ' + WARNA_CYAN_JADWAL,
-                'color:#10b981;font-weight:bold;');
-        }
+        if (!_switchModePrev) return;
+        window.switchMode = function (mode) {
+            var result = _switchModePrev.apply(this, arguments);
+            if (mode === 'jadwaltanam') {
+                var titleEl = document.getElementById('modeTitle');
+                if (titleEl) titleEl.style.color = WARNA_CYAN_JADWAL;
+            }
+            return result;
+        };
     })();
-// ══════════════════════════════════════════════════════════
-    //  BAGIAN G — [KALIBRASI] IOD (DMI) Open-Meteo Offset +0.36
-    //
-    //  Mencegat hasil window.getIODAnomaly(). Jika datanya 
-    //  berasal dari Open-Meteo, otomatis tambahkan offset +0.36
-    //  agar akurasinya menyamai satelit NOAA.
-    // ══════════════════════════════════════════════════════════
 
+    // ══════════════════════════════════════════════════════════
+    //  BAGIAN G — [KALIBRASI] IOD (DMI) Open-Meteo Offset +0.36
+    // ══════════════════════════════════════════════════════════
     (function fixIODCalibration() {
         var _getIODAsli = window.getIODAnomaly;
         if (!_getIODAsli) return;
@@ -587,59 +467,44 @@
         window.getIODAnomaly = async function () {
             try {
                 var result = await _getIODAsli();
+                var sumberTeks = (result && result.sumber) ? result.sumber.toLowerCase() : '';
                 
-                // Cek apakah data fallback Open-Meteo yang sedang aktif
-                if (result && result.sumber && result.sumber.includes('Open-Meteo')) {
-                    var OFFSET_DMI = 0.36; // Kalibrasi agar sama dengan NOAA
+                // Deteksi kebal: Cari kata "open" dan "meteo" di sumber
+                if (sumberTeks.includes('open') && sumberTeks.includes('meteo')) {
+                    var OFFSET_DMI = 0.36; // Kalibrasi IOD agar menyamai NOAA
                     
-                    // 1. Tambahkan offset ke semua titik grafik proyeksi
                     if (Array.isArray(result.anomalies)) {
                         result.anomalies = result.anomalies.map(function(val) {
                             return parseFloat((val + OFFSET_DMI).toFixed(2));
                         });
                     }
-                    
-                    // 2. Tambahkan offset ke nilai anomali saat ini
                     if (typeof result.latestAnomaly === 'number') {
                         result.latestAnomaly = parseFloat((result.latestAnomaly + OFFSET_DMI).toFixed(2));
-                        
-                        // 3. Perbarui status teks (Batas IOD biasanya +/- 0.4)
                         if (result.latestAnomaly >= 0.4) {
-                            result.status = 'IOD Positif'; 
-                            result.statusSingkat = 'IOD+';
+                            result.status = 'IOD Positif'; result.statusSingkat = 'IOD+';
                         } else if (result.latestAnomaly <= -0.4) {
-                            result.status = 'IOD Negatif'; 
-                            result.statusSingkat = 'IOD-';
+                            result.status = 'IOD Negatif'; result.statusSingkat = 'IOD-';
                         } else {
-                            result.status = 'Netral'; 
-                            result.statusSingkat = 'Netral';
+                            result.status = 'Netral'; result.statusSingkat = 'Netral';
                         }
                     }
-                    
-                    // 4. Update label sumber data
                     result.sumber = 'Open-Meteo (Dikalibrasi +0.36°C ke NOAA)';
-                    
-                    console.log('%c✅ [KALIBRASI] DMI IOD Open-Meteo dikoreksi +0.36', 'color:#10b981;font-weight:bold;');
                 }
-                
                 return result;
             } catch (e) {
-                console.error('Gagal memproses IOD:', e);
-                return _getIODAsli(); // Kembalikan apa adanya jika error
+                return _getIODAsli(); 
             }
         };
     })();
+
     // ══════════════════════════════════════════════════════════
     //  LOG AKTIVASI
     // ══════════════════════════════════════════════════════════
     console.log(
         '%c✅ patch_nasional_v2.js AKTIF\n' +
-        '   Cakupan: NASIONAL-A (showSSTRekomendasi), NASIONAL-B (loadGlobalClimateIndices),\n' +
-        '            NASIONAL-C (renderLocalChart label dinamis),\n' +
-        '            LOGIKA-05 (ENSO baseline 28.0°C),\n' +
-        '            LOGIKA-04 (wetnessScore zona terkunci),\n' +
-        '            BUG-02 (warna modeTitle cyan)',
+        '   Cakupan: NASIONAL-A, B, C | LOGIKA-04, 05 | BUG-02\n' +
+        '   [KALIBRASI] ENSO (+0.13) & IOD (+0.36) Aktif',
         'color:#3b82f6;font-weight:bold;font-size:12px;'
     );
 
-})(); // IIFE
+})(); // Akhir dari IIFE Utama
