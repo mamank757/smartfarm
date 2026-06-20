@@ -58,15 +58,15 @@
     // ============================================================
     //  3. HITUNG WETNESS SCORE (VERSI REVISI LEBIH SENSITIF)
     // ============================================================
-    var AMPLIFIKASI_IKLIM = 10; 
+    var AMPLIFIKASI_IKLIM = 8; 
     
     function hitungWetnessScore(baselineZOM, ensoVal, iodVal, lat, lon, bulanIndex) {
         const zona   = tentukanZonaIklim(lat, lon);
         const w_enso = BOBOT_IKLIM[zona].enso[bulanIndex];
         const w_iod  = BOBOT_IKLIM[zona].iod[bulanIndex];
     
-        const ensoNorm = (ensoVal / 0.7) * AMPLIFIKASI_IKLIM; 
-        const iodNorm  = (iodVal  / 0.8) * AMPLIFIKASI_IKLIM; 
+        const ensoNorm = (ensoVal / 0.5) * AMPLIFIKASI_IKLIM; 
+        const iodNorm  = (iodVal  / 0.5) * AMPLIFIKASI_IKLIM; 
     
         const totalBobot = w_enso + w_iod;
         const penguatBobot = totalBobot < 0.25 ? 1.5 : 1.0;
