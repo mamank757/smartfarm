@@ -1,43 +1,6 @@
 // ============================================================
-//  PATCH NASIONAL v2.0
+//  PATCH NASIONAL v2.0 (UPDATED CALIBRATION)
 //  Pelengkap patch_nasional_v1.js
-//
-//  MASALAH YANG DIPERBAIKI (6 item lanjutan):
-//
-//  [NASIONAL-A] showSSTRekomendasi — hardcode teks "Bone" /
-//               "Makassar" / "Sulawesi Selatan" di setiap branch.
-//               Diganti dengan nama perairan dinamis per GPS.
-//
-//  [NASIONAL-B] loadGlobalClimateIndices — if (isWilayahSulsel)
-//               menyembunyikan box SST dan analisis terpadu untuk
-//               semua wilayah luar Sulsel. Sekarang aktif nasional.
-//
-//  [NASIONAL-C] renderLocalChart — label hardcode "Teluk Bone" /
-//               "Selat Makassar" meski data sudah diganti oleh v1.
-//               Override untuk gunakan nama dinamis dari sstLokal.
-//
-//  [LOGIKA-05]  ENSO Baseline Layer 2 (Open-Meteo fallback):
-//               BASELINE_NINO34 = 27.0°C → terlalu rendah.
-//               Baseline ONI resmi 1991–2020 NOAA = ~28.0°C.
-//               Karena getENSOViaOpenMeteo privat dalam IIFE,
-//               override window.getENSOAnomaly secara keseluruhan
-//               dengan Layer 2 yang sudah diperbaiki baselinenya.
-//
-//  [LOGIKA-04]  wetnessScore di prosesAnalisisKalender():
-//               `(ensoVal * 0.2) - (iodVal * 0.1)` tidak ada
-//               koreksi regional. Ganti dengan bobot dinamis
-//               per zona iklim yang sudah ada di BOBOT_IKLIM
-//               (patch_risiko_iklim.js) via window.BOBOT_IKLIM.
-//
-//  [BUG-02]     patch_jadwal_manual_trigger.js v1.1: komentar
-//               bilang disamakan ke cyan (#3b82f6) tapi var WARNA
-//               masih '#3b82f6' (biru). Override warna modeTitle
-//               saat switchMode('jadwaltanam') dipanggil.
-//
-//  CARA PASANG:
-//  Tambahkan SETELAH patch_nasional_v1.js:
-//    <script src="patch_nasional_v1.js"></script>
-//    <script src="patch_nasional_v2.js"></script>  ← ini
 // ============================================================
 
 (function () {
@@ -47,12 +10,6 @@
 
     // ══════════════════════════════════════════════════════════
     //  BAGIAN A — [NASIONAL-A] showSSTRekomendasi Nasional
-    //
-    //  Fungsi asli memakai hardcode "Bone", "Makassar", dan
-    //  "Sulawesi Selatan" di setiap if-branch.
-    //  Versi baru: baca nama perairan dari sstLokal.nama1/nama2
-    //  (yang sudah diset oleh getLocalSSTTimeseries nasional).
-    //  Analisis upwelling juga dibuat generik.
     // ══════════════════════════════════════════════════════════
 
     window.showSSTRekomendasi = function (sstLokal) {
@@ -207,10 +164,6 @@
 
     // ══════════════════════════════════════════════════════════
     //  BAGIAN B — [NASIONAL-B] loadGlobalClimateIndices Nasional
-    //
-    //  Sebelumnya: if (isWilayahSulsel) → tampilkan SST & analisis
-    //              else → sembunyikan semua
-    //  Sekarang:   selalu tampilkan untuk semua wilayah Indonesia
     // ══════════════════════════════════════════════════════════
 
     window.loadGlobalClimateIndices = async function () {
@@ -252,12 +205,7 @@
             var boxLokal = document.getElementById('localSstBox');
             if (boxLokal) boxLokal.style.display = 'block';
 
-            // showSSTRekomendasi sekarang sudah nasional (BAGIAN A)
             window.showSSTRekomendasi(sstLokal);
-
-            // simpulkanPrediksiIklimTerpadu sekarang sudah nasional (patch_nasional_v1.js BAGIAN 3)
-            // Tetap kirim isSulsel=true agar kode lama tidak tersandung,
-            // tapi fungsi overridden v1 mengabaikan parameter itu
             window.simpulkanPrediksiIklimTerpadu(enso, iod, sstLokal, true);
 
             console.log(
@@ -276,9 +224,6 @@
 
     // ══════════════════════════════════════════════════════════
     //  BAGIAN C — [NASIONAL-C] renderLocalChart Label Dinamis
-    //
-    //  Sebelumnya: dataset label hardcode "Teluk Bone" / "Selat Makassar"
-    //  Sekarang  : baca dari argumen ke-4 (sstLokal) yang berisi nama1/nama2
     // ══════════════════════════════════════════════════════════
 
     window.renderLocalChart = function (labels, data1, data2, sstLokal) {
@@ -336,7 +281,7 @@
     };
 
     // ══════════════════════════════════════════════════════════
-    //  BAGIAN D — [LOGIKA-05] ENSO Baseline Dinamis (Kalibrasi +0.13)
+    //  BAGIAN D — [LOGIKA-05] ENSO Baseline Dinamis (Kalibrasi -0.07)
     // ══════════════════════════════════════════════════════════
 
     (function fixENSOBaseline() {
@@ -358,7 +303,6 @@
             var arr = [];
             var trenTeredam = tren; 
             for (var i = 0; i < n; i++) {
-                // Redam kekuatan tren 30% setiap bulan agar tidak meroket
                 trenTeredam = trenTeredam * 0.7; 
                 nilai = nilai + trenTeredam;
                 arr.push(Math.max(min, Math.min(max, parseFloat(nilai.toFixed(2)))));
@@ -399,8 +343,8 @@
                 var suhuAktual = (suhuMentah !== null && suhuMentah !== undefined) ? suhuMentah : baselineBulanIni;
                 var anomaliMentah = suhuAktual - baselineBulanIni;
 
-                // KALIBRASI ENSO: Cukup +0.13 saja
-                var OFFSET_KALIBRASI_ONI = 0.13;
+                // KALIBRASI ENSO BARU: -0.07 agar pas dengan NOAA
+                var OFFSET_KALIBRASI_ONI = -0.07;
                 
                 return parseFloat((anomaliMentah + OFFSET_KALIBRASI_ONI).toFixed(2));
             });
@@ -421,7 +365,7 @@
                 intensitas:    klasif.intensitas,
                 latestAnomaly: proyeksi[0],
                 oni3Bulan:     parseFloat(oni3.toFixed(2)),
-                sumber:        'Open-Meteo (Dikalibrasi +0.13°C ke NOAA)'
+                sumber:        'Open-Meteo (Dikalibrasi -0.07°C ke NOAA)'
             };
         }
 
@@ -464,7 +408,7 @@
     })();
 
     // ══════════════════════════════════════════════════════════
-    //  BAGIAN G — [KALIBRASI] IOD (DMI) Open-Meteo Offset +0.36
+    //  BAGIAN G — [KALIBRASI] IOD (DMI) Open-Meteo Offset +0.72
     // ══════════════════════════════════════════════════════════
     (function fixIODCalibration() {
         var _getIODAsli = window.getIODAnomaly;
@@ -477,7 +421,7 @@
                 
                 // Deteksi kebal: Cari kata "open" dan "meteo" di sumber
                 if (sumberTeks.includes('open') && sumberTeks.includes('meteo')) {
-                    var OFFSET_DMI = 0.36; 
+                    var OFFSET_DMI = 0.72; // KALIBRASI IOD BARU
                     
                     if (Array.isArray(result.anomalies)) {
                         result.anomalies = result.anomalies.map(function(val) {
@@ -497,7 +441,7 @@
                             result.status = 'Netral'; result.statusSingkat = 'Netral';
                         }
                     }
-                    result.sumber = 'Open-Meteo (Dikalibrasi +0.36°C ke NOAA)';
+                    result.sumber = 'Open-Meteo (Dikalibrasi +0.72°C ke NOAA)';
                 }
                 return result;
             } catch (e) {
@@ -512,7 +456,7 @@
     console.log(
         '%c✅ patch_nasional_v2.js AKTIF\n' +
         '   Cakupan: NASIONAL-A, B, C | LOGIKA-04, 05 | BUG-02\n' +
-        '   [KALIBRASI] ENSO (+0.13) & IOD (+0.36) Aktif',
+        '   [KALIBRASI] ENSO (-0.07) & IOD (+0.72) Aktif',
         'color:#3b82f6;font-weight:bold;font-size:12px;'
     );
 
