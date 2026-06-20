@@ -1,32 +1,35 @@
 // ============================================================
-//  PATCH: ENSO & IOD — Sumber Resmi NOAA CPC + NOAA PSL
+//  PATCH v3: ENSO & IOD — Sumber Resmi NOAA CPC + NOAA PSL
 //  Gantikan fungsi getENSOAnomaly() dan getIODAnomaly()
 //  di file HTML utama dengan kode ini.
 //
-//  Arsitektur Fallback (3 Lapis):
-//    Layer 1 → NOAA CPC (oni.ascii.txt) / NOAA PSL (DMI)
-//              → Data paling akurat, resmi, update bulanan
-//    Layer 2 → Open-Meteo Marine API (proxy SST)
-//              → Sudah dipakai di kode lama, tetap andal
-//    Layer 3 → Fallback klimatologi statis getFallbackSST()
-//              → Selalu berhasil, tidak perlu internet
+//  Arsitektur Fallback (4 Lapis):
+//    Layer 1a → Proxy Google Apps Script (BARU)
+//               → Server-to-server, bebas CORS, ada caching,
+//                 paling stabil. WAJIB diisi GAS_PROXY_URL
+//                 di bawah agar layer ini aktif.
+//    Layer 1b → Proxy publik AllOrigins
+//               → Cadangan kalau GAS belum di-deploy / gagal
+//    Layer 2  → Open-Meteo Marine API (proxy SST)
+//               → Sudah dipakai di kode lama, tetap andal
+//    Layer 3  → Fallback klimatologi statis getFallbackSST()
+//               → Selalu berhasil, tidak perlu internet
 //
-//  CATATAN CORS:
-//    NOAA CPC & PSL tidak mengizinkan fetch langsung dari
-//    browser (CORS blocked). Solusinya menggunakan proxy
-//    publik AllOrigins. Jika AllOrigins juga gagal, sistem
-//    otomatis turun ke Layer 2 (Open-Meteo).
-// ============================================================
-
-// ── KONSTANTA URL ──────────────────────────────────────────
-//
-//  [FIX v2] Dibungkus IIFE untuk mencegah `const NAMA_BULAN` bentrok
-//  dengan deklarasi lain di scope global. Fungsi yang dibutuhkan
-//  diekspos via window: getENSOAnomaly, getIODAnomaly, updateENSOIODStatus.
+//  CARA AKTIFKAN LAYER 1a (Apps Script):
+//    1. Deploy file apps_script_noaa_proxy.gs sebagai Web App
+//       (lihat instruksi lengkap di header file tersebut)
+//    2. Copy URL yang berakhiran "/exec"
+//    3. Tempel ke konstanta GAS_PROXY_URL di bawah
+//    Jika dibiarkan kosong, sistem otomatis lewati Layer 1a
+//    dan langsung coba Layer 1b (AllOrigins).
 // ============================================================
 
 (function () {
     'use strict';
+
+// ── ISI URL DEPLOYMENT APPS SCRIPT ANDA DI SINI ────────────
+// Contoh: 'https://script.google.com/macros/s/AKfycby.../exec'
+const GAS_PROXY_URL = 'https://script.google.com/macros/s/AKfycbz9oRwYDHZW7IXJ2Bdjc7uJsr17Ez-ed7j_LDI7S_YzXnFuXHuzIRwPD3CVd2ZAhTt9Mg/exec'; // <-- tempel URL /exec di sini
 
 const NOAA_ONI_URL  = 'https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt';
 const NOAA_DMI_URL  = 'https://psl.noaa.gov/gcos_wgsp/Timeseries/Data/dmi.had.long.data';
@@ -39,25 +42,24 @@ const NAMA_BULAN = [
 ];
 
 // ── MAPPING MUSIM 3-BULANAN → INDEKS BULAN TENGAH ─────────
-// Dipakai untuk parsing kolom "SEAS" di oni.ascii.txt
-// Contoh: "DJF" = Des-Jan-Feb → bulan tengah = Januari (0)
 const SEAS_TO_MONTH = {
     DJF:0, JFM:1, FMA:2, MAM:3, AMJ:4, MJJ:5,
     JJA:6, JAS:7, ASO:8, SON:9, OND:10, NDJ:11
 };
 
 // ============================================================
-//  FUNGSI BANTU: Fetch dengan proxy AllOrigins + timeout
+//  FUNGSI BANTU: Fetch lewat proxy Apps Script (Layer 1a)
 // ============================================================
-async function fetchViaProxy(url, timeoutMs = 10000) {
+async function fetchViaGAS(url, timeoutMs = 10000) {
+    if (!GAS_PROXY_URL) throw new Error('GAS_PROXY_URL belum diisi');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const proxyUrl = PROXY_BASE + encodeURIComponent(url);
+        const proxyUrl = GAS_PROXY_URL + '?url=' + encodeURIComponent(url);
         const res = await fetch(proxyUrl, { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        // AllOrigins membungkus teks di dalam json.contents
+        if (json.error) throw new Error(json.error);
         return json.contents || '';
     } finally {
         clearTimeout(timer);
@@ -65,21 +67,52 @@ async function fetchViaProxy(url, timeoutMs = 10000) {
 }
 
 // ============================================================
+//  FUNGSI BANTU: Fetch lewat AllOrigins (Layer 1b / cadangan)
+// ============================================================
+async function fetchViaAllOrigins(url, timeoutMs = 10000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const proxyUrl = PROXY_BASE + encodeURIComponent(url);
+        const res = await fetch(proxyUrl, { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        return json.contents || '';
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+// ============================================================
+//  FUNGSI UTAMA PROXY: coba GAS dulu, kalau gagal coba AllOrigins
+//  Dipakai oleh getENSOAnomaly() dan getIODAnomaly() di Layer 1
+// ============================================================
+async function fetchViaProxy(url, timeoutMs = 10000) {
+    // Layer 1a: Apps Script (kalau sudah dikonfigurasi)
+    if (GAS_PROXY_URL) {
+        try {
+            const teks = await fetchViaGAS(url, timeoutMs);
+            if (teks && teks.length >= 50) {
+                console.log('✅ Diambil via proxy Apps Script');
+                return teks;
+            }
+        } catch (errGAS) {
+            console.warn('⚠️ Proxy Apps Script gagal:', errGAS.message, '— coba AllOrigins...');
+        }
+    }
+
+    // Layer 1b: AllOrigins (cadangan)
+    return await fetchViaAllOrigins(url, timeoutMs);
+}
+
+// ============================================================
 //  PARSER: oni.ascii.txt → array anomali bulanan
-//
-//  Format file:
-//    SEAS YR   TOTAL  ANOM
-//    DJF  1950  24.73  -1.53
-//    ...
-//
-//  Output: array objek { year, month (0-based), oni }
 // ============================================================
 function parseONI(teks) {
     const baris = teks.trim().split('\n');
     const hasil = [];
     for (const b of baris) {
         const kolom = b.trim().split(/\s+/);
-        // Baris header: kolom[0] = 'SEAS', lewati
         if (!kolom[0] || kolom[0] === 'SEAS') continue;
         const seas  = kolom[0];
         const year  = parseInt(kolom[1]);
@@ -93,12 +126,6 @@ function parseONI(teks) {
 
 // ============================================================
 //  PARSER: dmi.had.long.data → array anomali DMI bulanan
-//
-//  Format file (kolom spasi):
-//    YEAR  JAN   FEB   MAR  ... DES
-//    1870  -0.04 -0.12 ...
-//    ...
-//    -999 atau -99.9 = missing value
 // ============================================================
 function parseDMI(teks) {
     const baris = teks.trim().split('\n');
@@ -109,7 +136,6 @@ function parseDMI(teks) {
         if (isNaN(year) || year < 1870) continue;
         for (let m = 0; m < 12; m++) {
             const val = parseFloat(kolom[m + 1]);
-            // Abaikan missing value
             if (isNaN(val) || val <= -99) continue;
             hasil.push({ year, month: m, dmi: val });
         }
@@ -130,12 +156,11 @@ function ambilNDataTerakhir(arr, n) {
 function proyeksikanTren(nilaiTerakhir, tren, jumlahBulan = 3, batasMin = -3, batasMax = 3) {
     const hasil = [parseFloat(nilaiTerakhir.toFixed(2))];
     for (let i = 1; i <= jumlahBulan; i++) {
-        // Redaman makin kuat untuk proyeksi lebih jauh
         const redaman = Math.max(0.25, 0.7 - (i * 0.15));
         const tebakan = nilaiTerakhir + (tren * i * redaman);
         hasil.push(parseFloat(Math.max(batasMin, Math.min(batasMax, tebakan)).toFixed(2)));
     }
-    return hasil; // [bulan ini, +1, +2, +3]
+    return hasil;
 }
 
 // ============================================================
@@ -154,8 +179,6 @@ function buatLabelBulan(jumlah = 4) {
 
 // ============================================================
 //  FUNGSI BANTU: Klasifikasi status ENSO dari nilai ONI
-//  Threshold resmi: NOAA CPC (±0.5°C selama ≥5 musim)
-//  Untuk keperluan real-time, cukup cek nilai saat ini
 // ============================================================
 function klasifikasiENSO(oni) {
     let status = 'Netral', intensitas = '';
@@ -177,7 +200,6 @@ function klasifikasiENSO(oni) {
 
 // ============================================================
 //  FUNGSI BANTU: Klasifikasi status IOD dari nilai DMI
-//  Threshold: ±0.4°C (standar NOAA PSL / JAMSTEC)
 // ============================================================
 function klasifikasiIOD(dmi) {
     let status = 'Netral', intensitas = '';
@@ -199,7 +221,6 @@ function klasifikasiIOD(dmi) {
 
 // ============================================================
 //  FALLBACK LAYER 2: Hitung ONI dari SST Open-Meteo
-//  (logika lama dipertahankan sebagai cadangan)
 // ============================================================
 async function getENSOViaOpenMeteo() {
     const BASELINE_NINO34 = (() => {
@@ -213,7 +234,7 @@ async function getENSOViaOpenMeteo() {
     const promises = [];
     for (let i = 5; i >= 0; i--) {
         const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-        promises.push(getNOAASST(0, -144.5, d)); // Titik Nino3.4
+        promises.push(getNOAASST(0, -144.5, d));
     }
     const hasil = await Promise.all(promises);
     const anomali = hasil.map(s => parseFloat(((s ?? BASELINE_NINO34) - BASELINE_NINO34).toFixed(2)));
@@ -282,12 +303,13 @@ async function getIODViaOpenMeteo() {
 
 // ============================================================
 //  FUNGSI UTAMA: getENSOAnomaly()
-//  Layer 1 → NOAA CPC oni.ascii.txt (via AllOrigins proxy)
-//  Layer 2 → Open-Meteo Marine (proxy SST Nino3.4)
-//  Layer 3 → Nilai statis netral
+//  Layer 1a → Apps Script proxy
+//  Layer 1b → AllOrigins proxy
+//  Layer 2  → Open-Meteo Marine (proxy SST Nino3.4)
+//  Layer 3  → Nilai statis netral
 // ============================================================
 async function getENSOAnomaly() {
-    // ── LAYER 1: NOAA CPC ──────────────────────────────────
+    // ── LAYER 1: NOAA CPC (lewat proxy GAS/AllOrigins) ──────
     try {
         const teks  = await fetchViaProxy(NOAA_ONI_URL, 12000);
         if (!teks || teks.length < 100) throw new Error('Data NOAA CPC kosong');
@@ -295,14 +317,11 @@ async function getENSOAnomaly() {
         const data  = parseONI(teks);
         if (data.length === 0) throw new Error('Parser ONI gagal');
 
-        // Ambil 6 bulan terakhir untuk hitung tren
         const enam = ambilNDataTerakhir(data, 6);
         const oniArr = enam.map(d => d.oni);
 
-        // ONI resmi = rata-rata 3-bulan terakhir
         const oni3  = (oniArr[3] + oniArr[4] + oniArr[5]) / 3;
 
-        // Hitung tren linear dari 6 bulan
         let trenTotal = 0;
         for (let i = 1; i < oniArr.length; i++) trenTotal += oniArr[i] - oniArr[i-1];
         const tren = trenTotal / (oniArr.length - 1);
@@ -323,7 +342,7 @@ async function getENSOAnomaly() {
             sumber: 'NOAA CPC (resmi)'
         };
     } catch (err1) {
-        console.warn('⚠️ NOAA CPC gagal:', err1.message, '— beralih ke Open-Meteo...');
+        console.warn('⚠️ NOAA CPC gagal total:', err1.message, '— beralih ke Open-Meteo...');
     }
 
     // ── LAYER 2: Open-Meteo ────────────────────────────────
@@ -351,12 +370,13 @@ async function getENSOAnomaly() {
 
 // ============================================================
 //  FUNGSI UTAMA: getIODAnomaly()
-//  Layer 1 → NOAA PSL dmi.had.long.data (via AllOrigins proxy)
-//  Layer 2 → Open-Meteo Marine (proxy SST DMI)
-//  Layer 3 → Nilai statis netral
+//  Layer 1a → Apps Script proxy
+//  Layer 1b → AllOrigins proxy
+//  Layer 2  → Open-Meteo Marine (proxy SST DMI)
+//  Layer 3  → Nilai statis netral
 // ============================================================
 async function getIODAnomaly() {
-    // ── LAYER 1: NOAA PSL ──────────────────────────────────
+    // ── LAYER 1: NOAA PSL (lewat proxy GAS/AllOrigins) ──────
     try {
         const teks = await fetchViaProxy(NOAA_DMI_URL, 12000);
         if (!teks || teks.length < 100) throw new Error('Data NOAA PSL DMI kosong');
@@ -364,14 +384,11 @@ async function getIODAnomaly() {
         const data = parseDMI(teks);
         if (data.length === 0) throw new Error('Parser DMI gagal');
 
-        // Ambil 6 bulan terakhir
         const enam   = ambilNDataTerakhir(data, 6);
         const dmiArr = enam.map(d => d.dmi);
 
-        // DMI resmi = rata-rata 3-bulan terakhir (running mean)
         const dmi3  = (dmiArr[3] + dmiArr[4] + dmiArr[5]) / 3;
 
-        // Hitung tren linear
         let trenTotal = 0;
         for (let i = 1; i < dmiArr.length; i++) trenTotal += dmiArr[i] - dmiArr[i-1];
         const tren = trenTotal / (dmiArr.length - 1);
@@ -392,7 +409,7 @@ async function getIODAnomaly() {
             sumber: 'NOAA PSL (resmi)'
         };
     } catch (err1) {
-        console.warn('⚠️ NOAA PSL DMI gagal:', err1.message, '— beralih ke Open-Meteo...');
+        console.warn('⚠️ NOAA PSL DMI gagal total:', err1.message, '— beralih ke Open-Meteo...');
     }
 
     // ── LAYER 2: Open-Meteo ────────────────────────────────
@@ -446,16 +463,13 @@ function updateENSOIODStatus(enso, iod) {
 }
 
     // ── EKSPOS KE WINDOW ──────────────────────────────────────
-    // Hanya 3 fungsi ini yang dipakai dari luar (index.html).
-    // Semua helper (parseONI, parseDMI, proyeksikanTren, dsb.)
-    // tetap privat dalam IIFE agar tidak mencemari global scope.
     window.getENSOAnomaly       = getENSOAnomaly;
     window.getIODAnomaly        = getIODAnomaly;
     window.updateENSOIODStatus  = updateENSOIODStatus;
 
     console.log(
-        '%c✅ patch_enso_iod_noaa.js v2 aktif (IIFE — tidak cemari global scope)',
+        '%c✅ patch_enso_iod_noaa.js v3 aktif (proxy Apps Script + AllOrigins + Open-Meteo)',
         'color:#38b6ff; font-weight:bold;'
     );
 
-})(); // IIFE — tidak mencemari global scope
+})();
