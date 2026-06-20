@@ -356,7 +356,13 @@
 
         function proyeksiTren(nilai, tren, n, min, max) {
             var arr = [];
-            for (var i = 0; i < n; i++) arr.push(Math.max(min, Math.min(max, parseFloat((nilai + tren * (i + 1)).toFixed(2)))));
+            var trenTeredam = tren; 
+            for (var i = 0; i < n; i++) {
+                // Redam kekuatan tren 30% setiap bulan agar tidak meroket
+                trenTeredam = trenTeredam * 0.7; 
+                nilai = nilai + trenTeredam;
+                arr.push(Math.max(min, Math.min(max, parseFloat(nilai.toFixed(2)))));
+            }
             arr.unshift(parseFloat(nilai.toFixed(2)));
             return arr;
         }
@@ -471,15 +477,18 @@
                 
                 // Deteksi kebal: Cari kata "open" dan "meteo" di sumber
                 if (sumberTeks.includes('open') && sumberTeks.includes('meteo')) {
-                    var OFFSET_DMI = 0.36; // Kalibrasi IOD agar menyamai NOAA
+                    var OFFSET_DMI = 0.36; 
                     
                     if (Array.isArray(result.anomalies)) {
                         result.anomalies = result.anomalies.map(function(val) {
-                            return parseFloat((val + OFFSET_DMI).toFixed(2));
+                            return parseFloat((parseFloat(val) + OFFSET_DMI).toFixed(2));
                         });
                     }
-                    if (typeof result.latestAnomaly === 'number') {
-                        result.latestAnomaly = parseFloat((result.latestAnomaly + OFFSET_DMI).toFixed(2));
+                    
+                    // Hapus pengecekan 'number' yang ketat, paksa jadi Float
+                    var currentDMI = parseFloat(result.latestAnomaly);
+                    if (!isNaN(currentDMI)) {
+                        result.latestAnomaly = parseFloat((currentDMI + OFFSET_DMI).toFixed(2));
                         if (result.latestAnomaly >= 0.4) {
                             result.status = 'IOD Positif'; result.statusSingkat = 'IOD+';
                         } else if (result.latestAnomaly <= -0.4) {
