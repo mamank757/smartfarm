@@ -6,7 +6,7 @@
     'use strict';
 
     // ⚠️ MASUKKAN URL WEB APP GAS BAPAK DI SINI ⚠️
-    const GAS_PROXY_URL = "https://script.google.com/macros/s/AKfycbwIrn5o68dJqigl6F8iuAdr1j6hjeZCGdHV5QAPIiOfZgKNYOs8QUIQ7hOkLwx-oc8YrA/exec";
+    const GAS_PROXY_URL = "https://script.google.com/macros/s/AKfycbwqlHXk7VYAoCoQtpF0WCjikJ1r9HlZKIrs-_4qQZDxM1LQjVkYDpxv5AhuX1Ml2AYrOw/exec";
 
     let _gasProxyCache = null;
     let _gasProxyPromise = null;
