@@ -60,7 +60,7 @@
             // --------------------------------------------------
             // LAYER 1: BoM Australia (PRIORITAS UTAMA)
             // --------------------------------------------------
-            if (GAS_BOM_URL && GAS_BOM_URL !== 'URL_GAS_BOM_ANDA_DI_SINI') {
+            if (GAS_BOM_URL && GAS_BOM_URL !== 'https://script.google.com/macros/s/AKfycbwq-j1TsOBFCONu6AzAmfRmaI-i6aUkRMXNE4Lbasvwg1S9YqE72zZjoflBtHxOn9BO9Q/exec') {
                 try {
                     const res = await fetch(GAS_BOM_URL);
                     const json = await res.json();
@@ -90,7 +90,7 @@
             // --------------------------------------------------
             // LAYER 2: NOAA via GAS (CADANGAN 1) — tidak diubah
             // --------------------------------------------------
-            if (GAS_NOAA_URL && GAS_NOAA_URL !== 'URL_GAS_NOAA_ANDA_DI_SINI') {
+            if (GAS_NOAA_URL && GAS_NOAA_URL !== 'https://script.google.com/macros/s/AKfycbz9oRwYDHZW7IXJ2Bdjc7uJsr17Ez-ed7j_LDI7S_YzXnFuXHuzIRwPD3CVd2ZAhTt9Mg/exec') {
                 try {
                     const res = await fetch(GAS_NOAA_URL);
                     const json = await res.json();
