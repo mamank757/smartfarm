@@ -2854,28 +2854,7 @@ if (!document.getElementById('appMessageStyle')) {
     document.head.appendChild(style);
 }
 
-// Letakkan di luar fungsi, sejajar dengan fungsi-fungsi lainnya
-function isWilayahSulsel(lat, lon) {
-    return lat >= -8.0 && lat <= -1.5 && lon >= 119.0 && lon <= 122.5;
-}
-        // Fungsi bantu: resize & center-crop foto ke ukuran 640x640
-        function resizeTo640(img) {
-            const TARGET = 640;
-            const canvas = document.createElement('canvas');
-            canvas.width  = TARGET;
-            canvas.height = TARGET;
-            const ctx = canvas.getContext('2d');
 
-            // Hitung area crop terpusat (center-crop) agar proporsional
-            const srcSize = Math.min(img.width, img.height);
-            const srcX    = (img.width  - srcSize) / 2;
-            const srcY    = (img.height - srcSize) / 2;
-
-            // Sedikit peningkatan kontras agar AI lebih mudah membaca
-            ctx.filter = 'brightness(1.02) contrast(1.08)';
-            ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, TARGET, TARGET);
-            return canvas;
-        }
 
         function handleFile(event) {
     const file = event.target.files[0];
@@ -3746,68 +3725,7 @@ function loadSSTCache(prefix, lat, lon) {
     }
 }
 
-        function getFallbackSST(lat, lon, date) {
-    // Baseline SST klimatologi bulanan berdasarkan lokasi perairan
-    // Sumber:
-    //   Selat Makassar: Kunarso et al. (2022), Buletin Oseanografi Marina
-    //     — Musim Barat: 27.56–30.77°C | Musim Timur: 24.31–30.12°C
-    //   Teluk Bone: Rosalina et al. (2023), Jurnal Kelautan UNS
-    //     — Suhu ideal ikan pelagis: 27.9–28.2°C
-    //   Upwelling Selat Makassar: puncak Agustus SST turun ~26.31°C
-    //     (Kunarso et al., 2022)
-
-    const bulan = date.getMonth(); // 0 = Januari, 7 = Agustus
-
-    // Tentukan apakah titik ini lebih dekat ke Teluk Bone atau Selat Makassar
-    // Selat Makassar: lon < 119.5 | Teluk Bone: lon >= 119.5
-    const isSelat = lon < 119.5;
-
-    if (isSelat) {
-        // ── SELAT MAKASSAR ──
-        // Musim Barat (Nov–Mar): hangat 28.5–29.5°C
-        // Musim Pancaroba 1 (Apr–Mei): peralihan, mulai turun
-        // Musim Timur (Jun–Okt): upwelling, dingin 26.3–28.0°C
-        // Puncak upwelling = Agustus (bulan 7)
-        const baselineSelat = [
-            29.2, // Jan — Musim Barat, hangat
-            29.0, // Feb
-            28.8, // Mar
-            28.5, // Apr — Pancaroba 1
-            28.0, // Mei — mulai dingin
-            27.2, // Jun — upwelling mulai
-            26.8, // Jul — upwelling intensif
-            26.3, // Agu — PUNCAK UPWELLING (26.31°C, Kunarso 2022)
-            26.9, // Sep — upwelling mereda
-            27.5, // Okt — transisi
-            28.3, // Nov — Musim Barat mulai
-            29.0  // Des
-        ];
-        return baselineSelat[bulan];
-
-    } else {
-        // ── TELUK BONE ──
-        // Perairan semi-tertutup, lebih stabil dari Selat Makassar
-        // Upwelling lebih lemah karena morfologi teluk
-        // Sumber: Rosalina et al. (2023), rata-rata 27.9–28.2°C
-        const baselineBone = [
-            29.0, // Jan
-            28.8, // Feb
-            28.6, // Mar
-            28.4, // Apr
-            28.0, // Mei
-            27.5, // Jun — upwelling lemah mulai
-            27.2, // Jul
-            27.0, // Agu — puncak upwelling lokal (lebih hangat dari Selat)
-            27.3, // Sep
-            27.8, // Okt
-            28.4, // Nov
-            28.8  // Des
-        ];
-        return baselineBone[bulan];
-    }
-}
-
-        async function getSSTTimeseries(lat, lon, monthsAhead = 3) {
+                async function getSSTTimeseries(lat, lon, monthsAhead = 3) {
             const sstData = [];
             const labels = [];
             const now = new Date();
@@ -3823,144 +3741,6 @@ function loadSSTCache(prefix, lat, lon) {
         }
 
       
-// Fungsi Prediksi Masa Depan SST Lokal (Bone & Makassar) (Optimized)
-async function getLocalSSTTimeseries() {
-    try {
-        // KOREKSI KOORDINAT — titik pantau yang lebih representatif
-        //
-        // Teluk Bone: titik tengah badan teluk (bukan pintu masuk)
-        //   Sumber: Rosalina et al. (2023) — area kajian SPL Teluk Bone
-        const latBone = -4.0;
-        const lonBone = 120.8;
-
-        // Selat Makassar bagian selatan (dekat Sulawesi):
-        //   Sumber: Kunarso et al. (2022) — area kajian upwelling Selat Makassar
-        //   Wilayah I: bagian selatan Pulau Sulawesi
-        const latMks = -4.0;
-        const lonMks = 118.0;
-
-        const bulanNames = [
-            "Jan","Feb","Mar","Apr","Mei","Jun",
-            "Jul","Agu","Sep","Okt","Nov","Des"
-        ];
-
-        // Ambil 4 bulan ke belakang untuk tren yang lebih stabil
-        const promisesBone = [];
-        const promisesMks  = [];
-
-        for (let i = 3; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(1);
-            d.setMonth(d.getMonth() - i);
-            promisesBone.push(getNOAASST(latBone, lonBone, d));
-            promisesMks.push(getNOAASST(latMks,  lonMks,  d));
-        }
-
-        const hasilBone = await Promise.all(promisesBone);
-        const hasilMks  = await Promise.all(promisesMks);
-
-        // Gunakan fallback berbasis baseline klimatologi jika API gagal
-        const now = new Date();
-        const riilBone = hasilBone.map((val, i) => {
-            const d = new Date();
-            d.setMonth(d.getMonth() - (3 - i));
-            return val ?? getFallbackSST(latBone, lonBone, d);
-        });
-        const riilMks = hasilMks.map((val, i) => {
-            const d = new Date();
-            d.setMonth(d.getMonth() - (3 - i));
-            return val ?? getFallbackSST(latMks, lonMks, d);
-        });
-
-        // Hitung tren dengan faktor redaman
-        // (proyeksi SST lokal lebih pendek = redaman lebih kuat)
-        const hitungTren = (data) => (
-            ((data[1] - data[0]) + (data[2] - data[1]) + (data[3] - data[2])) / 3
-        );
-        const trenBone = hitungTren(riilBone);
-        const trenMks  = hitungTren(riilMks);
-
-        const suhuSekarangBone = riilBone[3];
-        const suhuSekarangMks  = riilMks[3];
-
-        const labelsMasaDepan = [];
-        const proyeksiBone    = [];
-        const proyeksiMks     = [];
-
-        for (let i = 0; i <= 3; i++) {
-            const d = new Date();
-            d.setMonth(d.getMonth() + i);
-
-            labelsMasaDepan.push(
-                `${bulanNames[d.getMonth()]} ${d.getFullYear().toString().substring(2)}`
-            );
-
-            // Batas realistis SST perairan Sulsel berdasarkan data klimatologi
-            // Bone:  min 26.5°C (upwelling) — max 30.0°C (musim barat)
-            // Selat: min 25.5°C (upwelling peak) — max 30.5°C (musim barat)
-            proyeksiBone.push(
-                Math.max(26.5, Math.min(30.0,
-                    parseFloat((suhuSekarangBone + (trenBone * i * 0.5)).toFixed(2))
-                ))
-            );
-            proyeksiMks.push(
-                Math.max(25.5, Math.min(30.5,
-                    parseFloat((suhuSekarangMks + (trenMks * i * 0.5)).toFixed(2))
-                ))
-            );
-        }
-
-        // Deteksi kondisi upwelling aktif
-        // Kriteria: SST Selat < 27.5°C di bulan Jun–Okt = upwelling aktif
-        const bulanSekarang = new Date().getMonth(); // 0=Jan, 5=Jun, 9=Okt
-const upwellingAktif = (
-    (suhuSekarangMks < 27.5 || suhuSekarangBone < 27.2) &&
-    bulanSekarang >= 5 &&
-    bulanSekarang <= 9
-);
-
-        return {
-            labels: labelsMasaDepan,
-            boneData: proyeksiBone,
-            makassarData: proyeksiMks,
-            upwellingAktif: upwellingAktif,
-            sstBoneTerkini: suhuSekarangBone,
-            sstMksTerkini: suhuSekarangMks
-        };
-
-    } catch (err) {
-        console.error("Gagal prediksi SST Lokal:", err);
-
-        // Fallback berbasis baseline klimatologi (bukan angka tetap)
-        const now = new Date();
-        const fallbackLabels = [];
-        const fallbackBone   = [];
-        const fallbackMks    = [];
-        const bulanNames = [
-            "Jan","Feb","Mar","Apr","Mei","Jun",
-            "Jul","Agu","Sep","Okt","Nov","Des"
-        ];
-
-        for (let i = 0; i <= 3; i++) {
-            const d = new Date();
-            d.setMonth(d.getMonth() + i);
-            fallbackLabels.push(
-                `${bulanNames[d.getMonth()]} ${d.getFullYear().toString().substring(2)}`
-            );
-            fallbackBone.push(getFallbackSST(-4.0, 120.8, d));
-            fallbackMks.push(getFallbackSST(-4.0, 118.0, d));
-        }
-
-        return {
-            labels: fallbackLabels,
-            boneData: fallbackBone,
-            makassarData: fallbackMks,
-            upwellingAktif: false,
-            sstBoneTerkini: fallbackBone[0],
-            sstMksTerkini: fallbackMks[0]
-        };
-    }
-}
 
         function renderMacroChart(labels, ensoData, iodData) {
             const ctx = document.getElementById('macroClimateChart').getContext('2d');
@@ -4042,29 +3822,7 @@ const upwellingAktif = (
             });
         }
 
-        
-        function updateLocalWarning(sstLokal) {
-    const div = document.getElementById('localWarningStatus');
-    if (!div) return;
-
-    const boneSST     = sstLokal.sstBoneTerkini  || sstLokal.boneData?.[0] || "-";
-    const makassarSST = sstLokal.sstMksTerkini   || sstLokal.makassarData?.[0] || "-";
-    const upwelling   = sstLokal.upwellingAktif  || false;
-
-    const warnaUpwelling = upwelling
-        ? 'var(--accent-bwd)'
-        : 'var(--accent-green)';
-
-    div.innerHTML =
-        `Bone: <span style="color:var(--accent-green); font-weight:700;">${boneSST}°C</span>` +
-        ` &nbsp;|&nbsp; ` +
-        `Makassar: <span style="color:#38b6ff; font-weight:700;">${makassarSST}°C</span>` +
-        (upwelling
-            ? ` &nbsp;|&nbsp; <span style="color:${warnaUpwelling}; font-weight:700;">🌊 Upwelling Aktif</span>`
-            : ``);
-}
-
-        async function loadGlobalClimateIndices() {
+                async function loadGlobalClimateIndices() {
     const statusDiv = document.getElementById('ensoStatus');
     if (statusDiv) statusDiv.innerText = "🛰️ Menghubungkan ke NOAA...";
     
@@ -4109,162 +3867,8 @@ const upwellingAktif = (
         }
     }
 }
-        function simpulkanPrediksiIklimTerpadu(enso, iod, sstLokal, isSulsel = false) {
-    // Sembunyikan box jika di luar wilayah Sulsel
-    const terpaduBox = document.getElementById('iklimTerpaduBox');
-    if (!isSulsel) {
-        if (terpaduBox) terpaduBox.innerHTML = '';
-        return;
-    }
-    // Guard: jika tidak ada data SST lokal, gunakan nilai default
-    if (!sstLokal) {
-        sstLokal = {
-            boneData: [28.5, 28.5, 28.5, 28.5],
-            makassarData: [28.5, 28.5, 28.5, 28.5],
-            upwellingAktif: false,
-            sstBoneTerkini: 28.5,
-            sstMksTerkini: 28.5
-        };
-    }
-    const nilaiEnso = enso.anomalies[enso.anomalies.length - 1];
-    const nilaiIod  = iod.anomalies[iod.anomalies.length - 1];
-    const sstBone     = sstLokal.boneData[sstLokal.boneData.length - 1];
-    const sstMakassar = sstLokal.makassarData[sstLokal.makassarData.length - 1];
-
-    // ─────────────────────────────────────────────────────────
-    // KOREKSI ILMIAH — Bobot regional Sulawesi Selatan
-    // Sumber: Hidayat et al. (2016) & Nur'utami & Hidayat (2016)
-    // "Wilayah Sulawesi lebih kuat dipengaruhi ENSO daripada IOD"
-    // Sedangkan Jawa barat lebih dominan dipengaruhi IOD.
-    //
-    // Implementasi: sinyal IOD dilemahkan 40% untuk Sulsel
-    // sebelum masuk ke logika klasifikasi gabungan
-    // ─────────────────────────────────────────────────────────
-    const nilaiEnsoEfektif = nilaiEnso;            // bobot penuh untuk Sulsel
-    const nilaiIodEfektif  = nilaiIod * 0.6;       // direduksi 40% untuk Sulsel
-
-    // Tentukan kondisi dominan berdasarkan bobot efektif
-    const elNino   = nilaiEnsoEfektif > 0.5;
-    const laNina   = nilaiEnsoEfektif < -0.5;
-    const iodPos   = nilaiIodEfektif  > 0.4;
-    const iodNeg   = nilaiIodEfektif  < -0.4;
-    const netral   = !elNino && !laNina;
-
-    // ... SISA KODE if-else TIDAK BERUBAH ...
-    // Ganti semua referensi nilaiEnso → nilaiEnsoEfektif
-    // dan nilaiIod → nilaiIodEfektif di dalam blok if-else di bawah ini
-    // (salin seluruh blok if-else dari kode asli, lalu ganti variabelnya)
-
-            let judulKesimpulan = "";
-            let teksAnalisis = "";
-            let rekomendasiPPL = "";
-            let warnaAksen = "var(--accent-green)";
-
-            if (nilaiEnso > 0.5 && nilaiIod > 0.4) {
-                judulKesimpulan = "🚨 WASPADA RISIKO KEKERINGAN (EL NINO + IOD POSITIF)";
-                warnaAksen = "var(--red-alert)";
-                teksAnalisis = `<ul style="margin: 0 0 12px 0; padding-left: 20px;">
-                    <li><b>🌏 NASIONAL:</b> Kombinasi El Nino (+${nilaiEnso}°C) dan IOD Positif (+${nilaiIod}°C) menekan curah hujan di Indonesia timur.</li>
-                    <li><b>📍 SULSEL:</b> SST Teluk Bone ${sstBone}°C, Selat Makassar ${sstMakassar}°C. Pasokan uap air berkurang, risiko defisit air di lahan sawah beberapa wilayah Sulsel meningkat.</li>
-                </ul>`;
-                rekomendasiPPL = `⚡ <b>SARAN DAN TINDAKAN:</b>
-                <ul style="margin: 5px 0 0 0; padding-left: 20px;">
-                    <li>Potensi mundurnya musim hujan 1-2 bulan</li>
-                    <li>Rekomendasi varietas tahan kering (Inpari 42, Inpari 43)</li>
-                    <li>Alihkan ke palawija jika air terbatas</li>
-                </ul>`;
-            } else if (nilaiEnso > 0.5 && nilaiIod <= 0.4) {
-                judulKesimpulan = "⚠️ WASPADA MUSIM KEMARAU PANJANG (EL NINO MODERAT)";
-                warnaAksen = "var(--accent-soil)";
-                if (sstBone >= 29.0) {
-                    teksAnalisis = `<ul style="margin: 0 0 12px 0; padding-left: 20px;">
-                        <li><b>🌏 NASIONAL:</b> El Nino (+${nilaiEnso}°C) mengurangi curah hujan 20-40% di Indonesia timur.</li>
-                        <li><b>📍 SULSEL:</b> SST Teluk Bone hangat (${sstBone}°C). Masih ada potensi hujan lokal singkat di beberapa wilayah Sulsel.</li>
-                    </ul>`;
-                    rekomendasiPPL = `🌾 <b>SARAN DAN TINDAKAN:</b>
-                    <ul style="margin: 5px 0 0 0; padding-left: 20px;">
-                        <li>Gunakan varietas genjah (Inpari 32, Inpari 42, Cakrabuana)</li>
-                        <li>Terapkan jajar legowo 2:1</li>
-                        <li>Pantau wereng</li>
-                        <li>Optimalisasi irigasi sumur bor</li>
-                    </ul>`;
-                } else {
-                    teksAnalisis = `<ul style="margin: 0 0 12px 0; padding-left: 20px;">
-                        <li><b>🌏 NASIONAL:</b> El Nino (+${nilaiEnso}°C) aktif. Dampak utama pengurangan intensitas hujan.</li>
-                        <li><b>📍 SULSEL:</b> SST Teluk Bone dingin (${sstBone}°C). Pasokan uap air sangat berkurang, risiko defisit air berkepanjangan di beberapa wilayah Sulsel tinggi.</li>
-                    </ul>`;
-                    rekomendasiPPL = `🚜 <b>SARAN DAN TINDAKAN:</b>
-                    <ul style="margin: 5px 0 0 0; padding-left: 20px;">
-                        <li>Jangan paksakan tanam padi jika air tidak cukup</li>
-                        <li>Alihkan ke jagung/kacang tanah/sorgum</li>
-                        <li>Gunakan varietas genjah (Inpari 32, Inpari 42, Cakrabuana)</li>
-                        <li>Gunakan sistem Tapin</li>
-                    </ul>`;
-                }
-            } else if (nilaiEnso < -0.5) {
-                judulKesimpulan = "🌧️ WASPADA RISIKO HUJAN TINGGI & BANJIR (LA NINA)";
-                warnaAksen = "var(--accent-bwd)";
-                teksAnalisis = `<ul style="margin: 0 0 12px 0; padding-left: 20px;">
-                    <li><b>🌏 NASIONAL:</b> La Nina (-${Math.abs(nilaiEnso)}°C) meningkatkan curah hujan 30-50% di Indonesia timur.</li>
-                    <li><b>📍 SULSEL:</b> SST Teluk Bone ${sstBone}°C. Potensi hujan sangat tinggi (40-60% di atas normal), risiko banjir dan genangan di lahan sawah beberapa wilayah Sulsel meningkat.</li>
-                </ul>`;
-                rekomendasiPPL = `🌊 <b>SARAN DAN TINDAKAN:</b>
-                <ul style="margin: 5px 0 0 0; padding-left: 20px;">
-                    <li>Perbaiki drainase lahan</li>
-                    <li>Gunakan varietas tahan rendaman (Inpari 30, Inpari 33)</li>
-                    <li>Kurangi Urea 25%</li>
-                    <li>Waspada Blast dan Sheath Blight</li>
-                    <li>Siapkan pompa air portable</li>
-                </ul>`;
-            } else if (nilaiEnso <= 0.5 && nilaiEnso >= -0.5 && nilaiIod <= 0.4 && nilaiIod >= -0.4) {
-                judulKesimpulan = "✅ KONDISI IKLIM NORMAL / NETRAL";
-                warnaAksen = "var(--accent-green)";
-                teksAnalisis = `<ul style="margin: 0 0 12px 0; padding-left: 20px;">
-                    <li><b>🌏 NASIONAL:</b> ENSO (${nilaiEnso > 0 ? '+' : ''}${nilaiEnso}°C) dan IOD (${nilaiIod > 0 ? '+' : ''}${nilaiIod}°C) netral. Tidak ada anomali iklim signifikan.</li>
-                    <li><b>📍 SULSEL:</b> SST Teluk Bone ${sstBone}°C, Selat Makassar ${sstMakassar}°C normal. Pola hujan mengikuti kalender tanam.</li>
-                </ul>`;
-                rekomendasiPPL = `🌟 <b>SARAN DAN TINDAKAN:</b>
-                <ul style="margin: 5px 0 0 0; padding-left: 20px;">
-                    <li>Lanjutkan pola tanam sesuai kalender</li>
-                    <li>Gunakan varietas unggul (Ciherang, Mekongga, Inpari 32)</li>
-                    <li>Pemupukan berimbang sesuai BWD</li>
-                    <li>Pantau OPT rutin tiap minggu</li>
-                </ul>`;
-            } else {
-                let ensoStatus = nilaiEnso > 0.5 ? "El Nino lemah" : (nilaiEnso < -0.5 ? "La Nina lemah" : "netral");
-                let iodStatus = nilaiIod > 0.4 ? "IOD Positif" : (nilaiIod < -0.4 ? "IOD Negatif" : "netral");
-                judulKesimpulan = "⚠️ KONDISI IKLIM TRANSISI / CAMPURAN";
-                warnaAksen = "var(--accent-soil)";
-                teksAnalisis = `<ul style="margin: 0 0 12px 0; padding-left: 20px;">
-                    <li><b>🌏 NASIONAL:</b> ENSO ${ensoStatus} (${nilaiEnso > 0 ? '+' : ''}${nilaiEnso}°C) dengan IOD ${iodStatus} (${nilaiIod > 0 ? '+' : ''}${nilaiIod}°C). Pola hujan tidak menentu.</li>
-                    <li><b>📍 SULSEL:</b> SST Teluk Bone ${sstBone}°C, Selat Makassar ${sstMakassar}°C. Beberapa wilayah Sulsel berisiko kekeringan dan banjir lokal dalam satu musim.</li>
-                </ul>`;
-                rekomendasiPPL = `🌾 <b>SARAN DAN TINDAKAN:</b>
-                <ul style="margin: 5px 0 0 0; padding-left: 20px;">
-                    <li>Monitor curah hujan mingguan</li>
-                    <li>Siapkan strategi adaptasi ganda</li>
-                    <li>Sosialisasi fleksibilitas jadwal tanam</li>
-                    <li>Dokumentasikan ke Dinas TPHP</li>
-                    <li>Gunakan varietas adaptif (Inpari 42 untuk kering / Inpari 33 untuk basah)</li>
-                </ul>`;
-            }
-            
-            if (terpaduBox) {
-                terpaduBox.className = "info-box";
-                terpaduBox.style.cssText = `margin-top: 25px; margin-bottom: 10px; padding: 18px; background: rgba(13, 20, 38, 0.85); border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); border-left: 5px solid ${warnaAksen};`;
-                terpaduBox.innerHTML = `
-                    <div style="font-size: 0.85rem; font-weight: 800; color: ${warnaAksen}; letter-spacing: 0.75px; margin-bottom: 8px;">
-                        🔮 KESIMPULAN PREDIKSI IKLIM TERPADU
-                    </div>
-                    <h4 style="margin: 0 0 10px 0; font-size: 1.05rem; color: #fff; font-weight: 700;">${judulKesimpulan}</h4>
-                    <div style="font-size: 0.8rem; line-height: 1.55; color: #cbd5e1;">${teksAnalisis}</div>
-                    <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 10px; font-size: 0.8rem; color: #f8fafc; border-left: 3px solid ${warnaAksen};">
-                        ${rekomendasiPPL}
-                    </div>`;
-            }
-        }
-
-        function showSSTRekomendasi(sstLokal) {
+        
+    function showSSTRekomendasi(sstLokal) {
     const boneSST = parseFloat(
         sstLokal.sstBoneTerkini ?? sstLokal.boneData?.[0]
     );
@@ -6211,7 +5815,7 @@ async function cariHargaPestisida() {
 <script src="patch_cuaca_langsung.js"></script>
     <script src="patch_peringatan_ekstrem.js"></script>
 <script src="patch_peta_koordinat.js"></script>
-<script src="patch_kalender_google.js"></script>
+
 <script>
 // ================================================================
 //  GUARD: aktifkanGPS — pisahkan antara mode cuaca dan ukur lahan
@@ -6259,7 +5863,6 @@ async function cariHargaPestisida() {
     console.log('✅ [guard-gps] aktifkanGPS sudah dipisahkan: cuaca vs ukur lahan.');
 })();
     </script> 
-    <script src="patch_enso_iod_noaa1.js"></script>
     <script src="patch_enso_iod_noaa.js"></script>
     <script src="patch_perbaikan_ilmiah.js"></script>
     <script src="patch_kuota_harian.js"></script>
@@ -6468,6 +6071,6 @@ async function cariHargaPestisida() {
     
    <script src="patch_nasional.js"></script> 
     <script src="patch_nasional_v4.js"></script>
-    
+   <script src="patch_iklim_terpadu_v1.js"></script>
 </body>
 </html>
