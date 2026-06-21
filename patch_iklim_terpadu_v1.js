@@ -57,10 +57,13 @@
      *   upwelling   : fungsi cek upwelling (bulan, sst1, sst2)
      *   labelUpwelling : label singkat jika upwelling aktif
      */
+    // Urutan zona PENTING: yang lebih spesifik didahulukan
+    // agar deteksi berhenti di zona pertama yang cocok.
     var ZONA_PERAIRAN = [
         {
+            // FIX: lonMax 122.5 → 124.0 agar Kendari (122.51) masuk
             namaWilayah: 'Sulawesi Selatan',
-            latMin: -7.5, latMax: -1.0, lonMin: 118.0, lonMax: 122.5,
+            latMin: -7.5, latMax: -1.0, lonMin: 118.0, lonMax: 124.0,
             nama1: 'Teluk Bone', nama2: 'Selat Makassar',
             coord1: { lat: -4.0, lon: 120.8 },
             coord2: { lat: -4.0, lon: 118.0 },
@@ -69,6 +72,32 @@
             batasSst: { min1: 26.5, max1: 30.0, min2: 25.5, max2: 30.5 },
             upwelling: function (b, s1, s2) { return b >= 5 && b <= 9 && (s2 < 27.5 || s1 < 27.2); },
             labelUpwelling: 'Upwelling Selat Makassar'
+        },
+        {
+            // BARU: Sulawesi Tengah — mencakup Palu, Luwuk, Teluk Tomini
+            namaWilayah: 'Sulawesi Tengah',
+            latMin: -3.5, latMax: 0.5, lonMin: 119.0, lonMax: 124.5,
+            nama1: 'Teluk Tomini', nama2: 'Laut Banda Barat',
+            coord1: { lat: -0.5, lon: 122.0 },
+            coord2: { lat: -2.0, lon: 123.0 },
+            baseline1: [29.3,29.1,29.2,29.3,29.2,28.8,28.5,28.3,28.5,29.0,29.2,29.3],
+            baseline2: [29.2,29.0,29.2,29.0,28.7,28.2,27.8,27.5,27.8,28.3,28.8,29.1],
+            batasSst: { min1: 27.5, max1: 30.5, min2: 27.0, max2: 30.5 },
+            upwelling: function () { return false; },
+            labelUpwelling: ''
+        },
+        {
+            // BARU: Maluku — mencakup Ambon, Laut Banda, Laut Seram, Maluku Utara
+            namaWilayah: 'Maluku',
+            latMin: -6.0, latMax: 2.0, lonMin: 126.0, lonMax: 132.0,
+            nama1: 'Laut Banda', nama2: 'Laut Seram',
+            coord1: { lat: -4.5, lon: 129.0 },
+            coord2: { lat: -3.0, lon: 129.5 },
+            baseline1: [29.5,29.3,29.5,29.2,28.8,28.0,27.3,27.0,27.3,28.0,28.8,29.3],
+            baseline2: [29.3,29.1,29.3,29.0,28.6,27.8,27.2,27.0,27.2,27.8,28.5,29.1],
+            batasSst: { min1: 26.5, max1: 30.5, min2: 26.5, max2: 30.5 },
+            upwelling: function (b, s1, s2) { return b >= 5 && b <= 9 && s1 < 28.0; },
+            labelUpwelling: 'Upwelling Laut Banda'
         },
         {
             namaWilayah: 'Jawa',
@@ -95,8 +124,9 @@
             labelUpwelling: ''
         },
         {
+            // FIX: lonMax 120.0 → 119.0 agar Palu (lon 119.87) tidak salah masuk Kalimantan
             namaWilayah: 'Kalimantan',
-            latMin: -4.0, latMax: 7.0, lonMin: 107.0, lonMax: 120.0,
+            latMin: -4.0, latMax: 7.0, lonMin: 107.0, lonMax: 119.0,
             nama1: 'Laut Natuna', nama2: 'Selat Karimata',
             coord1: { lat: 4.0, lon: 108.5 },
             coord2: { lat: -1.5, lon: 108.5 },
@@ -109,7 +139,7 @@
         {
             namaWilayah: 'Sulawesi Utara & Maluku Utara',
             latMin: -1.0, latMax: 4.0, lonMin: 121.0, lonMax: 130.0,
-            nama1: 'Laut Sulawesi', nama2: 'Laut Maluku',
+            nama1: 'Laut Sulawesi', nama2: 'Laut Halmahera',
             coord1: { lat: 2.5, lon: 123.5 },
             coord2: { lat: 0.5, lon: 127.0 },
             baseline1: [29.2,29.0,29.1,29.3,29.5,29.3,29.0,28.8,29.0,29.2,29.3,29.2],
@@ -133,7 +163,7 @@
         {
             namaWilayah: 'Nusa Tenggara',
             latMin: -11.0, latMax: -7.5, lonMin: 115.5, lonMax: 125.5,
-            nama1: 'Laut Flores', nama2: 'Laut Banda',
+            nama1: 'Laut Flores', nama2: 'Laut Banda Selatan',
             coord1: { lat: -8.5, lon: 120.5 },
             coord2: { lat: -7.0, lon: 127.5 },
             baseline1: [29.5,29.3,29.5,29.0,28.5,27.8,27.0,26.5,27.0,27.8,28.5,29.2],
@@ -953,10 +983,11 @@
             '  ║ ✅ [FIX-7] getLocalSSTTimeseries → nama perairan dinamis\n' +
             '  ║ ✅ [FIX-8] showSSTRekomendasi → tidak hardcode Selat Makassar\n' +
             '  ║            threshold & nama perairan per zona GPS\n' +
-            '  ╠══ WILAYAH YANG KINI DIDUKUNG ════════════╣\n' +
-            '  ║   Sulawesi Selatan · Jawa · Sumatera\n' +
-            '  ║   Kalimantan · Sulawesi Utara/Maluku Utara\n' +
-            '  ║   Papua · Nusa Tenggara\n' +
+            '  ╠══ WILAYAH YANG KINI DIDUKUNG (9 ZONA) ══╣\n' +
+            '  ║   Sulawesi Selatan · Sulawesi Tengah (BARU)\n' +
+            '  ║   Maluku (BARU) · Jawa · Sumatera\n' +
+            '  ║   Kalimantan · Sulawesi Utara · Papua\n' +
+            '  ║   Nusa Tenggara\n' +
             '  ╚═══════════════════════════════════════════╝',
             'color:#10b981;font-weight:bold;'
         );
