@@ -1,40 +1,26 @@
 /**
  * ============================================================
  *  patch_riwayat_analisis.js
- *  Versi: 1.0 — Pencatatan Riwayat Otomatis Semua Hasil Analisis
+ *  Versi: 2.0 — Fix: renderSemuaRisikoGPS tidak di-export ke window
  * ------------------------------------------------------------
- *  FUNGSI UTAMA:
- *  Patch ini melengkapi sistem riwayat yang sudah ada di
- *  patch_smartfarming.js & patch_riwayat_tambahan.js dengan
- *  menambahkan pencatatan otomatis untuk 3 mode yang BELUM
- *  dicatat sama sekali:
+ *  PERUBAHAN v2.0 vs v1.0:
  *
- *  [A] Mode JADWAL TANAM (prosesJadwalOtomatis)
- *      – Mencatat musim utama & gadu, tanggal tanam, varietas,
- *        zona iklim, dan kondisi ENSO/IOD.
- *      – Dipicu setelah teksEl.innerHTML berisi output renderOutput.
+ *  [FIX-KRITIS] pasangRiwayatRisikoIklim() sebelumnya memanggil
+ *   tunggu('renderSemuaRisikoGPS', ...) yang selalu timeout karena
+ *   fungsi itu private di dalam IIFE patch_cuaca_langsung.js —
+ *   tidak pernah di-assign ke window.
  *
- *  [B] Mode CUACA (fetchDataCuaca / renderSemuaRisikoGPS)
- *      – Mencatat kondisi cuaca terkini: suhu, kelembapan, hujan,
- *        angin, dan nama lokasi.
- *      – Dipicu saat data cuaca berhasil dirender.
- *      – (mode 'cuaca' sengaja dikecualikan di patch_smartfarming;
- *        patch ini mengisinya secara eksplisit.)
+ *   Solusi: ganti dengan MutationObserver pada #weatherData.
+ *   Observer mendeteksi kemunculan elemen .info-box-risiko
+ *   (yang dirender oleh renderSemuaRisikoGPS) tanpa perlu
+ *   mengakses fungsi tersebut secara langsung.
+ *   Ini lebih robust: bekerja di semua versi patch cuaca.
  *
- *  [C] Mode RISIKO IKLIM (renderSemuaRisikoGPS)
- *      – Mencatat ringkasan risiko penyakit & hama per sesi
- *        setelah GPS disinkronkan.
- *      – Satu sesi GPS = satu entri riwayat.
+ *  [FIX-MINOR] pasangRiwayatCuaca() sebelumnya wrap window.switchMode
+ *   yang sudah di-wrap oleh patch_cuaca_langsung — bisa bentrok.
+ *   Sekarang menggunakan MutationObserver pada #suhuNow saja.
  *
- *  CATATAN ARSITEKTUR:
- *  – Patch ini TIDAK mengubah fungsi asli dengan cara merusak.
- *    Semua pencatatan menggunakan teknik intercept/wrap aman.
- *  – Bergantung pada window.tambahRiwayat dari patch_smartfarming.js.
- *    Jika belum tersedia, patch menunggu via polling.
- *  – Menggunakan debounce & flag one-shot agar riwayat tidak
- *    tercatat ganda dalam satu sesi analisis.
- *
- *  CARA PASANG (urutan wajib):
+ *  CARA PASANG (tidak berubah dari v1.0):
  *    <script src="patch_smartfarming.js"></script>
  *    <script src="patch_riwayat_tambahan.js"></script>
  *    <script src="patch_cuaca_langsung.js"></script>
@@ -42,7 +28,7 @@
  *    <script src="patch_deteksi_musim_v1.js"></script>
  *    <script src="patch_jadwal_manual_trigger.js"></script>
  *    <script src="patch_riwayat_analisis.js"></script>   ← file ini
- *    <script src="patch_perbaikan_kontras.js"></script>
+ *    <script src="patch_iklim_terpadu_v1.js"></script>
  * ============================================================
  */
 
@@ -50,7 +36,7 @@
     'use strict';
 
     /* ─────────────────────────────────────────────────────────
-       HELPER: Tunggu hingga fungsi/window tersedia
+       HELPER: Tunggu hingga fungsi window tersedia
     ───────────────────────────────────────────────────────── */
     function tunggu(namaFn, cb, maxRetry, jedaMs) {
         maxRetry = maxRetry || 60;
@@ -63,9 +49,29 @@
                 cb();
             } else if (n >= maxRetry) {
                 clearInterval(t);
-                console.warn('[patch_riwayat_analisis] Fungsi ' + namaFn + ' tidak ditemukan setelah ' + maxRetry + ' percobaan.');
+                console.warn(
+                    '[patch_riwayat_analisis] Fungsi ' + namaFn +
+                    ' tidak ditemukan setelah ' + maxRetry + ' percobaan.'
+                );
             }
         }, jedaMs);
+    }
+
+    /* ─────────────────────────────────────────────────────────
+       HELPER: Tunggu elemen DOM muncul (polling)
+    ───────────────────────────────────────────────────────── */
+    function tungguEl(id, cb, maxMs) {
+        maxMs = maxMs || 15000;
+        var mulai = Date.now();
+        var t = setInterval(function () {
+            var el = document.getElementById(id);
+            if (el) {
+                clearInterval(t);
+                cb(el);
+            } else if (Date.now() - mulai > maxMs) {
+                clearInterval(t);
+            }
+        }, 300);
     }
 
     /* ─────────────────────────────────────────────────────────
@@ -78,65 +84,26 @@
         return maxLen ? t.substring(0, maxLen) : t;
     }
 
-    /* ─────────────────────────────────────────────────────────
-       HELPER: Ambil nama lahan aktif
-    ───────────────────────────────────────────────────────── */
-    function namaLahanAktif() {
-        try {
-            if (typeof window.getLahanAktif === 'function') {
-                var l = window.getLahanAktif();
-                return l ? l.nama : 'Tidak ada lahan aktif';
-            }
-        } catch (e) {}
-        return 'Tidak ada lahan aktif';
-    }
-
     /* ═══════════════════════════════════════════════════════════
        [A] RIWAYAT JADWAL TANAM
-           Intercept prosesJadwalOtomatis melalui observasi DOM
-           pada #jtoTeks yang diisi oleh renderOutput().
+           Observer pada #jtoTeks — tidak berubah dari v1.0
     ═══════════════════════════════════════════════════════════ */
     function pasangRiwayatJadwalTanam() {
-        /* Strategi: wrap window.prosesJadwalOtomatis tidak bisa
-           langsung karena fungsi itu bersifat lokal (closure)
-           di dalam IIFE patch_jadwal_tanam_otomatis.js.
-           Solusi: observe #jtoTeks dengan MutationObserver,
-           lalu ekstrak data dari DOM yang sudah dirender. */
+        var _sudahCatat = false;
 
-        var _sudahCatat = false;  // flag one-shot per sesi analisis
-
-        /* Reset flag saat tombol ditekan (sesi baru) */
         document.addEventListener('click', function (e) {
             if (e.target && e.target.id === 'btnJadwalOtomatis') {
                 _sudahCatat = false;
             }
         }, true);
 
-        /* Observer pada #jtoTeks */
-        var jtoTeks = document.getElementById('jtoTeks');
-        if (!jtoTeks) {
-            /* jtoTeks belum ada (box belum diinjeksi) — tunggu */
-            var pollingJTO = setInterval(function () {
-                jtoTeks = document.getElementById('jtoTeks');
-                if (jtoTeks) {
-                    clearInterval(pollingJTO);
-                    mulaiObserveJTO(jtoTeks);
-                }
-            }, 500);
-        } else {
-            mulaiObserveJTO(jtoTeks);
-        }
-
         function mulaiObserveJTO(elTarget) {
-            var observer = new MutationObserver(function (mutList) {
-                /* Abaikan jika teks kosong atau sudah dicatat */
+            var observer = new MutationObserver(function () {
                 if (_sudahCatat) return;
                 var html = elTarget.innerHTML || '';
                 if (html.trim() === '') return;
-                /* Abaikan pesan error */
-                if (html.indexOf('Gagal membuat jadwal') !== -1) return;
+                if (html.indexOf('Gagal') !== -1) return;
 
-                /* Beri jeda agar render selesai penuh */
                 setTimeout(function () {
                     if (_sudahCatat) return;
                     catatRiwayatJadwalTanam();
@@ -148,15 +115,9 @@
         }
 
         function catatRiwayatJadwalTanam() {
-            /* Ambil data dari elemen yang dirender renderOutput() */
             var jtoEl = document.getElementById('jtoTeks');
             if (!jtoEl) return;
 
-            /* Ekstrak info zona & ENSO/IOD dari boks pertama */
-            var semuaTeks = jtoEl.innerText || '';
-
-            /* Coba ambil data terstruktur dari window._jtoData
-               (di-set oleh renderOutput: window._jtoData = multiJadwal) */
             var ringkasanMusim = [];
             try {
                 var jtoData = window._jtoData;
@@ -164,7 +125,9 @@
                     jtoData.forEach(function (jadwal) {
                         var rek = jadwal.rekomendasi;
                         var tgl = rek.tglTanam
-                            ? rek.tglTanam.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+                            ? rek.tglTanam.toLocaleDateString('id-ID', {
+                                day: 'numeric', month: 'short', year: 'numeric'
+                              })
                             : '-';
                         ringkasanMusim.push(
                             rek.musimNama + ': ' + tgl +
@@ -174,87 +137,82 @@
                 }
             } catch (e) {}
 
-            /* Fallback: ambil dari teks DOM jika _jtoData kosong */
             if (ringkasanMusim.length === 0) {
-                /* Ambil baris yang mengandung nama musim */
-                semuaTeks.split('\n').forEach(function (baris) {
+                (jtoEl.innerText || '').split('\n').forEach(function (baris) {
                     baris = baris.trim();
-                    if (baris.indexOf('MUSIM') !== -1 || baris.indexOf('Rendeng') !== -1 || baris.indexOf('Gadu') !== -1) {
-                        if (baris.length < 80) ringkasanMusim.push(baris);
+                    if ((baris.indexOf('MUSIM') !== -1 ||
+                         baris.indexOf('Rendeng') !== -1 ||
+                         baris.indexOf('Gadu') !== -1) && baris.length < 80) {
+                        ringkasanMusim.push(baris);
                     }
                 });
             }
 
             var label    = '📅 Jadwal Tanam Otomatis';
-            var ringkasan = ringkasanMusim.length > 0
+            var ringkasan = (ringkasanMusim.length > 0
                 ? ringkasanMusim.join(' | ')
-                : 'Jadwal dibuat berdasarkan data ENSO/IOD & ZOM BMKG lokal.';
-
-            /* Potong agar tidak melebihi 200 karakter */
-            ringkasan = ringkasan.substring(0, 200);
+                : 'Jadwal dibuat berdasarkan data ENSO/IOD & ZOM BMKG lokal.'
+            ).substring(0, 200);
 
             if (typeof window.tambahRiwayat === 'function') {
                 window.tambahRiwayat('jadwaltanam', label, ringkasan);
                 console.log('%c📅 [patch_riwayat_analisis] Riwayat Jadwal Tanam dicatat.', 'color:#06b6d4;font-weight:bold;');
             }
         }
+
+        tungguEl('jtoTeks', mulaiObserveJTO);
     }
 
     /* ═══════════════════════════════════════════════════════════
        [B] RIWAYAT CUACA
-           Intercept melalui MutationObserver pada #suhuNow
-           (elemen yang paling cepat diisi setelah fetch selesai).
+           Observer pada #suhuNow saja — tidak wrap switchMode
+           agar tidak bentrok dengan patch_cuaca_langsung
     ═══════════════════════════════════════════════════════════ */
     function pasangRiwayatCuaca() {
-        var _sudahCatat  = false;
-        var _debounce    = null;
+        var _sudahCatat = false;
+        var _debounce   = null;
+        var _modeTerakhir = '';
 
-        /* Reset flag saat switchMode('cuaca') */
-        var _switchModeAsli = window.switchMode;
-        if (typeof _switchModeAsli === 'function') {
-            window.switchMode = function (mode) {
-                if (mode === 'cuaca') _sudahCatat = false;
-                _switchModeAsli.apply(this, arguments);
-            };
-        }
-
-        /* Tunggu elemen #suhuNow tersedia */
-        var pollingCuaca = setInterval(function () {
-            var suhuEl = document.getElementById('suhuNow');
-            if (suhuEl) {
-                clearInterval(pollingCuaca);
-                mulaiObserveCuaca(suhuEl);
+        /* Deteksi pergantian mode lewat tab-btn klik */
+        document.addEventListener('click', function (e) {
+            if (e.target && e.target.classList.contains('tab-btn')) {
+                /* Reset flag saat user berpindah ke tab cuaca */
+                if (e.target.id === 'tabCuaca') {
+                    _sudahCatat = false;
+                }
             }
-        }, 500);
+        }, true);
 
         function mulaiObserveCuaca(suhuEl) {
             var observer = new MutationObserver(function () {
                 var suhu = (suhuEl.innerText || suhuEl.textContent || '').trim();
-                if (!suhu || suhu === '-' || suhu === '--') return;
+                if (!suhu || suhu === '-' || suhu.indexOf('--') !== -1) return;
                 if (_sudahCatat) return;
 
                 if (_debounce) clearTimeout(_debounce);
                 _debounce = setTimeout(function () {
                     if (_sudahCatat) return;
-                    /* Hanya catat jika mode cuaca aktif */
-                    if (typeof window.currentMode !== 'undefined' && window.currentMode !== 'cuaca') return;
+                    /* Pastikan mode cuaca aktif dari DOM (bukan variabel JS) */
+                    var tabAktif = document.querySelector('.tab-btn.active');
+                    var modeAktif = tabAktif ? tabAktif.id.replace('tab','').toLowerCase() : '';
+                    if (modeAktif !== 'cuaca') return;
+
                     catatRiwayatCuaca();
                     _sudahCatat = true;
-                }, 1200);  /* 1.2s: tunggu semua widget cuaca selesai */
+                }, 1200);
             });
             observer.observe(suhuEl, { childList: true, characterData: true, subtree: true });
             console.log('[patch_riwayat_analisis] Observer Cuaca aktif.');
         }
 
         function catatRiwayatCuaca() {
-            var suhu     = teksEl('suhuNow',     20);
-            var humid    = teksEl('humidityNow', 20);
-            var angin    = teksEl('windNow',     20);
-            var hujan    = teksEl('rainNow',     20);
-            var namaLok  = teksEl('namaLokasiCuacaUI', 40);
+            var suhu    = teksEl('suhuNow',     20);
+            var humid   = teksEl('humidityNow', 20);
+            var angin   = teksEl('windNow',     20);
+            var hujan   = teksEl('rainNow',     20);
+            var namaLok = teksEl('namaLokasiCuacaUI', 40);
 
-            /* Abaikan jika data belum terisi */
-            if (suhu === '-' || suhu === '' || suhu === '--') return;
+            if (!suhu || suhu === '-') return;
 
             var label    = '🌤️ Cuaca — ' + (namaLok !== '-' ? namaLok : 'Lokasi Aktif');
             var ringkasan =
@@ -269,81 +227,126 @@
                 console.log('%c🌤️ [patch_riwayat_analisis] Riwayat Cuaca dicatat.', 'color:#3b82f6;font-weight:bold;');
             }
         }
+
+        tungguEl('suhuNow', mulaiObserveCuaca);
     }
 
     /* ═══════════════════════════════════════════════════════════
-       [C] RIWAYAT RISIKO IKLIM (Penyakit & Hama setelah GPS)
-           Intercept window.renderSemuaRisikoGPS.
+       [C] RIWAYAT RISIKO IKLIM — VERSI BARU v2.0
+           MASALAH LAMA: tunggu('renderSemuaRisikoGPS') selalu
+           timeout karena fungsi itu private di IIFE
+           patch_cuaca_langsung.js — tidak pernah ke window.
+
+           SOLUSI BARU: MutationObserver pada #weatherData.
+           Deteksi kemunculan .info-box-risiko (elemen yang
+           dibuat oleh renderSemuaRisikoGPS) tanpa perlu
+           akses ke fungsi tersebut secara langsung.
     ═══════════════════════════════════════════════════════════ */
     function pasangRiwayatRisikoIklim() {
-        tunggu('renderSemuaRisikoGPS', function () {
+        var _sudahCatat = false;
+        var _debounce   = null;
 
-            var _renderAsli = window.renderSemuaRisikoGPS;
-
-            window.renderSemuaRisikoGPS = function (cur, dp) {
-                /* Jalankan fungsi asli dulu */
-                _renderAsli.apply(this, arguments);
-
-                /* Beri jeda agar DOM penyakit/hama selesai dirender */
-                setTimeout(function () {
-                    catatRiwayatRisiko(cur);
-                }, 1000);
-            };
-
-            console.log('[patch_riwayat_analisis] Intercept renderSemuaRisikoGPS aktif.');
-        });
-    }
-
-    function catatRiwayatRisiko(cur) {
-        /* Kumpulkan semua box risiko yang dirender */
-        var weatherData = document.getElementById('weatherData');
-        if (!weatherData) return;
-
-        /* Ambil data cuaca dasar */
-        var suhu    = cur && cur.temperature_2m    ? cur.temperature_2m + '°C' : '-';
-        var humid   = cur && cur.relative_humidity_2m ? cur.relative_humidity_2m + '%' : '-';
-        var hujan   = cur && cur.rain !== undefined ? cur.rain + ' mm' : '-';
-        var namaLok = teksEl('namaLokasiCuacaUI', 40);
-
-        /* Kumpulkan judul risiko dari info-box yang terrender */
-        var judulRisiko = [];
-        weatherData.querySelectorAll('.info-box-risiko').forEach(function (el) {
-            /* Ambil teks pertama (judul/heading box risiko) */
-            var judulEl = el.querySelector('b, strong, [style*="font-weight:700"]');
-            if (judulEl) {
-                var t = (judulEl.innerText || '').trim();
-                if (t && t.length < 60) judulRisiko.push(t);
+        /* Reset saat tombol GPS ditekan ulang */
+        document.addEventListener('click', function (e) {
+            var id = e.target && e.target.id;
+            if (id === 'btnGPSSinkron' || id === 'btnAktifkanGPS') {
+                _sudahCatat = false;
             }
-        });
+        }, true);
 
-        /* Juga cek boxBlastRisk */
-        var boxBlast = document.getElementById('boxBlastRisk');
-        if (boxBlast && boxBlast.style.display !== 'none') {
-            judulRisiko.unshift('Blast Padi (teranalisis)');
+        function mulaiObserveRisiko(weatherDataEl) {
+            var observer = new MutationObserver(function (mutList) {
+                if (_sudahCatat) return;
+
+                /* Cek apakah ada .info-box-risiko yang baru ditambahkan */
+                var adaRisikoBar = false;
+                mutList.forEach(function (mut) {
+                    if (mut.type !== 'childList') return;
+                    mut.addedNodes.forEach(function (node) {
+                        if (node.nodeType !== 1) return;
+                        if (node.classList && (
+                            node.classList.contains('info-box-risiko') ||
+                            node.classList.contains('info-box-dynamic')
+                        )) {
+                            adaRisikoBar = true;
+                        }
+                    });
+                });
+
+                if (!adaRisikoBar) return;
+
+                /* Debounce: tunggu sampai semua box risiko selesai dirender */
+                if (_debounce) clearTimeout(_debounce);
+                _debounce = setTimeout(function () {
+                    if (_sudahCatat) return;
+
+                    /* Pastikan minimal 2 box risiko sudah ada (bukan hanya 1) */
+                    var boxRisiko = weatherDataEl.querySelectorAll(
+                        '.info-box-risiko, .info-box-dynamic'
+                    );
+                    if (boxRisiko.length < 2) return;
+
+                    catatRiwayatRisiko(weatherDataEl);
+                    _sudahCatat = true;
+                }, 1500);
+            });
+
+            observer.observe(weatherDataEl, { childList: true, subtree: false });
+            console.log('[patch_riwayat_analisis] Observer Risiko Iklim aktif (via MutationObserver).');
         }
 
-        var label    = '🌡️ Risiko Iklim & Penyakit — ' + (namaLok !== '-' ? namaLok : 'GPS Aktif');
-        var ringkasan =
-            'Suhu: ' + suhu + ' | Humid: ' + humid + ' | Hujan: ' + hujan +
-            (judulRisiko.length > 0
-                ? ' | Risiko: ' + judulRisiko.slice(0, 3).join(', ')
-                : ' | Semua risiko teranalisis');
+        function catatRiwayatRisiko(weatherDataEl) {
+            /* Baca data cuaca dari DOM — lebih andal dari meneruskan cur/dp */
+            var suhu    = teksEl('suhuNow',     20);
+            var humid   = teksEl('humidityNow', 20);
+            var hujan   = teksEl('rainNow',     20);
+            var namaLok = teksEl('namaLokasiCuacaUI', 40);
 
-        if (typeof window.tambahRiwayat === 'function') {
-            window.tambahRiwayat('risiko', label, ringkasan);
-            console.log('%c🌡️ [patch_riwayat_analisis] Riwayat Risiko Iklim dicatat.', 'color:#f59e0b;font-weight:bold;');
+            /* Kumpulkan judul box risiko */
+            var judulRisiko = [];
+            weatherDataEl.querySelectorAll('.info-box-risiko, .info-box-dynamic').forEach(function (el) {
+                var kuat = el.querySelector('strong');
+                if (kuat) {
+                    var t = (kuat.innerText || '').trim();
+                    if (t && t.length < 60) judulRisiko.push(t);
+                }
+            });
+
+            /* Cek Blast */
+            var boxBlast = document.getElementById('boxBlastRisk');
+            if (boxBlast && boxBlast.style.display !== 'none') {
+                judulRisiko.unshift('⚠️ Blast Padi');
+            }
+
+            var label = '🌡️ Risiko Iklim — ' + (namaLok !== '-' ? namaLok : 'GPS Aktif');
+            var ringkasan =
+                'Suhu: ' + suhu +
+                ' | Humid: ' + humid +
+                ' | Hujan: ' + hujan +
+                (judulRisiko.length > 0
+                    ? ' | Risiko: ' + judulRisiko.slice(0, 3).join(', ')
+                    : ' | Semua risiko teranalisis');
+
+            ringkasan = ringkasan.substring(0, 220);
+
+            if (typeof window.tambahRiwayat === 'function') {
+                window.tambahRiwayat('risiko', label, ringkasan);
+                console.log(
+                    '%c🌡️ [patch_riwayat_analisis] Riwayat Risiko Iklim dicatat.',
+                    'color:#f59e0b;font-weight:bold;'
+                );
+            }
         }
+
+        tungguEl('weatherData', mulaiObserveRisiko);
     }
 
     /* ═══════════════════════════════════════════════════════════
        EKSTENSI renderDaftarRiwayat:
-       Tambahkan ikon & warna border untuk mode baru
-       (jadwaltanam & risiko) yang belum ada di patch_smartfarming
+       Ikon & warna border untuk mode baru
     ═══════════════════════════════════════════════════════════ */
     function patchRenderDaftarRiwayat() {
         tunggu('renderDaftarRiwayat', function () {
-
-            /* CSS border warna untuk mode baru */
             var style = document.createElement('style');
             style.textContent =
                 '.riwayat-item.mode-jadwaltanam { border-left-color: #06b6d4 !important; }' +
@@ -352,27 +355,18 @@
             document.head.appendChild(style);
 
             var _renderAsli = window.renderDaftarRiwayat;
-
             window.renderDaftarRiwayat = function () {
-                /* Jalankan render asli */
                 _renderAsli.apply(this, arguments);
 
-                /* Patch ikon untuk mode baru di DOM yang baru dirender */
                 var container = document.getElementById('daftarRiwayat');
                 if (!container) return;
 
-                var ikonTambahan = {
-                    jadwaltanam: '📅',
-                    risiko:      '🌡️',
-                    cuaca:       '🌤️'  /* override ikon default 📊 */
-                };
-
+                var ikonTambahan = { jadwaltanam: '📅', risiko: '🌡️', cuaca: '🌤️' };
                 container.querySelectorAll('.riwayat-item').forEach(function (el) {
                     Object.keys(ikonTambahan).forEach(function (mode) {
                         if (!el.classList.contains('mode-' + mode)) return;
                         var labelEl = el.querySelector('.riwayat-label');
                         if (!labelEl) return;
-                        /* Ganti ikon 📊 default (yang dipakai untuk mode tidak dikenal) */
                         if (labelEl.textContent.indexOf('📊') !== -1) {
                             labelEl.innerHTML = labelEl.innerHTML.replace('📊', ikonTambahan[mode]);
                         }
@@ -380,22 +374,19 @@
                 });
             };
 
-            /* Trigger ulang render agar ikon terbaru langsung tampil
-               jika panel riwayat sedang terbuka */
             var panelRiwayat = document.getElementById('panelRiwayat');
             if (panelRiwayat && panelRiwayat.style.display !== 'none') {
                 window.renderDaftarRiwayat();
             }
 
-            console.log('[patch_riwayat_analisis] renderDaftarRiwayat diperluas (jadwaltanam, risiko, cuaca).');
+            console.log('[patch_riwayat_analisis] renderDaftarRiwayat diperluas.');
         });
     }
 
     /* ═══════════════════════════════════════════════════════════
-       INISIALISASI SEMUA MODUL
+       INISIALISASI
     ═══════════════════════════════════════════════════════════ */
     function init() {
-        /* Tunggu tambahRiwayat tersedia sebelum pasang semua intercept */
         tunggu('tambahRiwayat', function () {
             pasangRiwayatJadwalTanam();
             pasangRiwayatCuaca();
@@ -403,17 +394,17 @@
             patchRenderDaftarRiwayat();
 
             console.log(
-                '%c✅ patch_riwayat_analisis.js v1.0 aktif — ' +
-                'Jadwal Tanam, Cuaca, Risiko Iklim kini dicatat ke riwayat',
+                '%c✅ patch_riwayat_analisis.js v2.0 aktif\n' +
+                '   [FIX] Risiko Iklim: MutationObserver (bukan tunggu renderSemuaRisikoGPS)\n' +
+                '   [FIX] Cuaca: tidak wrap switchMode — deteksi via tab-btn DOM\n' +
+                '   Jadwal Tanam, Cuaca, Risiko Iklim kini dicatat ke riwayat',
                 'color:#06b6d4; font-weight:bold;'
             );
         });
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () {
-            setTimeout(init, 200);
-        });
+        document.addEventListener('DOMContentLoaded', function () { setTimeout(init, 200); });
     } else {
         setTimeout(init, 200);
     }
