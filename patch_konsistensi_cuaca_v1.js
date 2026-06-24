@@ -151,7 +151,8 @@
             '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.08);' +
                 'font-size:0.72rem;color:#64748b;display:flex;flex-wrap:wrap;gap:10px;">' +
                 '<span>📍 Lokasi Anda: <b style="color:#cbd5e1;">' + (precipNext.toFixed(1)) + ' mm/jam</b></span>' +
-                '<span>🗺️ Area Kecamatan: <b style="color:#cbd5e1;">Kode ' + wCodeNext + '</b></span>' +
+               // Ganti baris lama dengan ini:
+'<span>🌡️ Cuaca: <b style="color:#cbd5e1;">' + info.label + '</b></span>' +
                 '<span>💧 Kemungkinan Hujan: <b style="color:#cbd5e1;">' +
                     ((hourly.precipitation_probability && hourly.precipitation_probability[idxNext]) || 0) + '%</b></span>' +
             '</div>' +
