@@ -328,7 +328,7 @@
                 '<span style="font-size:1.4rem;">' + lvlObjek.ikon + '</span>' +
                 '<div>' +
                     '<div style="color:#fff;font-weight:800;font-size:0.9rem;letter-spacing:0.5px;">' +
-                        '⚡ PERINGATAN DINI CUACA EKSTREM' +
+                        '⚡ PERINGATAN DINI' +
                     '</div>' +
                     '<div style="color:rgba(255,255,255,0.9);font-size:0.7rem;margin-top:1px;">' +
                         'STATUS ' + lvlObjek.label + ' • Diperbarui: ' + new Date().toLocaleTimeString('id-ID', {hour:'2-digit',minute:'2-digit'}) +
