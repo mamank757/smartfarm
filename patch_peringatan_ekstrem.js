@@ -23,48 +23,48 @@
     'use strict';
 
     // =========================================================================
-    //  KONFIGURASI AMBANG BATAS (threshold) — berbasis standar BMKG
+    //  KONFIGURASI AMBANG BATAS (threshold) — Standar Nasional (BMKG & Agronomi)
     // =========================================================================
 
     const THRESHOLD = {
         hujan: {
-            // mm/jam — BMKG: lebat >= 20, sangat lebat >= 50, ekstrem >= 100
-            waspada:  5,
-            siaga:    20,
-            awas:     50
+            // mm/jam — Standar peringatan dini hujan lebat per jam
+            waspada:  10, // Hujan cukup lebat
+            siaga:    20, // Hujan sangat lebat (berpotensi genangan)
+            awas:     50  // Hujan ekstrem (berpotensi banjir bandang/merusak tanaman)
         },
         angin: {
-            // km/jam — Beaufort scale adaptasi BMKG
+            // km/jam — Skala Beaufort adaptasi umum untuk kerusakan struktural/tanaman
             waspada:  40,
             siaga:    60,
             awas:     90
         },
         cape: {
-            // J/kg — potensi badai
-            waspada:  500,
-            siaga:    1000,
-            awas:     2500
+            // J/kg — Energi potensial badai. Di ekuator, 1000+ adalah batas waspada konvektif.
+            waspada:  1000,
+            siaga:    2000,
+            awas:     3000
         },
         kelembapan: {
-            // % — kelembapan sangat tinggi mendukung Blast & penyakit
+            // % — Parameter Agronomi (Kelembapan tinggi memicu patogen)
             waspada:  85,
             siaga:    90,
-            awas:     95
+            awas:     95 
         },
         suhu_tinggi: {
-            // °C — cekaman panas pada padi
-            waspada:  33,
-            siaga:    35,
-            awas:     37
+            // °C — Cekaman panas nasional (fase pembungaan/pengisian bulir padi mulai terganggu di >34°C)
+            waspada:  34,
+            siaga:    36,
+            awas:     38
         },
         suhu_rendah: {
-            // °C — cekaman dingin (dataran tinggi)
-            waspada:  20,
-            siaga:    18,
-            awas:     15
+            // °C — Toleransi untuk mengakomodasi wilayah dataran tinggi di Indonesia
+            waspada:  16,
+            siaga:    14,
+            awas:     12
         },
         tekanan: {
-            // hPa — tekanan rendah = potensi siklon
+            // hPa — Tekanan ekuatorial. Anjlok di bawah 1005 hPa menandakan anomali (bibit siklon).
             waspada:  1005,
             siaga:    1000,
             awas:     995
@@ -173,133 +173,57 @@
             }
         }
 
-        // ── 2. BADAI PETIR (dari kode cuaca WMO) ────────────────────────────
+        // ── 2. BADAI PETIR (WMO 95, 96, 99) ──────────────────────────────────
         const kodePetir = [95, 96, 99];
         const jamPetir = slice24.filter(i => hourly.weather_code && kodePetir.includes(hourly.weather_code[i]));
         if (jamPetir.length > 0) {
-            const lvl = jamPetir.length >= 4 ? LEVEL.AWAS : jamPetir.length >= 2 ? LEVEL.SIAGA : LEVEL.WASPADA;
+            // DOWNGRADE NASIONAL: Model cuaca global sering overestimate petir di ekuator.
+            // Mentokkan di SIAGA (Oranye) agar alarm audio tidak spam.
+            const lvl = jamPetir.length >= 4 ? LEVEL.SIAGA : jamPetir.length >= 2 ? LEVEL.SIAGA : LEVEL.WASPADA;
             stateEkstrem.daftarPeringatan.push({
-                parameter: '⛈️ Potensi Badai Petir',
-                nilai: jamPetir.length + ' jam dalam 24 jam ke depan',
+                parameter: '⛈️ Potensi Cuaca Buruk (Petir)',
+                nilai: jamPetir.length + ' jam terindikasi dalam 24 jam ke depan',
                 waktu: 'Mulai ~' + namaWaktu(hourly.time[jamPetir[0]]),
                 level: lvl,
-                dampak: 'Hentikan operasional traktor & pompa di sawah. Jauhi pohon tinggi & struktur besi.'
+                dampak: 'Hentikan pemakaian traktor & berlindung dari area terbuka jika hujan mulai turun.'
             });
             if (lvl.kode > stateEkstrem.levelTertinggi) stateEkstrem.levelTertinggi = lvl.kode;
         }
 
-        // ── 3. ENERGI BADAI (CAPE) — LOGIKA REALISTIS DENGAN PEMICU ──────────
-        if (hourly.cape) {
-            let maxCAPE = 0;
-            let waktuCAPE = '';
-            
-            slice24.forEach(i => {
-                const v = hourly.cape[i] || 0;
-                const probHujan = (hourly.precipitation_probability && hourly.precipitation_probability[i]) || 0;
-                const curahHujan = (hourly.precipitation && hourly.precipitation[i]) || 0;
-                const wCode = (hourly.weather_code && hourly.weather_code[i]) || 0;
-                
-                // SYARAT PEMICU: CAPE berbahaya HANYA JIKA ada peluang hujan > 40%, ada rintik air, atau ada awan aktif.
-                const adaPemicu = (probHujan >= 40 || curahHujan >= 0.5 || [61,63,65,80,81,82,95,96,99].indexOf(wCode) > -1);
-
-                if (v > maxCAPE && adaPemicu) { 
-                    maxCAPE = v; 
-                    waktuCAPE = hourly.time[i]; 
-                }
-            });
-
-            // Analisis level berdasarkan CAPE tervalidasi pemicu
-            const lvl = dapatLevel(maxCAPE, THRESHOLD.cape);
-            
-            // Downgrade 1 level: Sekalipun CAPE tembus > 2500, kita mentokkan di SIAGA (Oranye). 
-            // Jangan sampai membunyikan sirine (Level 3/AWAS) hanya karena prediksi energi awan.
-            let finalLvl = lvl;
-            if (lvl.kode === 3) finalLvl = LEVEL.SIAGA; 
-
-            if (finalLvl.kode > 0) {
-                stateEkstrem.daftarPeringatan.push({
-                    parameter: '⚡ Kondisi Atmosfer Labil (Peluang Badai)',
-                    nilai: Math.round(maxCAPE) + ' J/kg',
-                    waktu: waktuCAPE ? 'Risiko saat hujan pkl ~' + namaWaktu(waktuCAPE) : '',
-                    level: finalLvl,
-                    dampak: finalLvl.kode >= 2
-                        ? 'Jika hujan turun di jam tersebut, sangat berpotensi disertai angin kencang mendadak atau petir.'
-                        : 'Atmosfer mendukung konveksi lokal. Jika awan terlihat hitam pekat, segera berteduh.'
-                });
-                if (finalLvl.kode > stateEkstrem.levelTertinggi) stateEkstrem.levelTertinggi = finalLvl.kode;
-            }
-        }
-
-        // ── 4. KELEMBAPAN TINGGI ─────────────────────────────────────────────
+        // ── 4. KELEMBAPAN TINGGI (RISIKO PENYAKIT AGRONOMI) ──────────────────
         if (cur.relative_humidity_2m !== undefined) {
             const rh  = cur.relative_humidity_2m;
-            const lvl = dapatLevel(rh, THRESHOLD.kelembapan);
+            let lvl = dapatLevel(rh, THRESHOLD.kelembapan);
+            
+            // DOWNGRADE NASIONAL: Di seluruh Indonesia, kelembapan subuh mencapai 95% adalah hal biasa (embun).
+            // Peringatan ini dikhususkan untuk mitigasi penyakit (Blast/Hawar), BUKAN cuaca ekstrem.
+            // Oleh karena itu, maksimal levelnya adalah WASPADA (Kuning).
+            if (lvl.kode >= 2) lvl = LEVEL.WASPADA; 
+
             if (lvl.kode > 0) {
                 stateEkstrem.daftarPeringatan.push({
                     parameter: '💧 Kelembapan Udara Tinggi',
                     nilai: rh + '%',
                     waktu: 'Kondisi saat ini',
                     level: lvl,
-                    dampak: lvl.kode >= 3
-                        ? 'Risiko Blast Padi & Hawar Pelepah sangat tinggi. Siapkan fungisida Validamycin.'
-                        : 'Pantau gejala penyakit daun. Tunda pemupukan Urea.'
+                    dampak: 'Kondisi mikroklimat ideal untuk perkembangan jamur & bakteri patogen tanaman. Pantau gejala penyakit daun.'
                 });
                 if (lvl.kode > stateEkstrem.levelTertinggi) stateEkstrem.levelTertinggi = lvl.kode;
             }
         }
 
-        // ── 5. SUHU UDARA TINGGI ─────────────────────────────────────────────
-        if (hourly.temperature_2m) {
-            let maxSuhu = 0;
-            let waktuSuhu = '';
-            slice24.forEach(i => {
-                const v = hourly.temperature_2m[i] || 0;
-                if (v > maxSuhu) { maxSuhu = v; waktuSuhu = hourly.time[i]; }
-            });
-            const lvl = dapatLevel(maxSuhu, THRESHOLD.suhu_tinggi);
-            if (lvl.kode > 0) {
-                stateEkstrem.daftarPeringatan.push({
-                    parameter: '🌡️ Suhu Udara Sangat Panas',
-                    nilai: maxSuhu.toFixed(1) + '°C',
-                    waktu: waktuSuhu ? 'Puncak ~' + namaWaktu(waktuSuhu) : '',
-                    level: lvl,
-                    dampak: lvl.kode >= 3
-                        ? 'Cekaman panas berat! Padi memasuki fase pengisian bulir berisiko gagal. Aktifkan irigasi sprinkler.'
-                        : 'Waspadai evapotranspirasi tinggi. Pastikan air irigasi cukup.'
-                });
-                if (lvl.kode > stateEkstrem.levelTertinggi) stateEkstrem.levelTertinggi = lvl.kode;
-            }
-        }
-
-        // ── 6. TEKANAN UDARA RENDAH (potensi siklon) ─────────────────────────
-        if (cur.surface_pressure !== undefined) {
-            const tek = cur.surface_pressure;
-            const lvl = dapatLevelRendah(tek, THRESHOLD.tekanan);
-            if (lvl.kode > 0) {
-                stateEkstrem.daftarPeringatan.push({
-                    parameter: '🌀 Tekanan Udara Rendah',
-                    nilai: tek.toFixed(1) + ' hPa',
-                    waktu: 'Kondisi saat ini',
-                    level: lvl,
-                    dampak: lvl.kode >= 3
-                        ? 'Indikasi gangguan siklon tropis di sekitar wilayah. Siaga cuaca ekstrem hingga 72 jam ke depan.'
-                        : 'Potensi cuaca buruk meningkat. Monitor update cuaca setiap 6 jam.'
-                });
-                if (lvl.kode > stateEkstrem.levelTertinggi) stateEkstrem.levelTertinggi = lvl.kode;
-            }
-        }
-
-        // ── 7. PELUANG HUJAN TINGGI (dari precipitation_probability) ─────────
+        // ── 7. PELUANG HUJAN BERKEPANJANGAN ──────────────────────────────────
         if (hourly.precipitation_probability) {
             const jamHujan = slice24.filter(i => (hourly.precipitation_probability[i] || 0) >= 80);
             if (jamHujan.length >= 6) {
-                const lvl = jamHujan.length >= 12 ? LEVEL.AWAS : jamHujan.length >= 9 ? LEVEL.SIAGA : LEVEL.WASPADA;
+                // DOWNGRADE NASIONAL: Hujan awet (tanpa intensitas lebat) tidak perlu sirine bahaya darurat.
+                const lvl = jamHujan.length >= 10 ? LEVEL.SIAGA : LEVEL.WASPADA;
                 stateEkstrem.daftarPeringatan.push({
-                    parameter: '🌦️ Peluang Hujan Berkepanjangan',
-                    nilai: jamHujan.length + ' jam berpeluang ≥80%',
+                    parameter: '🌦️ Indikasi Hujan Awet',
+                    nilai: jamHujan.length + ' jam berpeluang hujan ≥80%',
                     waktu: 'Dalam 24 jam ke depan',
                     level: lvl,
-                    dampak: 'Tunda panen jika gabah belum kering. Pastikan drainase lahan berfungsi baik.'
+                    dampak: 'Tunda aplikasi pemupukan dan penjemuran hasil panen. Pastikan saluran drainase berfungsi optimal.'
                 });
                 if (lvl.kode > stateEkstrem.levelTertinggi) stateEkstrem.levelTertinggi = lvl.kode;
             }
