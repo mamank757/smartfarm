@@ -207,7 +207,7 @@
                 'font-size:0.72rem;color:#64748b;display:flex;flex-wrap:wrap;gap:10px;">' +
                 '<span>📍 Titik GPS: <b style="color:#cbd5e1;">' + (precipNext.toFixed(1)) + ' mm/jam</b></span>' +
                 '<span>🗺️ Area 25km: <b style="color:#cbd5e1;">Kode ' + wCodeNext + '</b></span>' +
-                '<span>💧 Prob: <b style="color:#cbd5e1;">' +
+                '<span>💧 Kemungkinan: <b style="color:#cbd5e1;">' +
                     ((hourly.precipitation_probability && hourly.precipitation_probability[idxNext]) || 0) + '%</b></span>' +
             '</div>' +
             '<div style="margin-top:6px;font-size:0.7rem;color:#475569;font-style:italic;">' +
@@ -336,10 +336,33 @@
             var p = (hourly.precipitation && hourly.precipitation[i]) || 0;
             totalPrecipHariIni += p;
             if (p > maxPrecip) {
-                maxPrecip = p;
-                jamHujanPuncak = (hourly.time[i] || '').split('T')[1] ? (hourly.time[i].split('T')[1].substring(0, 5)) : '-';
-            }
+    maxPrecip = p;
+    
+    // Ambil angka jamnya saja (0-23)
+    var stringWaktu = (hourly.time[i] || '').split('T')[1]; 
+    if (stringWaktu) {
+        var angkaJam = parseInt(stringWaktu.substring(0, 2), 10);
+        var keteranganWaktu = '';
+
+        // Pembagian waktu khas Indonesia untuk aktivitas tani
+        if (angkaJam >= 0 && angkaJam < 5) {
+            keteranganWaktu = 'Dini Hari';
+        } else if (angkaJam >= 5 && angkaJam < 10) {
+            keteranganWaktu = 'Pagi';
+        } else if (angkaJam >= 10 && angkaJam < 15) {
+            keteranganWaktu = 'Siang';
+        } else if (angkaJam >= 15 && angkaJam < 19) {
+            keteranganWaktu = 'Sore';
+        } else {
+            keteranganWaktu = 'Malam';
         }
+
+        // Output: "Siang (13:00)" atau "Sore (16:00)"
+        jamHujanPuncak = keteranganWaktu + ' (' + stringWaktu.substring(0, 5) + ')';
+    } else {
+        jamHujanPuncak = '-';
+    }
+}
 
         // Kondisi dominan hari ini
         var precipHariIni = (daily.precipitation_sum && daily.precipitation_sum[0]) || totalPrecipHariIni;
@@ -395,7 +418,7 @@
                     '💧 Prediksi curah hujan hari ini: <b style="color:#cbd5e1;">' +
                     totalPrecipHariIni.toFixed(1) + ' mm</b>' +
                     (jamHujanPuncak !== '-'
-                        ? ' | Puncak sekitar jam <b style="color:#cbd5e1;">' + jamHujanPuncak + '</b>'
+                        ? ' | Puncak sekitar pkl <b style="color:#cbd5e1;">' + jamHujanPuncak + '</b>'
                         : '') +
                     '</div>'
                 : ''
