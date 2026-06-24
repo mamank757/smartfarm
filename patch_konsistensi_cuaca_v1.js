@@ -155,9 +155,9 @@
             '<div style="font-size:0.8rem;color:#94a3b8;line-height:1.6;">' + info.keterangan + '</div>' +
             '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.08);' +
                 'font-size:0.72rem;color:#64748b;display:flex;flex-wrap:wrap;gap:10px;">' +
-                '<span>📍 Titik GPS: <b style="color:#cbd5e1;">' + (precipNext.toFixed(1)) + ' mm/jam</b></span>' +
-                '<span>🗺️ Area 25km: <b style="color:#cbd5e1;">Kode ' + wCodeNext + '</b></span>' +
-                '<span>💧 Kemungkinan: <b style="color:#cbd5e1;">' +
+                '<span>📍 Curah Hujan di Lokasi: <b style="color:#cbd5e1;">' + (precipNext.toFixed(1)) + ' mm/jam</b></span>' +
+                '<span>🗺️ Radius 25 km: <b style="color:#cbd5e1;">Kode ' + wCodeNext + '</b></span>' +
+                '<span>💧 Kemungkinan Hujan: <b style="color:#cbd5e1;">' +
                     ((hourly.precipitation_probability && hourly.precipitation_probability[idxNext]) || 0) + '%</b></span>' +
             '</div>' +
             '<div style="margin-top:6px;font-size:0.7rem;color:#475569;font-style:italic;">' +
