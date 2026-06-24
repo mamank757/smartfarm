@@ -188,26 +188,45 @@
             if (lvl.kode > stateEkstrem.levelTertinggi) stateEkstrem.levelTertinggi = lvl.kode;
         }
 
-        // ── 3. ENERGI BADAI (CAPE) ───────────────────────────────────────────
+        // ── 3. ENERGI BADAI (CAPE) — LOGIKA REALISTIS DENGAN PEMICU ──────────
         if (hourly.cape) {
             let maxCAPE = 0;
             let waktuCAPE = '';
+            
             slice24.forEach(i => {
                 const v = hourly.cape[i] || 0;
-                if (v > maxCAPE) { maxCAPE = v; waktuCAPE = hourly.time[i]; }
+                const probHujan = (hourly.precipitation_probability && hourly.precipitation_probability[i]) || 0;
+                const curahHujan = (hourly.precipitation && hourly.precipitation[i]) || 0;
+                const wCode = (hourly.weather_code && hourly.weather_code[i]) || 0;
+                
+                // SYARAT PEMICU: CAPE berbahaya HANYA JIKA ada peluang hujan > 40%, ada rintik air, atau ada awan aktif.
+                const adaPemicu = (probHujan >= 40 || curahHujan >= 0.5 || [61,63,65,80,81,82,95,96,99].indexOf(wCode) > -1);
+
+                if (v > maxCAPE && adaPemicu) { 
+                    maxCAPE = v; 
+                    waktuCAPE = hourly.time[i]; 
+                }
             });
+
+            // Analisis level berdasarkan CAPE tervalidasi pemicu
             const lvl = dapatLevel(maxCAPE, THRESHOLD.cape);
-            if (lvl.kode > 0) {
+            
+            // Downgrade 1 level: Sekalipun CAPE tembus > 2500, kita mentokkan di SIAGA (Oranye). 
+            // Jangan sampai membunyikan sirine (Level 3/AWAS) hanya karena prediksi energi awan.
+            let finalLvl = lvl;
+            if (lvl.kode === 3) finalLvl = LEVEL.SIAGA; 
+
+            if (finalLvl.kode > 0) {
                 stateEkstrem.daftarPeringatan.push({
-                    parameter: '⚡ Energi Badai (CAPE)',
+                    parameter: '⚡ Kondisi Atmosfer Labil (Peluang Badai)',
                     nilai: Math.round(maxCAPE) + ' J/kg',
-                    waktu: waktuCAPE ? '~' + namaWaktu(waktuCAPE) : '',
-                    level: lvl,
-                    dampak: lvl.kode >= 3
-                        ? 'Bahaya ekstrem! Potensi puting beliung & hujan es. Amankan petani & alat berat.'
-                        : 'Potensi konveksi kuat. Waspadai hujan deras tiba-tiba & angin kencang lokal.'
+                    waktu: waktuCAPE ? 'Risiko saat hujan pkl ~' + namaWaktu(waktuCAPE) : '',
+                    level: finalLvl,
+                    dampak: finalLvl.kode >= 2
+                        ? 'Jika hujan turun di jam tersebut, sangat berpotensi disertai angin kencang mendadak atau petir.'
+                        : 'Atmosfer mendukung konveksi lokal. Jika awan terlihat hitam pekat, segera berteduh.'
                 });
-                if (lvl.kode > stateEkstrem.levelTertinggi) stateEkstrem.levelTertinggi = lvl.kode;
+                if (finalLvl.kode > stateEkstrem.levelTertinggi) stateEkstrem.levelTertinggi = finalLvl.kode;
             }
         }
 
