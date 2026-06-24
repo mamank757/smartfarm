@@ -294,7 +294,7 @@
 
                     // Klasifikasi waktu berbasis kearifan lokal lapangan
                     if (angkaJam >= 0 && angkaJam < 5) {
-                        sebutanWaktu = 'Dini Hari';
+                        sebutanWaktu = 'Dini';
                     } else if (angkaJam >= 5 && angkaJam < 10) {
                         sebutanWaktu = 'Pagi';
                     } else if (angkaJam >= 10 && angkaJam < 15) {
