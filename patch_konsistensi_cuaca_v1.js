@@ -33,7 +33,7 @@
         if (adaHujanAktual && precip >= 10) {
             return {
                 ikon: '🌧️',
-                label: 'Hujan Lebat di Lahan',
+                label: 'Hujan Lebat',
                 warna: '#f97316',
                 keterangan: 'Hujan deras ' + precip.toFixed(1) + ' mm/jam terdeteksi di koordinat sawah Anda.',
                 badge: 'HUJAN LEBAT'
@@ -43,7 +43,7 @@
         if (adaHujanAktual && precip >= 2.5) {
             return {
                 ikon: '🌧️',
-                label: 'Hujan Sedang di Lahan',
+                label: 'Hujan Sedang',
                 warna: '#f59e0b',
                 keterangan: 'Curah hujan ' + precip.toFixed(1) + ' mm/jam di lokasi Anda.',
                 badge: 'HUJAN'
@@ -53,9 +53,9 @@
         if (adaHujanAktual && precip >= 0.5) {
             return {
                 ikon: '🌦️',
-                label: 'Gerimis / Hujan Ringan di Lahan',
+                label: 'Gerimis / Hujan Ringan',
                 warna: '#84cc16',
-                keterangan: 'Gerimis ' + precip.toFixed(1) + ' mm/jam. Lahan tersiram ringan.',
+                keterangan: 'Gerimis ' + precip.toFixed(1) + ' mm/jam',
                 badge: 'GERIMIS'
             };
         }
@@ -68,7 +68,7 @@
 
             return {
                 ikon: '⛅',
-                label: 'Awan Hujan di Sekitar Kecamatan (Belum ke Lahan)',
+                label: 'Awan Hujan di Sekitar Wilayah',
                 warna: '#3b82f6',
                 keterangan: 'Model cuaca mendeteksi sistem ' + kodeTeks + ' dalam skala kecamatan (~10 km). ' +
                     'Di titik koordinat sawah Anda saat ini belum turun hujan (0.0 mm/jam). ' +
