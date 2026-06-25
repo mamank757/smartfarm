@@ -182,8 +182,8 @@
         
         // Logika untuk menyisipkan tab ke urutan 15 (indeks ke-14)
         var existingTabs = tabContainer.children;
-        if (existingTabs.length >= 14) {
-            tabContainer.insertBefore(tabBtn, existingTabs[14]);
+        if (existingTabs.length >= 13) {
+            tabContainer.insertBefore(tabBtn, existingTabs[13]);
         } else {
             // Jika jumlah tab saat ini kurang dari 14, letakkan di paling akhir
             tabContainer.appendChild(tabBtn);
