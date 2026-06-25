@@ -461,7 +461,25 @@ function updateENSOIODStatus(enso, iod) {
         `Sumber ENSO: ${enso.sumber || '-'} &nbsp;|&nbsp; Sumber IOD: ${iod.sumber || '-'}` +
         `</span>`;
 }
-
+// Sanitizer DOM: pastikan label IOD tidak menampilkan angka mentah
+    setTimeout(function() {
+        if (iod && iod.latestAnomaly !== undefined) {
+            var val = parseFloat(iod.latestAnomaly);
+            var tanda = val > 0 ? '+' : '';
+            var targetText = 'DMI: ' + tanda + val.toFixed(2) + '°C';
+            var walker = document.createTreeWalker(
+                document.body, NodeFilter.SHOW_TEXT, null, false
+            );
+            var node;
+            while ((node = walker.nextNode())) {
+                if (node.nodeValue && node.nodeValue.includes('DMI:')) {
+                    node.nodeValue = node.nodeValue.replace(
+                        /DMI:\s*[+\-]?[\d.]+°C/g, targetText
+                    );
+                }
+            }
+        }
+    }, 150);
     // ── EKSPOS KE WINDOW ──────────────────────────────────────
     window.getENSOAnomaly       = getENSOAnomaly;
     window.getIODAnomaly        = getIODAnomaly;
