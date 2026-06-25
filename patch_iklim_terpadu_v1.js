@@ -262,8 +262,8 @@
 
         // Sinyal SEARAH: amplifikasi → IOD lebih kuat
         if ((elNinoAktif && iodPosAktif) || (laNinaAktif && iodNegAktif)) {
-            return Math.min(0.90, bobotDasar * 1.55);
-        }
+    return Math.min(0.85, bobotDasar * 1.55);
+}
         // Sinyal BERLAWANAN: interferensi → IOD melemah
         if ((elNinoAktif && iodNegAktif) || (laNinaAktif && iodPosAktif)) {
             return Math.max(0.30, bobotDasar * 0.65);
