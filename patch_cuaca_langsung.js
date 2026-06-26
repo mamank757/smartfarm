@@ -240,8 +240,7 @@
             '&daily=weather_code,temperature_2m_max,temperature_2m_min,' +
 'precipitation_sum,precipitation_probability_max,wind_speed_10m_max' +
 '&forecast_days=7' +
-            '&forecast_days=7&timezone=auto';
-
+            
         var urlArchive =
             'https://archive-api.open-meteo.com/v1/archive' +
             '?latitude=' + lat + '&longitude=' + lon +
@@ -359,12 +358,32 @@ var d = new Date(parts[0], parts[1] - 1, parts[2]);
                 var c    = cuacaDariKode(daily.weather_code[j]);
                 var maks = daily.temperature_2m_max[j].toFixed(0);
                 var min  = daily.temperature_2m_min[j].toFixed(0);
-                dailyBox.innerHTML +=
-                    '<div class="daily-item">' +
-                    '<div class="day">' + hari + '</div>' +
-                    '<div class="icon" title="' + c.teks + '">' + c.ikon + '</div>' +
-                    '<div class="temp-range">' + min + '°/' + maks + '°C</div>' +
-                    '</div>';
+                // KODE SEKARANG (TIDAK ADA curah hujan):
+dailyBox.innerHTML +=
+    '<div class="daily-item">' +
+    '<div class="day">' + hari + '</div>' +
+    '<div class="icon" title="' + c.teks + '">' + c.ikon + '</div>' +
+    '<div class="temp-range">' + min + '°/' + maks + '°C</div>' +
+    '</div>';
+
+// YANG BENAR (tambahkan curah hujan dan angin):
+var hujanHari = (daily.precipitation_sum && daily.precipitation_sum[j] != null)
+    ? daily.precipitation_sum[j].toFixed(1) : '0';
+var probHari = (daily.precipitation_probability_max && daily.precipitation_probability_max[j] != null)
+    ? daily.precipitation_probability_max[j] : 0;
+var anginHari = (daily.wind_speed_10m_max && daily.wind_speed_10m_max[j] != null)
+    ? daily.wind_speed_10m_max[j].toFixed(0) : '-';
+
+dailyBox.innerHTML +=
+    '<div class="daily-item" style="grid-template-columns:2fr 1fr 2fr;align-items:start;padding:12px 4px;">' +
+    '<div class="day">' + hari + '</div>' +
+    '<div class="icon" title="' + c.teks + '">' + c.ikon + '</div>' +
+    '<div style="text-align:right;">' +
+        '<div class="temp-range">' + min + '°/' + maks + '°C</div>' +
+        '<div style="font-size:0.7rem;color:#38b6ff;margin-top:3px;">💧' + hujanHari + 'mm &nbsp;|&nbsp; ' + probHari + '%</div>' +
+        '<div style="font-size:0.7rem;color:#94a3b8;">💨' + anginHari + ' km/j</div>' +
+    '</div>' +
+    '</div>';
             });
         }
 
