@@ -263,9 +263,6 @@
     function tambahRingkasanSituasi(forecast, activeIdx) {
         if (!forecast || !forecast.hourly || !forecast.daily) return;
 
-        var sudahAda = document.getElementById('ringkasanSituasiCuaca');
-        if (sudahAda) sudahAda.remove();
-
         var hourly = forecast.hourly;
         var daily  = forecast.daily;
 
@@ -318,13 +315,8 @@
             }
         }
 
-        var el = document.createElement('div');
-        el.id = 'ringkasanSituasiCuaca';
-        el.style.cssText =
-            'background:rgba(0,0,0,.12);border-radius:16px;padding:14px 16px;' +
-            'margin-bottom:16px;border-left:4px solid ' + warna + ';' +
-            'animation:lcFadeUp .4s ease;';
-        el.innerHTML =
+        // Siapkan HTML Konten
+        var isiHTML = 
             '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">' +
                 '<span style="font-size:1.4rem;">' + ikon + '</span>' +
                 '<b style="color:' + warna + ';font-size:.9rem;">' + status + '</b>' +
@@ -333,37 +325,46 @@
             (maxPrecip > 0
                 ? '<div style="margin-top:8px;font-size:.72rem;color:#64748b;">' +
                     '💧 Estimasi total air hari ini: <b style="color:#cbd5e1;">' + totalPrecip.toFixed(1) + ' mm</b>' +
-                    (jamPuncak !== '-'
-                        ? ' | Puncak: ' + namaWaktu + '<b style="color:#cbd5e1;">' + jamPuncak + '</b>'
-                        : '') +
+                    (jamPuncak !== '-' ? ' | Puncak: ' + namaWaktu + '<b style="color:#cbd5e1;">' + jamPuncak + '</b>' : '') +
                   '</div>'
                 : '');
 
-        var elJudul = document.querySelector('.forecast-title');
-        if (elJudul) {
-            elJudul.parentNode.insertBefore(el, elJudul);
+        var elemenSudahAda = document.getElementById('ringkasanSituasiCuaca');
+
+        if (elemenSudahAda) {
+            // JIKA SUDAH ADA: Cukup update isinya, jangan di-remove agar tidak berkedip
+            elemenSudahAda.innerHTML = isiHTML;
+            elemenSudahAda.style.borderLeftColor = warna;
         } else {
-            var wd = document.getElementById('weatherData');
-            if (wd) wd.prepend(el);
+            // JIKA BELUM ADA: Buat elemen baru dengan animasi lcFadeUp
+            var el = document.createElement('div');
+            el.id = 'ringkasanSituasiCuaca';
+            el.style.cssText =
+                'background:rgba(0,0,0,.12);border-radius:16px;padding:14px 16px;' +
+                'margin-bottom:16px;border-left:4px solid ' + warna + ';' +
+                'animation:lcFadeUp .4s ease;';
+            el.innerHTML = isiHTML;
+
+            var elJudul = document.querySelector('.forecast-title');
+            if (elJudul) {
+                elJudul.parentNode.insertBefore(el, elJudul);
+            } else {
+                var wd = document.getElementById('weatherData');
+                if (wd) wd.prepend(el);
+            }
         }
     }
-
     // =========================================================================
-    //  OBSERVER — jalankan semua perbaikan saat prakiraan per jam selesai render
+    //  OBSERVER — jalankan semua perbaikan dengan aman tanpa infinite loop
     // =========================================================================
 
-    var _sudahJalan = false;
+    var _timeoutRef = null;
 
     function jalankanPerbaikan() {
         var forecast  = window._lastForecastData;
         var activeIdx = window._activeIndexCuaca;
 
-        if (!forecast || typeof activeIdx !== 'number') {
-            setTimeout(jalankanPerbaikan, 600);
-            return;
-        }
-        if (_sudahJalan) return;
-        _sudahJalan = true;
+        if (!forecast || typeof activeIdx !== 'number') return;
 
         perbaruiTampilanPrediksiAtmosfer(forecast, activeIdx);
         tambahKeteranganPrakiraan();
@@ -377,15 +378,26 @@
 
         var obs = new MutationObserver(function () {
             var kartu = target.querySelectorAll('.hourly-card');
-            // pastikan sudah ada minimal 3 kartu terisi (bukan skeleton)
             var terisi = 0;
             kartu.forEach(function(k) {
                 var t = k.querySelector('.temp');
                 if (t && t.textContent && t.textContent.indexOf('°') > -1) terisi++;
             });
             if (terisi < 3) return;
-            _sudahJalan = false;
-            setTimeout(jalankanPerbaikan, 350);
+
+            // Bersihkan timer sebelumnya (Debounce)
+            if (_timeoutRef) clearTimeout(_timeoutRef);
+
+            _timeoutRef = setTimeout(function() {
+                // 1. Matikan observer sementara agar modifikasi DOM kita tidak memicu loop
+                obs.disconnect();
+
+                // 2. Jalankan modifikasi DOM
+                jalankanPerbaikan();
+
+                // 3. Nyalakan kembali observer setelah selesai
+                obs.observe(target, { childList: true, subtree: true });
+            }, 350);
         });
 
         obs.observe(target, { childList: true, subtree: true });
