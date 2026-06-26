@@ -319,12 +319,12 @@
             warnaRingkasan = '#f59e0b';
             ikonRingkasan = '🌦️';
             statusRingkasan = 'Hujan Ringan–Sedang Diprediksi';
-            saranRingkasan = 'Bawa jas hujan ke sawah. Tunda pemupukan jika hujan turun agar tidak tercuci.';
+            saranRingkasan = 'Tunda pemupukan jika hujan turun agar tidak tercuci.';
         } else if (maxPrecip >= 0.5) {
             warnaRingkasan = '#84cc16';
             ikonRingkasan = '🌦️';
             statusRingkasan = 'Gerimis Mungkin Terjadi';
-            saranRingkasan = 'Kondisi relatif aman untuk ke lapangan. Namun sebaiknya tunda penyemprotan pestisida.';
+            saranRingkasan = 'Kondisi relatif aman untuk ke lapangan.';
         } else {
             var wCodeHarian = (daily.weather_code && daily.weather_code[0]) || 0;
             var KODE_AWAN_HUJAN = [51,53,55,61,63,65,80,81,82,95,96,99];
@@ -337,7 +337,7 @@
                 warnaRingkasan = '#10b981';
                 ikonRingkasan = '☀️';
                 statusRingkasan = 'Cuaca Cerah Mendukung Kerja Lapangan';
-                saranRingkasan = 'Waktu terbaik dan optimal untuk melakukan pemupukan, penyemprotan, dan pengolahan tanah.';
+                saranRingkasan = 'Waktu terbaik dan optimal untuk melakukan pemupukan atau penyemprotan.';
             }
         }
 
