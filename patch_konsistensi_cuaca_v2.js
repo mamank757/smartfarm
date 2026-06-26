@@ -102,7 +102,7 @@
         if (wCode === 1) {
             return {
                 ikon: '⛅', label: 'Cerah Berawan', warna: '#22c55e',
-                keterangan: 'Langit cerah dengan sebagian awan. Kondisi baik untuk kerja lapangan.',
+                keterangan: 'Langit cerah dengan sebagian awan. Kondisi baik untuk kerja lahan.',
                 badge: 'CERAH BERAWAN'
             };
         }
@@ -300,7 +300,7 @@
         } else if (maxPrecip >= 0.5) {
             warna = '#84cc16'; ikon = '🌦️';
             status = 'Gerimis Mungkin Terjadi';
-            saran  = 'Kondisi relatif aman untuk ke lapangan.';
+            saran  = 'Kondisi relatif aman untuk ke lahan.';
         } else {
             var KODE_AWAN_HUJAN = [51,53,55,61,63,65,80,81,82,95,96,99];
             var wCodeHarian = (daily.weather_code && daily.weather_code[0]) || 0;
@@ -310,7 +310,7 @@
                 saran  = 'Awan mendung terdeteksi di wilayah kecamatan, namun curah hujan di titik sawah Anda diprediksi nihil (0.0 mm). Tetap pantau langit.';
             } else {
                 warna = '#10b981'; ikon = '☀️';
-                status = 'Cuaca Cerah Mendukung Kerja Lapangan';
+                status = 'Cuaca Cerah Mendukung Kerja di Lahan';
                 saran  = 'Waktu terbaik untuk melakukan pemupukan atau penyemprotan.';
             }
         }
