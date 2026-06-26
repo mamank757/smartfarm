@@ -3302,7 +3302,11 @@ dailyContainer.innerHTML += `
                 const listHujanHarian = dailyData.precipitation_sum || [];
                 const totalHujanBulanan = listHujanHarian.reduce((total, nilai) => total + (nilai || 0), 0);
 
-                const rainPerJam = (cur.rain || 0) * 4;  // ×4 karena per 15mnt → per jam
+                // YANG BENAR — ambil dari hourly.precipitation:
+const rainPerJam = (hourly.precipitation && typeof hourly.precipitation[activeIndex] === 'number')
+    ? hourly.precipitation[activeIndex]
+    : (cur.rain || 0);
+document.getElementById('rainNow').innerHTML = `${rainPerJam.toFixed(1)} mm/jam`;
 document.getElementById('rainNow').innerHTML = `${rainPerJam.toFixed(1)} mm/jam`;
 // gunakan rainPerJam untuk hitungRisiko*
                 document.getElementById('rainMonthly').innerHTML = `<b>${totalHujanBulanan.toFixed(1)} mm</b>`;
