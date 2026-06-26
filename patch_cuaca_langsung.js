@@ -237,7 +237,9 @@
             'wind_speed_10m,wind_direction_10m,surface_pressure,weather_code' +
             '&hourly=precipitation_probability,precipitation,temperature_850hPa,' +
             'cape,temperature_2m,weather_code' +
-            '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum' +
+            '&daily=weather_code,temperature_2m_max,temperature_2m_min,' +
+'precipitation_sum,precipitation_probability_max,wind_speed_10m_max' +
+'&forecast_days=7' +
             '&forecast_days=7&timezone=auto';
 
         var urlArchive =
@@ -351,7 +353,8 @@
             dailyBox.innerHTML = '';
             var HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
             daily.time.forEach(function(tgl, j) {
-                var d    = new Date(tgl);
+                var parts = tgl.split('-').map(Number);
+var d = new Date(parts[0], parts[1] - 1, parts[2]);
                 var hari = j === 0 ? 'Hari Ini' : HARI[d.getDay()];
                 var c    = cuacaDariKode(daily.weather_code[j]);
                 var maks = daily.temperature_2m_max[j].toFixed(0);
