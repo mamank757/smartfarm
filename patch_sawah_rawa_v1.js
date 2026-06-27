@@ -344,187 +344,110 @@
     };
 
     // ============================================================
-    //  BAGIAN 3 — OVERRIDE rekomendasiWindowTanam() UNTUK RAWA
+    //  BAGIAN 3 — OVERRIDE rekomendasiWindowTanam() UNTUK RAWA (DIKUNCI)
     // ============================================================
+    (function() {
+        var _rekomendasiWindowTanamAsli = window.rekomendasiWindowTanam;
 
-    var _rekomendasiWindowTanamAsli = window.rekomendasiWindowTanam; // Tangkap fungsi yang sedang aktif (bisa dari v3.0.1)
+        function rekomendasiRawa(skorBulan, rawZOM, zona, ensoVal, iodVal) {
+            var now = new Date();
+            var tahun = now.getFullYear();
 
-    function rekomendasiRawa(skorBulan, rawZOM, zona, ensoVal, iodVal) {
-        var now = new Date();
-        var tahun = now.getFullYear();
-
-        var sorted = rawZOM.map(function(v, i){ return { v: v, i: i }; })
-                           .sort(function(a, b){ return b.v - a.v; });
-        var banjirSet = {};
-        for (var k = 0; k < 3; k++) {
-            var bi = sorted[k].i;
-            banjirSet[bi] = true;
-            banjirSet[(bi + 1) % 12] = true; 
-        }
-
-        var bulanAman = [];
-        for (var m = 0; m < 12; m++) {
-            if (!banjirSet[m]) bulanAman.push(m);
-        }
-
-        if (bulanAman.length === 0) {
-            bulanAman = [0, 6]; 
-        }
-
-        var JEDA_OLAH_TANAM = 20; 
-        var varianArr = [
-            { kode: 'genjah', label: 'Genjah (< 95 HST) — DIREKOMENDASIKAN untuk rawa', panen: 90  },
-            { kode: 'sedang', label: 'Sedang (95–115 HST) — jika window cukup',         panen: 110 },
-            { kode: 'dalam',  label: 'Dalam (≥ 116 HST) — risiko tinggi di rawa',       panen: 125 }
-        ];
-
-        var NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni',
-                          'Juli','Agustus','September','Oktober','November','Desember'];
-
-        function tambahHari(d, n) {
-            var h = new Date(d); h.setDate(h.getDate() + n); return h;
-        }
-
-        function tglDariBulan(bulanIdx, tahunRef) {
-            return new Date(tahunRef, bulanIdx, 15);
-        }
-
-        var kandidat = [];
-
-        bulanAman.forEach(function(bOlah) {
-            varianArr.forEach(function(v) {
-                var tglOlah  = tglDariBulan(bOlah, tahun);
-                var tglTanam = tambahHari(tglOlah, JEDA_OLAH_TANAM);
-                var tglPanen = tambahHari(tglTanam, v.panen);
-                var bPanen   = tglPanen.getMonth();
-
-                var panenAman = !banjirSet[bPanen] && !banjirSet[(bPanen + 1) % 12];
-
-                var hariGen  = Math.floor(v.panen * 0.60);
-                var bGen     = tambahHari(tglTanam, hariGen).getMonth();
-                var genAman  = !banjirSet[bGen];
-
-                if (!panenAman || !genAman) return; 
-
-                var nilaiPanen  = 100 - skorBulan[bPanen];
-                var nilaiGen    = 100 - Math.abs(skorBulan[bGen] - 30);
-                var nilaiUmur   = v.kode === 'genjah' ? 20 : v.kode === 'sedang' ? 10 : 0;
-                var nilaiTotal  = (nilaiPanen * 0.45) + (nilaiGen * 0.40) + nilaiUmur;
-
-                var bufferBulan = 0;
-                for (var bb = 1; bb <= 3; bb++) {
-                    if (banjirSet[(bPanen + bb) % 12]) { bufferBulan = bb - 1; break; }
-                    bufferBulan = bb;
-                }
-
-                var alasan = 'Window aman: olah lahan ' + NAMA_BULAN[bOlah]
-                    + ' (pasca-surut), panen ' + NAMA_BULAN[bPanen]
-                    + ' (sebelum banjir, buffer ' + bufferBulan + ' bulan). '
-                    + 'Generatif jatuh di ' + NAMA_BULAN[bGen] + ' — '
-                    + (genAman ? 'aman dari banjir.' : 'WASPADA banjir!');
-
-                if (ensoVal < -0.5) alasan += ' La Niña aktif — antisipasi banjir lebih awal dan lebih tinggi dari normal.';
-                if (ensoVal >  0.5) alasan += ' El Niño aktif — banjir kemungkinan lebih ringan, window agak lebih lebar.';
-
-                kandidat.push({
-                    bOlah       : bOlah,
-                    bTanam      : tglTanam.getMonth(),
-                    tglOlahTanah: tglOlah,
-                    tglTanam    : tglTanam,
-                    tglPanen    : tglPanen,
-                    varietas    : v.kode,
-                    labelVar    : v.label,
-                    umurTotal   : v.panen,
-                    nilaiTotal  : nilaiTotal,
-                    alasan      : alasan,
-                    bufferBulan : bufferBulan,
-                    jadwalTikus : window.hitungJadwalTikus
-                        ? window.hitungJadwalTikus(tglOlah, tglTanam)
-                        : null
-                });
-            });
-        });
-
-        kandidat.sort(function(a, b){ return b.nilaiTotal - a.nilaiTotal; });
-
-        var hasilDuaMusim = [];
-        var bulanSudahDipakai = {};
-
-        kandidat.forEach(function(k) {
-            if (hasilDuaMusim.length >= 2) return;
-            var keyBulan = k.bOlah;
-            var terlalutDekat = Object.keys(bulanSudahDipakai).some(function(b){
-                var diff = Math.abs(parseInt(b) - keyBulan);
-                return Math.min(diff, 12 - diff) < 3;
-            });
-            if (terlalutDekat) return;
-            bulanSudahDipakai[keyBulan] = true;
-
-            var musimNama = hasilDuaMusim.length === 0
-                ? 'MT I — Musim Tanam Utama (Rawa)'
-                : 'MT II — Musim Tanam Kedua (Rawa)';
-
-            var statusWkt = { isLewat: false, isBerjalan: false };
-            if (typeof window.statusWaktuTanam === 'function') {
-                statusWkt = window.statusWaktuTanam(k.tglTanam, now);
+            var sorted = rawZOM.map(function(v, i){ return { v: v, i: i }; })
+                               .sort(function(a, b){ return b.v - a.v; });
+            var banjirSet = {};
+            for (var k = 0; k < 3; k++) {
+                var bi = sorted[k].i;
+                banjirSet[bi] = true;
+                banjirSet[(bi + 1) % 12] = true; 
             }
 
-            hasilDuaMusim.push({
-                musimNama  : musimNama,
-                musimKode  : hasilDuaMusim.length === 0 ? 'rendeng' : 'gadu',
-                tglOlahTanah: k.tglOlahTanah,
-                tglTanam   : k.tglTanam,
-                tglPanen   : k.tglPanen,
-                varietas   : k.varietas,
-                labelVar   : k.labelVar,
-                umurTotal  : k.umurTotal,
-                alasan     : k.alasan,
-                isLewat    : statusWkt.isLewat,
-                isBerjalan : statusWkt.isBerjalan,
-                jadwalTikus: k.jadwalTikus
+            var bulanAman = [];
+            for (var m = 0; m < 12; m++) { if (!banjirSet[m]) bulanAman.push(m); }
+            if (bulanAman.length === 0) bulanAman = [0, 6]; 
+
+            var JEDA_OLAH_TANAM = 20; 
+            var varianArr = [
+                { kode: 'genjah', label: 'Genjah (< 95 HST) — DIREKOMENDASIKAN untuk rawa', panen: 90 },
+                { kode: 'sedang', label: 'Sedang (95–115 HST) — jika window cukup', panen: 110 },
+                { kode: 'dalam',  label: 'Dalam (≥ 116 HST) — risiko tinggi di rawa', panen: 125 }
+            ];
+
+            var NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni',
+                              'Juli','Agustus','September','Oktober','November','Desember'];
+
+            function tambahHari(d, n) { var h = new Date(d); h.setDate(h.getDate() + n); return h; }
+            function tglDariBulan(bulanIdx, tahunRef) { return new Date(tahunRef, bulanIdx, 15); }
+
+            var kandidat = [];
+            bulanAman.forEach(function(bOlah) {
+                varianArr.forEach(function(v) {
+                    var tglOlah = tglDariBulan(bOlah, tahun);
+                    var tglTanam = tambahHari(tglOlah, JEDA_OLAH_TANAM);
+                    var tglPanen = tambahHari(tglTanam, v.panen);
+                    var bPanen = tglPanen.getMonth();
+
+                    var panenAman = !banjirSet[bPanen] && !banjirSet[(bPanen + 1) % 12];
+                    var hariGen = Math.floor(v.panen * 0.60);
+                    var bGen = tambahHari(tglTanam, hariGen).getMonth();
+                    var genAman = !banjirSet[bGen];
+
+                    if (!panenAman || !genAman) return; 
+
+                    var nilaiPanen = 100 - skorBulan[bPanen];
+                    var nilaiGen = 100 - Math.abs(skorBulan[bGen] - 30);
+                    var nilaiUmur = v.kode === 'genjah' ? 20 : v.kode === 'sedang' ? 10 : 0;
+                    var nilaiTotal = (nilaiPanen * 0.45) + (nilaiGen * 0.40) + nilaiUmur;
+
+                    kandidat.push({
+                        tglOlahTanah: tglOlah, tglTanam: tglTanam, tglPanen: tglPanen,
+                        varietas: v.kode, labelVar: v.label, nilaiTotal: nilaiTotal,
+                        alasan: 'Window aman olah lahan ' + NAMA_BULAN[bOlah] + ' (surut), panen ' + NAMA_BULAN[bPanen] + ' (sebelum banjir).'
+                    });
+                });
             });
-        });
 
-        if (hasilDuaMusim.length === 0) {
-            var bFallback = bulanAman[0] !== undefined ? bulanAman[0] : 4;
-            var tglOlahFb = tglDariBulan(bFallback, tahun);
-            var tglTanamFb = tambahHari(tglOlahFb, JEDA_OLAH_TANAM);
-            hasilDuaMusim.push({
-                musimNama  : 'MT I — Estimasi Terbaik (Rawa)',
-                musimKode  : 'rendeng',
-                tglOlahTanah: tglOlahFb,
-                tglTanam   : tglTanamFb,
-                tglPanen   : tambahHari(tglTanamFb, 90),
-                varietas   : 'genjah',
-                labelVar   : 'Genjah — satu-satunya pilihan realistis',
-                umurTotal  : 90,
-                alasan     : '⚠️ Tidak ditemukan window sempurna. Ini adalah bulan paling aman '
-                           + 'di ' + NAMA_BULAN[bFallback] + '. Gunakan varietas genjah dan '
-                           + 'pantau tinggi muka air setiap hari. Siapkan rencana darurat.',
-                isLewat    : false,
-                isBerjalan : false,
-                jadwalTikus: null
+            kandidat.sort(function(a, b){ return b.nilaiTotal - a.nilaiTotal; });
+
+            var hasilDuaMusim = [];
+            var bulanSudahDipakai = {};
+            kandidat.forEach(function(k) {
+                if (hasilDuaMusim.length < 2) {
+                    var terlalutDekat = Object.keys(bulanSudahDipakai).some(function(b){
+                        var diff = Math.abs(parseInt(b) - k.tglOlahTanah.getMonth());
+                        return Math.min(diff, 12 - diff) < 3;
+                    });
+                    if (!terlalutDekat) {
+                        bulanSudahDipakai[k.tglOlahTanah.getMonth()] = true;
+                        hasilDuaMusim.push({
+                            musimNama: hasilDuaMusim.length === 0 ? 'MT I Rawa' : 'MT II Rawa',
+                            musimKode: hasilDuaMusim.length === 0 ? 'rendeng' : 'gadu',
+                            tglOlahTanah: k.tglOlahTanah, tglTanam: k.tglTanam, tglPanen: k.tglPanen,
+                            varietas: k.varietas, labelVar: k.labelVar, alasan: k.alasan
+                        });
+                    }
+                }
             });
+            return hasilDuaMusim;
         }
 
-        hasilDuaMusim.sort(function(a, b){
-            return a.tglOlahTanah.getTime() - b.tglOlahTanah.getTime();
+        // Mengunci fungsi agar tidak bisa ditimpa JTO
+        Object.defineProperty(window, 'rekomendasiWindowTanam', {
+            value: function(skorBulan, rawZOM, zona, ensoVal, iodVal) {
+                var select = document.getElementById('selectJenisSawahJTO') || document.getElementById('selectJenisSawahKalender');
+                if (select && select.value === 'rawa') {
+                    console.log('✅ [RAWA] Logika Window Tanam TERKUNCI & AKTIF');
+                    return rekomendasiRawa(skorBulan, rawZOM, zona, ensoVal || 0, iodVal || 0);
+                }
+                if (typeof _rekomendasiWindowTanamAsli === 'function') {
+                    return _rekomendasiWindowTanamAsli(skorBulan, rawZOM, zona, ensoVal, iodVal);
+                }
+                return [];
+            },
+            writable: false,
+            configurable: true
         });
-
-        return hasilDuaMusim;
-    }
-
-    // ── FIX BUG OVERRIDE ──────────────────────────────────────
-    window.rekomendasiWindowTanam = function(skorBulan, rawZOM, zona, ensoVal, iodVal) {
-        if (getJenisSawah() === 'rawa') {
-            return rekomendasiRawa(skorBulan, rawZOM, zona, ensoVal || 0, iodVal || 0);
-        }
-        // Jika bukan rawa, serahkan kembali pada patch iklim/musim yang terinstal
-        if (typeof _rekomendasiWindowTanamAsli === 'function') {
-            return _rekomendasiWindowTanamAsli(skorBulan, rawZOM, zona, ensoVal, iodVal);
-        }
-        return [];
-    };
+    })();
 
     // ============================================================
     //  BAGIAN 4 — PATCH TEKS ANALISIS DI boxKalender
