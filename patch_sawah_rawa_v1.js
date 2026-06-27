@@ -621,7 +621,7 @@
                 ]
             },
             {
-                nama: '🌟 PANEN — Sebelum Banjir Berikutnya', ikon: '🌾',
+                nama: '🌟 PANEN — Sebelum Curah Hujan Tinggi', ikon: '🌾',
                 deskripsi: 'Panen dipercepat jika banjir akan datang',
                 tglMulai: tglPanen, tglSelesai: tambahHari(tglPanen, 5),
                 risiko: risikoPanenRawa(sb(tglPanen), bm(tglPanen)),
@@ -839,7 +839,7 @@
                     + ' (skor: ' + val.sGen + ') → '
                     + 'Panen ' + NAMA_BULAN[val.bPanen]
                     + ' (skor: ' + val.sPanen + '). '
-                    + 'Buffer ' + bufferBulan + ' bulan sebelum banjir berikutnya.'
+                    + 'Buffer ' + bufferBulan + ' bulan sebelum air meluap berikutnya.'
                     + keteranganENSO + keteranganIOD;
 
                 var jadwalTikusRawa = null;
@@ -1212,7 +1212,7 @@
             + '<div><span style="color:#64748b;">Kondisi ENSO / IOD</span><br>'
             + '<strong style="color:#fff;">' + (ensoData.status||'Netral') + ' / ' + (iodData.status||'Netral') + '</strong></div>'
             + '<div><span style="color:#64748b;">Strategi utama (kebalikan tadah hujan)</span><br>'
-            + '<strong style="color:' + WARNA_RAWA + ';">Tanam saat musim KERING — olah lahan saat air surut, panen sebelum banjir kembali</strong></div>'
+            + '<strong style="color:' + WARNA_RAWA + ';">Tanam saat musim KERING — olah lahan saat air surut, panen sebelum air meluap kembali</strong></div>'
             + '<div><span style="color:#64748b;">Threshold banjir ZOM (P' + thInfo.p + ', ENSO/IOD-adjusted)</span><br>'
             + '<strong style="color:' + WARNA_RAWA + ';">Varietas prioritas: Inpari 30 · Inpari 33 (tahan rendaman 14 hari)</strong></div>'
             + '</div></div>';
@@ -1258,7 +1258,7 @@
                 + '<strong style="color:' + WARNA_RAWA + ';font-size:13px;">' + fmtL(rek.tglOlahTanah) + '</strong></div>'
                 + '<div><span style="color:#64748b;">Tanam (Musim Kering)</span><br>'
                 + '<strong style="color:#fff;font-size:13px;">' + fmtL(rek.tglTanam) + '</strong></div>'
-                + '<div><span style="color:#64748b;">Target Panen (Sebelum Banjir)</span><br>'
+                + '<div><span style="color:#64748b;">Target Panen (Sebelum Curah Hujan Tinggi)</span><br>'
                 + '<strong style="color:' + WARNA_RAWA + ';font-size:13px;">' + fmtL(rek.tglPanen) + '</strong></div>'
                 + '<div><span style="color:#64748b;">Varietas</span><br>'
                 + '<strong style="color:#fff;font-size:12px;">' + rek.labelVar + '</strong></div>'
