@@ -1,526 +1,657 @@
 /**
  * ============================================================
- * patch_sawah_rawa_v1.js
+ * patch_sawah_rawa_v1.1.js
  * Diferensiasi Jenis Sawah — PPL Milenial Wajo
  * ============================================================
  *
- * CARA PASANG:
- *   Tambahkan SETELAH patch_risiko_iklim.js dan
- *   patch_deteksi_musim_v3.0.js di bagian bawah <body>:
+ * PERBAIKAN v1.1 vs v1.0:
  *
- *     <script src="patch_risiko_iklim.js"></script>
- *     <script src="patch_deteksi_musim_v3.0.js"></script>
- *     <script src="patch_sawah_rawa_v1.js"></script>
- *     <script src="patch_jadwal_tanam_otomatis.js"></script>
- *     <script src="patch_jadwal_tapin_tabela_fix.js"></script>
+ *   [FIX-1] KALENDER TNM tidak merespons pilihan rawa.
+ *           Root cause: prosesJadwalOtomatis() di JTO v3.13
+ *           memanggil bangunKegiatan() lokal yang tidak tahu
+ *           soal rawa, DAN format objek rekomendasi dari
+ *           rekomendasiRawa() berbeda (field tglOlahTanah
+ *           langsung di rek, bukan dari rek.jadwalTikus).
+ *           Fix: override window.prosesJadwalOtomatis SETELAH
+ *           JTO init, dengan versi yang sadar jenis sawah.
  *
- * APA YANG BERUBAH:
+ *   [FIX-2] bangunKegiatanRawa() — versi khusus rawa dengan:
+ *           - Urutan kegiatan berbeda (gropyokan saat surut
+ *             bukan sebelum bajak)
+ *           - Risiko diperhitungkan dari skor banjir, bukan
+ *             skor kekeringan
+ *           - Label & tips disesuaikan untuk konteks rawa
+ *           - Tidak ada kegiatan "pompanisasi" — diganti
+ *             "pemantauan pintu air / tabat"
  *
- *   [RAWA-1] Tambah dropdown "Jenis Sawah" di form Risiko Iklim
- *            dan Kalender Tanam (dua form yang berbeda).
+ *   [FIX-3] renderOutput() di JTO menggunakan rek.tglOlahTanah
+ *           dari engine rawa — field ini di-pass ke bangunKegiatan
+ *           lewat rek, tapi JTO lama tidak meneruskannya.
+ *           Fix: wrapper prosesJadwalOtomatis baru meneruskan
+ *           tglOlahTanah ke dalam objek jadwal.
  *
- *   [RAWA-2] Override hitungRisikoDinamis() — skor risiko berbeda
- *            untuk sawah rawa:
- *            - Olah lahan: risiko TINGGI saat masih tergenang/banjir
- *            - Vegetatif : risiko TINGGI saat banjir mendadak naik
- *            - Generatif : risiko KRITIS saat banjir (bukan kering)
- *            - Panen     : risiko TINGGI saat hujan naik lagi (banjir
- *                          datang sebelum panen selesai)
+ *   [FIX-4] Label jenis sawah ditampilkan di kotak
+ *           "INFORMASI IKLIM TAHUNAN" pada output JTO.
  *
- *   [RAWA-3] Override rekomendasiWindowTanam() / rekomendasiWindowTanamV4()
- *            — mencari WINDOW AMAN antara dua puncak banjir:
- *            - Olah lahan setelah air surut (bulan CH rendah/turun)
- *            - Panen harus selesai SEBELUM puncak banjir berikutnya
- *            - Varietas genjah sangat diutamakan agar cukup waktu
+ *   [FIX-5] Kotak info rawa disisipkan di bawah hasil JTO
+ *           (sama seperti di Risiko Iklim).
  *
- *   [RAWA-4] Teks analisis & rekomendasi PPL disesuaikan per jenis:
- *            - Irigasi/Tadah hujan: teks asli (tidak berubah)
- *            - Sawah rawa: teks spesifik banjir, surut, varietas
- *              tahan rendaman (Inpari 30, Inpari 33, Inpari IR Nutri Zinc)
- *
- *   [RAWA-5] Jadwal tikus di sawah rawa disesuaikan:
- *            - Gropyokan saat SURUT (bukan sebelum bajak saja)
- *            - Pasang TBS di tanggul yang tidak tergenang
- *            - Peringatan: saat banjir tikus migrasi ke tanggul —
- *              justru momen penangkapan terbaik
+ * CARA PASANG — urutan harus persis ini:
+ *   <script src="patch_risiko_iklim.js"></script>
+ *   <script src="patch_deteksi_musim_v3.0.js"></script>
+ *   <script src="patch_sawah_rawa_v1.1.js"></script>   ← file ini
+ *   <script src="patch_jadwal_tanam_otomatis.js"></script>
+ *   <script src="patch_jadwal_tapin_tabela_fix.js"></script>
  *
  * DASAR ILMIAH:
  *   - IRRI Rice Knowledge Bank — Flood-Prone Lowland Rice (2019)
- *   - BB Padi (2022) Varietas Unggul Tahan Rendaman: Inpari 30, 33
+ *   - BB Padi (2022) Varietas Unggul Tahan Rendaman
  *   - Balitbangtan (2018) Pola Tanam Lahan Rawa Lebak Sulsel
- *   - Noor (2007) Lahan Rawa: Sifat dan Pengelolaan Tanah Bermasalah
- *     Sulfat Masam (Balittra Banjarbaru)
- *   - Subagyo (2006) Lahan Rawa Pasang Surut & Lebak (FAO-Indonesia)
+ *   - Noor (2007) Lahan Rawa Lebak (Balittra Banjarbaru)
  * ============================================================
  */
 
 (function () {
     'use strict';
 
-    // ── Guard double-load ─────────────────────────────────────
     if (window.__sawahRawaV1Aktif) {
-        console.warn('[patch_sawah_rawa_v1] sudah aktif, skip.');
+        console.warn('[patch_sawah_rawa_v1.1] sudah aktif, skip.');
         return;
     }
 
     // ============================================================
-    //  BAGIAN 0 — KONSTANTA & HELPER
+    //  KONSTANTA & HELPER
     // ============================================================
 
-    /**
-     * Ambil jenis sawah dari salah satu dropdown yang tersedia.
-     * Mengembalikan 'rawa' atau 'irigasi'.
-     */
+    var WARNA_RAWA = '#1D9E75';
+
+    var NAMA_HARI        = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+    var NAMA_BULAN       = ['Januari','Februari','Maret','April','Mei','Juni',
+                            'Juli','Agustus','September','Oktober','November','Desember'];
+    var NAMA_BULAN_PEND  = ['Jan','Feb','Mar','Apr','Mei','Jun',
+                            'Jul','Agu','Sep','Okt','Nov','Des'];
+
+    function tambahHari(d, n) {
+        var h = new Date(d); h.setDate(h.getDate() + n); return h;
+    }
+    function fmtL(d) {
+        return NAMA_HARI[d.getDay()] + ', ' + d.getDate() + ' ' +
+               NAMA_BULAN[d.getMonth()] + ' ' + d.getFullYear();
+    }
+    function fmtP(d) {
+        return d.getDate() + ' ' + NAMA_BULAN_PEND[d.getMonth()] + ' ' + d.getFullYear();
+    }
+
     function getJenisSawah() {
         var el = document.getElementById('selectJenisSawahRisiko')
                 || document.getElementById('selectJenisSawahKalender')
                 || document.getElementById('selectJenisSawahJTO');
-        if (!el) return 'irigasi';
-        return el.value === 'rawa' ? 'rawa' : 'irigasi';
+        return (el && el.value === 'rawa') ? 'rawa' : 'irigasi';
     }
 
-    /**
-     * Kembalikan true jika bulan yang diperiksa termasuk puncak
-     * banjir berdasarkan pola ZOM.
-     *
-     * Logika: bulan banjir = 2 bulan dengan CH tertinggi + 1 bulan
-     * setelah puncak (air belum surut).
-     *
-     * @param {number[]} baselineData - 12 nilai ZOM/CH bulanan
-     * @param {number}   bulanIndex   - 0-11
-     * @returns {boolean}
-     */
-    function isBulanBanjir(baselineData, bulanIndex) {
-        if (!baselineData || baselineData.length < 12) return false;
-        var sorted = baselineData.slice().sort(function(a, b){ return b - a; });
-        var threshold = sorted[2]; // ambil nilai ke-3 tertinggi sebagai batas
-        var bulanIni    = baselineData[bulanIndex];
-        var bulanSebelum = baselineData[(bulanIndex - 1 + 12) % 12];
-        // Banjir aktif: bulan ini ATAU bulan sebelumnya (sisa genangan) di atas threshold
-        return bulanIni >= threshold || bulanSebelum >= threshold;
+    // ── Skor banjir relatif (0–100): makin tinggi makin basah/banjir ──
+    function skorBanjirBulan(rawZOM, bulanIndex) {
+        if (!rawZOM || rawZOM.length < 12) return 50;
+        var max = Math.max.apply(null, rawZOM);
+        var min = Math.min.apply(null, rawZOM);
+        var range = (max - min) || 1;
+        return Math.round(((rawZOM[bulanIndex] - min) / range) * 100);
     }
 
-    /**
-     * Hitung "skor banjir" — seberapa basah bulan ini relatif
-     * terhadap bulan terbasah dalam setahun (0-100).
-     */
-    function skorBanjir(baselineData, bulanIndex) {
-        if (!baselineData || baselineData.length < 12) return 50;
-        var max = Math.max.apply(null, baselineData);
-        var min = Math.min.apply(null, baselineData);
-        var range = max - min || 1;
-        return Math.round(((baselineData[bulanIndex] - min) / range) * 100);
+    // ── Apakah bulan ini termasuk periode banjir aktif? ──
+    function isBulanBanjir(rawZOM, bulanIndex) {
+        if (!rawZOM || rawZOM.length < 12) return false;
+        var sorted = rawZOM.slice().sort(function(a,b){ return b-a; });
+        var threshold = sorted[2]; // 3 bulan terbasah
+        return rawZOM[bulanIndex] >= threshold
+            || rawZOM[(bulanIndex - 1 + 12) % 12] >= threshold;
     }
 
     // ============================================================
     //  BAGIAN 1 — INJECT DROPDOWN JENIS SAWAH
-    //
-    //  Menyisipkan pilihan jenis sawah di dua form yang berbeda:
-    //  (a) Form Risiko Iklim (tab RISIKO IKLIM / Kalender)
-    //  (b) Form Kalender Tanam Otomatis (tab KALENDER TNM / JTO)
     // ============================================================
 
-    var HTML_DROPDOWN_RISIKO = '<div class="form-group" id="groupJenisSawahRisiko" style="margin-bottom:14px;">'
-        + '<label>🌊 JENIS LAHAN SAWAH</label>'
-        + '<select id="selectJenisSawahRisiko" class="form-select" onchange="window.__rawaOnChange()">'
-        + '<option value="irigasi">💧 Irigasi / Tadah Hujan (mengandalkan hujan)</option>'
-        + '<option value="rawa">🌿 Sawah Rawa / Lebak / DAS (menunggu air surut)</option>'
-        + '</select>'
-        + '<div id="infoJenisSawahRisiko" style="margin-top:8px;padding:10px 12px;border-radius:var(--radius,8px);font-size:0.78rem;line-height:1.6;display:none;background:rgba(59,130,246,0.07);border-left:3px solid #3b82f6;color:#cbd5e1;">'
-        + '</div>'
+    var INFO_RAWA_HTML = '<div id="infoJenisSawahJTO" style="margin-top:8px;padding:10px 12px;'
+        + 'border-radius:8px;font-size:0.78rem;line-height:1.6;display:none;'
+        + 'background:rgba(29,158,117,0.08);border-left:3px solid ' + WARNA_RAWA + ';color:#cbd5e1;">'
+        + '🌿 <b>Sawah Rawa aktif:</b> Sistem mencari <b>jendela aman</b> antara dua periode banjir. '
+        + 'Varietas genjah diutamakan agar panen selesai sebelum banjir berikutnya.'
         + '</div>';
 
-    var HTML_DROPDOWN_KALENDER = '<div class="form-group" id="groupJenisSawahKalender" style="margin-bottom:14px;">'
-        + '<label>🌊 JENIS LAHAN SAWAH</label>'
-        + '<select id="selectJenisSawahKalender" class="form-select" onchange="window.__rawaOnChange()">'
-        + '<option value="irigasi">💧 Irigasi / Tadah Hujan</option>'
-        + '<option value="rawa">🌿 Sawah Rawa / Lebak / DAS</option>'
-        + '</select>'
-        + '<div id="infoJenisSawahKalender" style="margin-top:8px;padding:10px 12px;border-radius:var(--radius,8px);font-size:0.78rem;line-height:1.6;display:none;background:rgba(59,130,246,0.07);border-left:3px solid #3b82f6;color:#cbd5e1;">'
-        + '</div>'
-        + '</div>';
-
-    var HTML_DROPDOWN_JTO = '<div class="form-group" id="groupJenisSawahJTO" style="margin-bottom:14px;">'
-        + '<label>🌊 JENIS LAHAN SAWAH</label>'
-        + '<select id="selectJenisSawahJTO" class="form-select" onchange="window.__rawaOnChange()">'
-        + '<option value="irigasi">💧 Irigasi / Tadah Hujan</option>'
-        + '<option value="rawa">🌿 Sawah Rawa / Lebak / DAS</option>'
-        + '</select>'
-        + '</div>';
-
-    var INFO_RAWA = '🌿 <b>Sawah Rawa / Lebak / DAS:</b> Kalkulasi berubah — sistem sekarang mencari '
-        + '<b>jendela aman</b> antara dua periode banjir. Olah lahan setelah air surut, generatif dan '
-        + 'panen harus selesai sebelum puncak banjir berikutnya. Varietas tahan rendaman '
-        + 'diutamakan (Inpari 30, Inpari 33).';
-
-    function injectDropdowns() {
-        // (a) Di dalam boxKalender, sebelum tombol analisis
-        var boxKalender = document.getElementById('boxKalender');
-        if (boxKalender && !document.getElementById('groupJenisSawahRisiko')) {
-            var btnAnalisis = boxKalender.querySelector('button.btn-main');
-            if (btnAnalisis) {
-                btnAnalisis.insertAdjacentHTML('beforebegin', HTML_DROPDOWN_RISIKO);
-            } else {
-                var inputTgl = boxKalender.querySelector('#inputTglTanam');
-                if (inputTgl) {
-                    inputTgl.closest('.form-group').insertAdjacentHTML('afterend', HTML_DROPDOWN_RISIKO);
-                } else {
-                    boxKalender.insertAdjacentHTML('afterbegin', HTML_DROPDOWN_RISIKO);
-                }
-            }
-        }
-
-        // (b) Di dalam boxJadwalTanam (JTO)
+    function injectDropdownJTO() {
         var boxJTO = document.getElementById('boxJadwalTanam');
-        if (boxJTO && !document.getElementById('groupJenisSawahJTO')) {
-            var selectMetode = boxJTO.querySelector('#metodeTanamJTO');
-            if (selectMetode) {
-                selectMetode.closest('.form-group').insertAdjacentHTML('afterend', HTML_DROPDOWN_JTO);
-            } else {
-                boxJTO.insertAdjacentHTML('afterbegin', HTML_DROPDOWN_JTO);
-            }
+        if (!boxJTO || document.getElementById('groupJenisSawahJTO')) return;
+
+        var html = '<div class="form-group" id="groupJenisSawahJTO" style="margin-bottom:14px;">'
+            + '<label class="form-label">🌊 JENIS LAHAN SAWAH</label>'
+            + '<select id="selectJenisSawahJTO" class="form-select" style="margin-bottom:0;" '
+            + 'onchange="window.__rawaOnChangeJTO()">'
+            + '<option value="irigasi">💧 Irigasi / Tadah Hujan</option>'
+            + '<option value="rawa">🌿 Sawah Rawa / Lebak / DAS (menunggu air surut)</option>'
+            + '</select>'
+            + INFO_RAWA_HTML
+            + '</div>';
+
+        // Sisipkan setelah select metodeTanamJTO
+        var selectMetode = boxJTO.querySelector('#metodeTanamJTO');
+        if (selectMetode && selectMetode.closest('.form-group')) {
+            selectMetode.closest('.form-group').insertAdjacentHTML('afterend', html);
+        } else {
+            // Fallback: sisipkan sebelum tombol analisis
+            var btn = boxJTO.querySelector('#btnJadwalOtomatis');
+            if (btn) btn.insertAdjacentHTML('beforebegin', html);
+            else boxJTO.insertAdjacentHTML('afterbegin', html);
         }
     }
 
-    // Callback saat dropdown berubah
+    function injectDropdownRisiko() {
+        // Inject di boxKalender (tab Risiko Iklim)
+        var boxKalender = document.getElementById('boxKalender');
+        if (!boxKalender || document.getElementById('groupJenisSawahRisiko')) return;
+
+        var html = '<div class="form-group" id="groupJenisSawahRisiko" style="margin-bottom:14px;">'
+            + '<label>🌊 JENIS LAHAN SAWAH</label>'
+            + '<select id="selectJenisSawahRisiko" class="form-select" '
+            + 'onchange="window.__rawaOnChange()">'
+            + '<option value="irigasi">💧 Irigasi / Tadah Hujan</option>'
+            + '<option value="rawa">🌿 Sawah Rawa / Lebak / DAS</option>'
+            + '</select>'
+            + '<div id="infoJenisSawahRisiko" style="display:none;margin-top:8px;padding:10px 12px;'
+            + 'border-radius:8px;font-size:0.78rem;line-height:1.6;'
+            + 'background:rgba(29,158,117,0.08);border-left:3px solid ' + WARNA_RAWA + ';color:#cbd5e1;">'
+            + '🌿 <b>Sawah Rawa aktif:</b> Sistem mencari jendela aman antara dua periode banjir. '
+            + 'Risiko TINGGI = banjir aktif, bukan kekeringan.'
+            + '</div>'
+            + '</div>';
+
+        var btn = boxKalender.querySelector('button.btn-main');
+        if (btn) btn.insertAdjacentHTML('beforebegin', html);
+        else boxKalender.insertAdjacentHTML('afterbegin', html);
+    }
+
     window.__rawaOnChange = function() {
         var isRawa = getJenisSawah() === 'rawa';
-        ['infoJenisSawahRisiko','infoJenisSawahKalender'].forEach(function(id){
+        ['infoJenisSawahRisiko'].forEach(function(id){
             var el = document.getElementById(id);
-            if (!el) return;
-            if (isRawa) {
-                el.style.display = 'block';
-                el.innerHTML = INFO_RAWA;
-            } else {
-                el.style.display = 'none';
-            }
+            if (el) el.style.display = isRawa ? 'block' : 'none';
         });
     };
 
-    // ============================================================
-    //  BAGIAN 2 — OVERRIDE hitungRisikoDinamis() UNTUK SAWAH RAWA
-    // ============================================================
-
-    var _hitungRisikoDinamisAsli = window.hitungRisikoDinamis;
-
-    function hitungRisikoDinamisRawa(bulanIndex, fase, ensoVal, iodVal, baselineData) {
-        // Skor banjir bulan ini (0-100): makin tinggi makin banjir
-        var sb = skorBanjir(baselineData, bulanIndex);
-        // Apakah bulan ini atau bulan sebelumnya termasuk puncak banjir?
-        var banjirAktif = isBulanBanjir(baselineData, bulanIndex);
-        // Bulan berikutnya apakah banjir? (ancaman panen tergesa)
-        var banjirMendekat = isBulanBanjir(baselineData, (bulanIndex + 1) % 12);
-
-        // Apakah ENSO/IOD memperparah banjir? La Niña + IOD Negatif = sangat basah
-        var ensoBasah = (ensoVal < -0.5); // La Niña
-        var iodBasah  = (iodVal  < -0.4); // IOD Negatif
-        var amplifikasiBanjir = (ensoBasah && iodBasah) ? 20 : (ensoBasah || iodBasah) ? 10 : 0;
-        sb = Math.min(100, sb + amplifikasiBanjir);
-
-        var skor = 20;
-        var statusCuaca, masalah, tipeBahaya;
-
-        if (fase === 'Tanam') {
-            // Sawah rawa: olah lahan hanya bisa saat air SUDAH SURUT
-            if (banjirAktif) {
-                skor    = 92;
-                statusCuaca = 'Tergenang / Banjir Aktif';
-                masalah = 'TIDAK BISA OLAH LAHAN: lahan masih tergenang. Tunggu air benar-benar surut '
-                         + 'sebelum traktor masuk. Manfaatkan waktu untuk gropyokan komunal di tanggul.';
-                tipeBahaya = 'banjir';
-            } else if (sb > 55) {
-                skor    = 55;
-                statusCuaca = 'Air Baru Surut';
-                masalah = 'Air baru surut, tanah masih sangat lembek. Tunggu 1-2 minggu lagi '
-                         + 'sebelum traktor masuk agar tidak amblas. Manfaatkan untuk persemaian.';
-                tipeBahaya = 'banjir';
-            } else if (sb < 20) {
-                skor    = 15;
-                statusCuaca = 'Surut Optimal';
-                masalah = 'Kondisi terbaik untuk sawah rawa: air sudah surut, tanah cukup kering '
-                         + 'untuk traktor namun masih lembab. Segera lakukan pengolahan lahan.';
-                tipeBahaya = 'aman';
-            } else {
-                skor    = 30;
-                statusCuaca = 'Air Sedang Turun';
-                masalah = 'Air sedang dalam proses surut. Pantau tinggi muka air setiap hari. '
-                         + 'Persiapkan benih agar siap sebar segera setelah lahan bisa diolah.';
-                tipeBahaya = 'aman';
-            }
-        }
-        else if (fase === 'Vegetatif') {
-            // Sawah rawa: vegetatif tidak boleh kena banjir mendadak yang tidak terkendali
-            if (banjirAktif && sb > 75) {
-                skor    = 80;
-                statusCuaca = 'Banjir Saat Vegetatif';
-                masalah = 'BAHAYA: banjir aktif saat fase vegetatif. Genangan > 10 hari akan '
-                         + 'membunuh anakan. Buka saluran darurat. Pertimbangkan varietas tahan '
-                         + 'rendaman (Inpari 30 tahan terendam s/d 14 hari).';
-                tipeBahaya = 'banjir';
-            } else if (sb > 55) {
-                skor    = 45;
-                statusCuaca = 'Air Cukup Tinggi';
-                masalah = 'Curah hujan tinggi, potensi air naik. Jaga saluran pembuang tetap terbuka. '
-                         + 'Pantau setiap hari — jika air naik > 30 cm dalam 24 jam, segera lapor ke Dinas.';
-                tipeBahaya = 'banjir';
-            } else if (sb < 20) {
-                skor    = 25;
-                statusCuaca = 'Air Rendah / Surut';
-                masalah = 'Air rendah di fase vegetatif sawah rawa justru baik: akar tumbuh kuat. '
-                         + 'Bila terlalu kering, manfaatkan saluran tersier untuk pompanisasi ringan.';
-                tipeBahaya = 'aman';
-            } else {
-                skor    = 18;
-                statusCuaca = 'Ketinggian Air Normal';
-                masalah = 'Ketinggian air terkendali. Kondisi optimal untuk pertumbuhan anakan '
-                         + 'di sawah rawa. Lanjutkan monitoring rutin.';
-                tipeBahaya = 'aman';
-            }
-        }
-        else if (fase === 'Generatif') {
-            // Sawah rawa: fase paling kritis — banjir saat bunting = gagal panen total
-            if (banjirAktif || sb > 70) {
-                skor    = 97;
-                statusCuaca = 'KRITIS: Banjir Saat Bunting';
-                masalah = 'KRITIS GAGAL PANEN: banjir saat fase bunting/berbunga adalah kondisi '
-                         + 'paling merusak di sawah rawa. Malai terendam saat pengisian = hampa massal. '
-                         + 'Jadwal tanam berikutnya harus mundur agar generatif tidak jatuh di bulan ini.';
-                tipeBahaya = 'banjir';
-            } else if (banjirMendekat && sb > 50) {
-                skor    = 70;
-                statusCuaca = 'Banjir Mendekat';
-                masalah = 'Bulan depan diprediksi banjir. Hitung apakah panen bisa selesai '
-                         + 'sebelum air naik. Jika tidak, pertimbangkan percepatan panen dini '
-                         + '(kadar air 25-28%, giling segera).';
-                tipeBahaya = 'banjir';
-            } else if (sb < 25) {
-                skor    = 10;
-                statusCuaca = 'Jendela Aman Generatif';
-                masalah = 'JENDELA TERBAIK untuk generatif sawah rawa: air rendah, tidak ada '
-                         + 'ancaman banjir. Penyerbukan dan pengisian bulir akan optimal.';
-                tipeBahaya = 'aman';
-            } else {
-                skor    = 35;
-                statusCuaca = 'Air Terkendali';
-                masalah = 'Kondisi generatif cukup aman. Pantau curah hujan harian — jika hujan '
-                         + '>50 mm/hari berturut-turut 3 hari, waspada air naik mendadak.';
-                tipeBahaya = 'aman';
-            }
-        }
-        else if (fase === 'Panen') {
-            // Sawah rawa: panen harus selesai SEBELUM banjir kembali datang
-            if (banjirAktif || sb > 70) {
-                skor    = 90;
-                statusCuaca = 'KRITIS: Banjir Saat Panen';
-                masalah = 'KRITIS: banjir aktif saat panen. Lahan tidak bisa diakses mesin, '
-                         + 'gabah rebah dan terendam. Panen manual darurat — prioritaskan petak '
-                         + 'terdekat tanggul. Sewa alat pemotong manual.';
-                tipeBahaya = 'banjir';
-            } else if (banjirMendekat && sb > 45) {
-                skor    = 65;
-                statusCuaca = 'Banjir Mendekat — Percepat';
-                masalah = 'Bulan depan diprediksi banjir. Percepat panen 5-7 hari dari jadwal '
-                         + 'normal. Pesan Combine Harvester segera — jangan tunggu 95% kuning. '
-                         + 'Siapkan dryer karena panen lebih awal = kadar air lebih tinggi.';
-                tipeBahaya = 'banjir';
-            } else if (sb < 25) {
-                skor    = 8;
-                statusCuaca = 'Jendela Panen Ideal';
-                masalah = 'Kondisi panen terbaik untuk sawah rawa: air surut, lahan kering, '
-                         + 'Combine bisa masuk, gabah kering alami. Manfaatkan sebaik-baiknya.';
-                tipeBahaya = 'aman';
-            } else {
-                skor    = 30;
-                statusCuaca = 'Aman untuk Panen';
-                masalah = 'Kondisi panen cukup aman. Pantau prakiraan cuaca 7 hari ke depan '
-                         + 'sebelum menjadwalkan Combine. Siapkan terpal cadangan.';
-                tipeBahaya = 'aman';
-            }
-        }
-
-        skor = Math.round(Math.max(0, Math.min(100, skor)));
-        return { skor: skor, statusCuaca: statusCuaca || 'Normal', masalah: masalah || '-', tipeBahaya: tipeBahaya || 'aman' };
-    }
-
-    // Wrapper: pilih implementasi sesuai jenis sawah
-    window.hitungRisikoDinamis = function(bulanIndex, fase, ensoVal, iodVal, baselineData) {
-        if (getJenisSawah() === 'rawa') {
-            return hitungRisikoDinamisRawa(bulanIndex, fase, ensoVal, iodVal, baselineData);
-        }
-        if (typeof _hitungRisikoDinamisAsli === 'function') {
-            return _hitungRisikoDinamisAsli(bulanIndex, fase, ensoVal, iodVal, baselineData);
-        }
-        // Sangat tidak mungkin tapi tetap ada fallback
-        return { skor: 50, statusCuaca: 'Normal', masalah: '-', tipeBahaya: 'aman' };
+    window.__rawaOnChangeJTO = function() {
+        var isRawa = getJenisSawah() === 'rawa';
+        var el = document.getElementById('infoJenisSawahJTO');
+        if (el) el.style.display = isRawa ? 'block' : 'none';
     };
 
     // ============================================================
-    //  BAGIAN 3 — OVERRIDE rekomendasiWindowTanam() UNTUK RAWA
-    //
-    //  Algoritma khusus sawah rawa:
-    //  1. Identifikasi bulan BANJIR (CH tertinggi + buffer)
-    //  2. Cari window AMAN: olah lahan saat CH turun setelah puncak
-    //  3. Hitung apakah panen bisa selesai sebelum banjir berikutnya
-    //  4. Jika window cukup: rekomendasikan; jika tidak: cari window lain
-    //  5. Varietas genjah diutamakan karena window sering sempit
+    //  BAGIAN 2 — RISIKO BANJIR untuk kegiatan di sawah rawa
+    //  (dipakai oleh bangunKegiatanRawa)
     // ============================================================
 
-    var _rekomendasiWindowTanamAsli = window.rekomendasiWindowTanam;
-    var _rekomendasiWindowTanamV4Asli = window.rekomendasiWindowTanamV4;
+    function risikoOlahRawa(sbanjir) {
+        if (sbanjir > 70) return { level: 'Masih Tergenang', warna: '#ef4444',
+            catatan: 'Lahan belum bisa diolah — air masih tinggi. Tunggu surut total sebelum traktor masuk.' };
+        if (sbanjir > 45) return { level: 'Air Baru Surut', warna: '#f59e0b',
+            catatan: 'Tanah masih sangat lembek. Tunggu 1–2 minggu agar traktor tidak amblas.' };
+        return { level: 'Surut Optimal', warna: WARNA_RAWA,
+            catatan: 'Kondisi terbaik — air surut, tanah cukup padat untuk traktor.' };
+    }
 
-    /**
-     * Rekomendasikan jadwal tanam untuk sawah rawa.
-     *
-     * @param {number[]} skorBulan  - skor kelembapan 12 bulan (0-100)
-     * @param {number[]} rawZOM     - CH/ZOM baseline 12 bulan
-     * @param {string}   zona       - zona iklim
-     * @param {number}   ensoVal    - anomali ENSO
-     * @param {number}   iodVal     - anomali IOD
-     * @returns {Object[]} array rekomendasi 1-2 musim
-     */
-    function rekomendasiRawa(skorBulan, rawZOM, zona, ensoVal, iodVal) {
-        var now = new Date();
-        var tahun = now.getFullYear();
+    function risikoTanamRawa(sbanjir) {
+        if (sbanjir > 60) return { level: 'Air Masih Tinggi', warna: '#ef4444',
+            catatan: 'Tunda tanam — lahan masih tergenang.' };
+        if (sbanjir > 35) return { level: 'Air Sedang Turun', warna: '#f59e0b',
+            catatan: 'Pantau tinggi muka air setiap hari. Siapkan benih agar siap saat lahan bisa ditanam.' };
+        return { level: 'Siap Tanam', warna: WARNA_RAWA,
+            catatan: 'Air cukup rendah — kondisi optimal untuk tanam di sawah rawa.' };
+    }
 
-        // ── 1. Identifikasi bulan puncak banjir ─────────────────
-        // Urutkan bulan dari CH tertinggi. Dua bulan teratas = puncak banjir.
-        // Satu bulan setelah puncak = banjir masih aktif (air belum surut).
-        var sorted = rawZOM.map(function(v, i){ return { v: v, i: i }; })
-                           .sort(function(a, b){ return b.v - a.v; });
-        var banjirSet = {};
-        // 3 bulan CH tertinggi = periode banjir
-        for (var k = 0; k < 3; k++) {
-            var bi = sorted[k].i;
-            banjirSet[bi] = true;
-            // buffer: bulan setelah puncak masih tergenang
-            banjirSet[(bi + 1) % 12] = true;
-        }
+    function risikoVegRawa(sbanjir) {
+        if (sbanjir > 75) return { level: 'BAHAYA Banjir', warna: '#ef4444',
+            catatan: 'Banjir aktif saat vegetatif. Anakan terendam >10 hari = mati. Gunakan Inpari 30/33.' };
+        if (sbanjir > 50) return { level: 'Waspada Air Naik', warna: '#f59e0b',
+            catatan: 'Pantau tinggi air harian. Buka saluran pembuang jika air naik >30 cm/24 jam.' };
+        return { level: 'Aman', warna: WARNA_RAWA,
+            catatan: 'Ketinggian air terkendali — kondisi vegetatif optimal.' };
+    }
 
-        // ── 2. Bulan yang AMAN untuk olah lahan ─────────────────
-        // Aman = bukan bulan banjir DAN bukan bulan buffer
-        var bulanAman = [];
-        for (var m = 0; m < 12; m++) {
-            if (!banjirSet[m]) bulanAman.push(m);
-        }
+    function risikoGenRawa(sbanjir, banjirMendekat) {
+        if (sbanjir > 65) return { level: 'KRITIS Banjir Bunting', warna: '#ef4444',
+            catatan: 'GAGAL PANEN jika banjir mengenai malai bunting. Geser jadwal musim berikutnya.' };
+        if (banjirMendekat) return { level: 'Banjir Mendekat', warna: '#f59e0b',
+            catatan: 'Bulan depan diprediksi banjir. Hitung apakah panen bisa selesai sebelum air naik.' };
+        return { level: 'Jendela Aman', warna: WARNA_RAWA,
+            catatan: 'Fase generatif di jendela aman — penyerbukan dan pengisian bulir optimal.' };
+    }
 
-        // Jika tidak ada bulan aman (sangat tidak mungkin), fallback
-        if (bulanAman.length === 0) {
-            bulanAman = [0, 6]; // Jan & Jul sebagai default
-        }
+    function risikoPanenRawa(sbanjir, banjirMendekat) {
+        if (sbanjir > 65) return { level: 'KRITIS Banjir Panen', warna: '#ef4444',
+            catatan: 'Banjir aktif — lahan tidak bisa diakses. Panen manual darurat, prioritaskan petak dekat tanggul.' };
+        if (banjirMendekat) return { level: 'Percepat Panen', warna: '#f59e0b',
+            catatan: 'Percepat panen 5–7 hari dari jadwal. Pesan Combine sekarang — jangan tunggu 95% kuning.' };
+        return { level: 'Jendela Panen Ideal', warna: WARNA_RAWA,
+            catatan: 'Air surut, lahan kering — kondisi terbaik untuk panen di sawah rawa.' };
+    }
 
-        // ── 3. Cari window tanam dengan panen sebelum banjir ────
-        // Varietas: utamakan genjah (90 hari) agar window cukup
-        var JEDA_OLAH_TANAM = 20; // hari dari olah lahan ke tanam (lebih pendek di rawa)
-        var varianArr = [
-            { kode: 'genjah', label: 'Genjah (< 95 HST) — DIREKOMENDASIKAN untuk rawa', panen: 90  },
-            { kode: 'sedang', label: 'Sedang (95–115 HST) — jika window cukup',          panen: 110 },
-            { kode: 'dalam',  label: 'Dalam (≥ 116 HST) — risiko tinggi di rawa',        panen: 125 }
+    function risikoTikusRawa(sbanjir) {
+        if (sbanjir > 60) return { level: 'Momen Gropyokan!', warna: WARNA_RAWA,
+            catatan: '🌿 Banjir = tikus berkonsentrasi di tanggul. Momen TERBAIK gropyokan komunal.' };
+        return { level: 'Rutin', warna: '#f59e0b',
+            catatan: 'Pantau lubang tikus di tanggul. Pasang TBS di galengan yang tidak tergenang.' };
+    }
+
+    function risikoPupukRawa(sbanjir) {
+        if (sbanjir > 70) return { level: 'Tunda', warna: '#ef4444',
+            catatan: 'Jangan pupuk saat lahan tergenang dalam — pupuk larut dan hilang terbawa air.' };
+        if (sbanjir > 40) return { level: 'Hati-hati', warna: '#f59e0b',
+            catatan: 'Pupuk saat air surut. Di rawa, kurangi Urea 20% — tanah sudah kaya bahan organik.' };
+        return { level: 'Optimal', warna: WARNA_RAWA,
+            catatan: 'Kondisi baik untuk pemupukan. Kurangi Urea 20% dari dosis normal (rawa kaya N organik).' };
+    }
+
+    // ============================================================
+    //  BAGIAN 3 — bangunKegiatanRawa()
+    //  Menghasilkan daftar kegiatan yang sesuai konteks sawah rawa
+    // ============================================================
+
+    function bangunKegiatanRawa(rek, rawZOM, metodeTanam) {
+        var isTabela  = (metodeTanam === 'tabela');
+        var tglOlah   = rek.tglOlahTanah || tambahHari(rek.tglTanam, -20);
+        var tglTanam  = rek.tglTanam;
+        var tglPanen  = rek.tglPanen || tambahHari(tglTanam, rek.umurTotal || 90);
+
+        // Benih
+        var umurBibit = rek.varietas === 'genjah' ? 14 : rek.varietas === 'dalam' ? 28 : 21;
+        var tglBenih  = isTabela ? tambahHari(tglTanam, -2) : tambahHari(tglTanam, -umurBibit);
+
+        // Pasca-tanam (di rawa lebih hati-hati karena genangan fluktuatif)
+        var tglP1     = tambahHari(tglTanam, 7);
+        var tglP2     = tambahHari(tglTanam, 25);
+        var tglP3     = tambahHari(tglTanam, 45);
+        var tglI1     = tambahHari(tglTanam, 20);
+        var tglI2     = tambahHari(tglTanam, 48);
+        var tglFung   = tambahHari(tglTanam, 55);
+
+        // Tikus: gropyokan saat surut (sebelum olah lahan)
+        var tglGroyokM = tambahHari(tglOlah, -14);
+        var tglGroyokS = tambahHari(tglOlah, -1);
+        var tglTBSM    = tglTanam;
+        var tglTBSS    = tambahHari(tglTanam, 30);
+        var tglRacunM  = tambahHari(tglTanam, 1);
+        var tglRacunS  = tambahHari(tglTanam, 21);
+
+        function sb(tgl) { return skorBanjirBulan(rawZOM, tgl.getMonth()); }
+        function bm(tgl) { return isBulanBanjir(rawZOM, (tgl.getMonth() + 1) % 12); }
+
+        var umurTotal = rek.umurTotal || 90;
+
+        var aktivitasBenih = isTabela ? {
+            nama: 'Rendam & Peram Benih', ikon: '💧',
+            deskripsi: 'Rendam 24 jam, peram 24 jam hingga berkecambah',
+            tglMulai: tglBenih, tglSelesai: tglTanam,
+            risiko: { level: 'Persiapan', warna: WARNA_RAWA, catatan: 'Siapkan benih saat menunggu air surut. Inkubasi di tempat yang tidak tergenang.' },
+            tips: [
+                'Rendam benih 24 jam, peram 24 jam hingga kecambah ±1–2 mm.',
+                'Untuk sawah rawa, pilih benih Inpari 30 atau Inpari 33 (tahan rendaman).',
+                'Dosis benih Tabela: 50–60 kg/ha. Sebar segera setelah air surut dan lahan bisa diolah.'
+            ]
+        } : {
+            nama: 'Persemaian Benih (Bedeng Apung/Tinggi)', ikon: '🌱',
+            deskripsi: 'Semai di bedeng apung atau lahan tinggi yang tidak tergenang',
+            tglMulai: tglBenih, tglSelesai: tambahHari(tglBenih, 7),
+            risiko: { level: 'Persiapan', warna: WARNA_RAWA, catatan: 'Di sawah rawa, persemaian idealnya di bedeng apung atau lahan yang lebih tinggi agar tidak terendam.' },
+            tips: [
+                'Buat bedeng apung dari bambu/papan bila lahan masih tergenang saat semai.',
+                'Alternatif: semai di lahan pekarangan rumah yang lebih tinggi.',
+                'Pindah tanam saat bibit umur ' + umurBibit + ' HSS dan lahan utama sudah bisa diolah.',
+                'Varietas prioritas rawa: Inpari 30 (rendaman), Inpari 33, Inpari IR Nutri Zinc.'
+            ]
+        };
+
+        var aktivitasTanam = isTabela ? {
+            nama: 'Sebar Benih ke Lahan Rawa', ikon: '🌾',
+            deskripsi: 'Sebar benih berkecambah saat air surut dan macak-macak',
+            tglMulai: tglTanam, tglSelesai: tambahHari(tglTanam, 1),
+            risiko: risikoTanamRawa(sb(tglTanam)),
+            tips: [
+                'Sebar saat lahan macak-macak (jenuh air, tidak tergenang bebas).',
+                'Jika masih ada genangan tipis (1–2 cm), tunggu 1–2 hari lagi.',
+                'Target panen: ' + fmtL(tglPanen) + ' — ' + umurTotal + ' hari sejak sebar.'
+            ]
+        } : {
+            nama: 'Tanam Pindah ke Lahan Rawa', ikon: '🌾',
+            deskripsi: 'Bibit dipindah saat air surut dan lahan bisa dijangkau',
+            tglMulai: tglTanam, tglSelesai: tambahHari(tglTanam, 3),
+            risiko: risikoTanamRawa(sb(tglTanam)),
+            tips: [
+                'Pindah tanam hanya saat air sudah surut dan lahan bisa diakses tanpa tenggelam.',
+                'Bibit bisa dipindah lebih tua (s/d 28 HSS) jika lahan belum siap — lebih tahan banjir.',
+                'Jarak tanam lebih lebar di rawa: 30×30 cm untuk sirkulasi air lebih baik.',
+                'Target panen: ' + fmtL(tglPanen) + '.'
+            ]
+        };
+
+        var daftar = [
+            {
+                nama: 'Gropyokan Komunal (Saat Surut)', ikon: '🐀',
+                deskripsi: 'Manfaatkan surut — tikus berkonsentrasi di tanggul',
+                tglMulai: tglGroyokM, tglSelesai: tglGroyokS,
+                risiko: risikoTikusRawa(sb(tglGroyokM)),
+                tips: [
+                    '🌿 Di sawah rawa, gropyokan paling efektif saat banjir baru surut.',
+                    'Tikus bermigrasi ke tanggul saat banjir — kepadatan sangat tinggi, momen terbaik.',
+                    'Koordinasi dengan petani blok sekitar untuk hasil maksimal.',
+                    'Bersihkan tanggul dari gulma dan tutup lubang sarang dengan tanah basah.'
+                ]
+            },
+            {
+                nama: 'Pengolahan Lahan (Pasca-Surut)', ikon: '🚜',
+                deskripsi: 'Bajak & garu hanya setelah air benar-benar surut',
+                tglMulai: tglOlah, tglSelesai: tambahHari(tglOlah, 7),
+                risiko: risikoOlahRawa(sb(tglOlah)),
+                tips: [
+                    '⚠️ Tunggu air surut total sebelum traktor masuk — tanah rawa sangat cepat amblas.',
+                    'Cek dengan cara berjalan di lahan: jika kaki tidak tenggelam > 15 cm, traktor bisa masuk.',
+                    'Tanah rawa biasanya subur secara alami — tidak perlu dolomit kecuali pH < 4.5 (sulfat masam).',
+                    'Periksa kondisi pintu air (tabat/stoplog) sebelum mulai bajak.'
+                ]
+            },
+            aktivitasBenih,
+            aktivitasTanam,
+            {
+                nama: 'Pasang TBS di Tanggul', ikon: '🚧',
+                deskripsi: 'Trap Barrier System — di tanggul yang tidak tergenang',
+                tglMulai: tglTBSM, tglSelesai: tglTBSS,
+                risiko: risikoTikusRawa(sb(tglTBSM)),
+                tips: [
+                    '🌿 Di rawa, TBS dipasang di TANGGUL LUAR, bukan di dalam petakan.',
+                    'Tikus di rawa bersembunyi di tanggul — TBS di tanggul 3× lebih efektif.',
+                    'Periksa bubu perangkap setiap 3–5 hari.'
+                ]
+            },
+            {
+                nama: 'Umpan Racun Tikus', ikon: '☠️',
+                deskripsi: 'Rodentisida di liang aktif tanggul — jangan di petakan tergenang',
+                tglMulai: tglRacunM, tglSelesai: tglRacunS,
+                risiko: risikoTikusRawa(sb(tglRacunM)),
+                tips: [
+                    'Letakkan umpan di liang aktif di tanggul — JANGAN di petakan yang masih bisa tergenang.',
+                    'Umpan di dalam petakan rawa akan larut saat banjir tiba-tiba.',
+                    'Gunakan Brodifacoum / Bromadiolon (antikoagulan).'
+                ]
+            },
+            {
+                nama: 'Pupuk Dasar — Tahap I', ikon: '🧪',
+                deskripsi: 'NPK + Urea I — dosis dikurangi (rawa kaya bahan organik)',
+                tglMulai: tglP1, tglSelesai: tambahHari(tglP1, 2),
+                risiko: risikoPupukRawa(sb(tglP1)),
+                tips: [
+                    '⚠️ Kurangi Urea 20% dari dosis normal — tanah rawa sudah kaya nitrogen organik.',
+                    'Pupuk saat air macak-macak (tidak tergenang bebas) agar tidak larut terbawa air.',
+                    'Phonska: dosis normal. Kalium penting untuk ketahanan batang dari banjir.'
+                ]
+            },
+            {
+                nama: 'Pemantauan Muka Air & Vegetatif', ikon: '📏',
+                deskripsi: 'Pantau tinggi air harian — kritis di fase vegetatif',
+                tglMulai: tambahHari(tglTanam, 7), tglSelesai: tambahHari(tglTanam, 40),
+                risiko: risikoVegRawa(sb(tambahHari(tglTanam, 20))),
+                tips: [
+                    'Ukur tinggi muka air setiap pagi — buat pancang pengukur dari bambu.',
+                    'Jika air naik >30 cm dalam 24 jam: buka pintu pembuang / tabat segera.',
+                    'Inpari 30 tahan terendam s/d 14 hari pada fase vegetatif.',
+                    'Jika tergenang > 14 hari: pertimbangkan tanam ulang di siklus berikutnya.'
+                ]
+            },
+            {
+                nama: 'Insektisida I (Vegetatif)', ikon: '💊',
+                deskripsi: 'Pengendalian WBC, Penggerek — semprot saat air surut',
+                tglMulai: tglI1, tglSelesai: tambahHari(tglI1, 2),
+                risiko: { level: 'Kondisional', warna: '#f59e0b',
+                    catatan: 'Semprot hanya saat air surut dan kanopi bisa dijangkau. Di rawa, wereng lebih jarang karena musuh alami lebih banyak.' },
+                tips: [
+                    'Semprot saat air surut — jangan semprot saat lahan tergenang (pestisida larut).',
+                    'Di sawah rawa, musuh alami lebih berlimpah — terapkan PHT ketat.',
+                    'Bahan aktif: Imidakloprid atau BPMC, hanya jika WBC > 10 ekor/rumpun.'
+                ]
+            },
+            {
+                nama: 'Pupuk Susulan — Tahap II & III', ikon: '🧪',
+                deskripsi: 'Urea + Phonska susulan — berbasis BWD',
+                tglMulai: tglP2, tglSelesai: tambahHari(tglP3, 2),
+                risiko: risikoPupukRawa(sb(tglP2)),
+                tips: [
+                    'Pupuk II (21–25 HST): Urea sisa 1/3 + Phonska 1/4 — saat air macak-macak.',
+                    'Pupuk III (42–50 HST, kondisional BWD): hanya jika skala BWD < 4.',
+                    'Kurangi Urea 20% total vs lahan irigasi biasa.'
+                ]
+            },
+            {
+                nama: 'Insektisida II & Fungisida Blast', ikon: '🍄',
+                deskripsi: 'Walang Sangit + pencegahan Blast — fase malai keluar',
+                tglMulai: tglI2, tglSelesai: tambahHari(tglFung, 2),
+                risiko: risikoGenRawa(sb(tglI2), bm(tglI2)),
+                tips: [
+                    'Semprot walang sangit pagi hari — bahan aktif: Malathion / Deltametrin.',
+                    'Fungisida Blast 5–7 hari sebelum malai keluar: Tricyclazole 0,5 l/ha.',
+                    '⚠️ Di rawa, jika banjir mendekat saat generatif: hentikan semua aplikasi kimia.'
+                ]
+            },
+            {
+                nama: '🌟 PANEN — Sebelum Banjir Berikutnya', ikon: '🌾',
+                deskripsi: 'Panen dipercepat jika banjir akan datang',
+                tglMulai: tglPanen, tglSelesai: tambahHari(tglPanen, 5),
+                risiko: risikoPanenRawa(sb(tglPanen), bm(tglPanen)),
+                tips: [
+                    '⚠️ Di sawah rawa: pantau prakiraan cuaca & tinggi muka air 10 hari sebelum panen.',
+                    'Jika banjir diprediksi dalam 2 minggu: percepat panen 5–7 hari.',
+                    'Panen dini (kadar air 25–28%): langsung giling atau gunakan dryer.',
+                    'Pesan Combine Harvester 14 hari sebelumnya — pastikan bisa masuk ke lahan.'
+                ]
+            }
         ];
 
-        var NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni',
-                          'Juli','Agustus','September','Oktober','November','Desember'];
+        daftar.sort(function(a,b){ return a.tglMulai.getTime() - b.tglMulai.getTime(); });
+        return daftar;
+    }
 
-        function tambahHari(d, n) {
-            var h = new Date(d); h.setDate(h.getDate() + n); return h;
+    // ============================================================
+    //  BAGIAN 4 — OVERRIDE hitungRisikoDinamis untuk Risiko Iklim
+    // ============================================================
+
+    var _hitungRisikoDinamisAsli = null;
+
+    function hitungRisikoDinamisRawa(bulanIndex, fase, ensoVal, iodVal, baselineData) {
+        var sb = skorBanjirBulan(baselineData, bulanIndex);
+        var banjirAktif    = isBulanBanjir(baselineData, bulanIndex);
+        var banjirMendekat = isBulanBanjir(baselineData, (bulanIndex + 1) % 12);
+
+        // Amplifikasi La Niña / IOD Negatif → banjir makin parah
+        var amp = ((ensoVal < -0.5) ? 15 : 0) + ((iodVal < -0.4) ? 10 : 0);
+        sb = Math.min(100, sb + amp);
+
+        var skor, statusCuaca, masalah, tipeBahaya;
+
+        if (fase === 'Tanam') {
+            if (banjirAktif) {
+                skor=92; tipeBahaya='banjir'; statusCuaca='Tergenang/Banjir';
+                masalah='TIDAK BISA OLAH LAHAN: masih tergenang. Tunggu air surut sebelum traktor masuk. Manfaatkan untuk gropyokan di tanggul.';
+            } else if (sb > 55) {
+                skor=55; tipeBahaya='banjir'; statusCuaca='Air Baru Surut';
+                masalah='Air baru surut, tanah masih lembek. Tunggu 1–2 minggu sebelum traktor masuk.';
+            } else if (sb < 20) {
+                skor=15; tipeBahaya='aman'; statusCuaca='Surut Optimal';
+                masalah='Kondisi terbaik: air surut, tanah cukup padat. Segera olah lahan.';
+            } else {
+                skor=30; tipeBahaya='aman'; statusCuaca='Air Sedang Turun';
+                masalah='Air sedang surut. Pantau harian, siapkan benih.';
+            }
+        } else if (fase === 'Vegetatif') {
+            if (banjirAktif && sb > 75) {
+                skor=80; tipeBahaya='banjir'; statusCuaca='Banjir Saat Vegetatif';
+                masalah='BAHAYA: banjir aktif saat vegetatif. Genangan >14 hari = anakan mati. Gunakan Inpari 30/33.';
+            } else if (sb > 55) {
+                skor=45; tipeBahaya='banjir'; statusCuaca='Air Cukup Tinggi';
+                masalah='Air tinggi, waspada naik mendadak. Buka saluran pembuang, pantau harian.';
+            } else if (sb < 20) {
+                skor=25; tipeBahaya='aman'; statusCuaca='Air Rendah';
+                masalah='Air rendah di vegetatif rawa — baik untuk akar. Pompanisasi ringan jika terlalu kering.';
+            } else {
+                skor=18; tipeBahaya='aman'; statusCuaca='Air Normal';
+                masalah='Ketinggian air terkendali — optimal untuk anakan.';
+            }
+        } else if (fase === 'Generatif') {
+            if (banjirAktif || sb > 70) {
+                skor=97; tipeBahaya='banjir'; statusCuaca='KRITIS: Banjir Bunting';
+                masalah='KRITIS GAGAL PANEN: banjir saat bunting = malai hampa massal. Jadwal berikutnya harus digeser.';
+            } else if (banjirMendekat && sb > 50) {
+                skor=70; tipeBahaya='banjir'; statusCuaca='Banjir Mendekat';
+                masalah='Bulan depan diprediksi banjir. Hitung apakah panen bisa selesai sebelum air naik.';
+            } else if (sb < 25) {
+                skor=10; tipeBahaya='aman'; statusCuaca='Jendela Aman';
+                masalah='Jendela terbaik generatif di rawa: air rendah, tidak ada ancaman banjir.';
+            } else {
+                skor=35; tipeBahaya='aman'; statusCuaca='Air Terkendali';
+                masalah='Kondisi generatif aman. Pantau curah hujan harian — >50 mm/hari x3 hari = waspada.';
+            }
+        } else if (fase === 'Panen') {
+            if (banjirAktif || sb > 70) {
+                skor=90; tipeBahaya='banjir'; statusCuaca='KRITIS: Banjir Panen';
+                masalah='KRITIS: banjir aktif saat panen. Panen manual darurat, prioritaskan petak dekat tanggul.';
+            } else if (banjirMendekat && sb > 45) {
+                skor=65; tipeBahaya='banjir'; statusCuaca='Banjir Mendekat — Percepat';
+                masalah='Percepat panen 5–7 hari. Pesan Combine sekarang. Siapkan dryer karena KA lebih tinggi.';
+            } else if (sb < 25) {
+                skor=8; tipeBahaya='aman'; statusCuaca='Jendela Panen Ideal';
+                masalah='Kondisi panen terbaik di rawa: surut, kering, Combine bisa masuk.';
+            } else {
+                skor=30; tipeBahaya='aman'; statusCuaca='Aman untuk Panen';
+                masalah='Kondisi aman. Pantau prakiraan 7 hari ke depan sebelum jadwalkan Combine.';
+            }
+        } else {
+            skor=20; tipeBahaya='aman'; statusCuaca='Normal'; masalah='-';
         }
 
-        function tglDariBulan(bulanIdx, tahunRef) {
-            return new Date(tahunRef, bulanIdx, 15);
+        skor = Math.round(Math.max(0, Math.min(100, skor)));
+        return { skor:skor, statusCuaca:statusCuaca, masalah:masalah, tipeBahaya:tipeBahaya };
+    }
+
+    // ============================================================
+    //  BAGIAN 5 — rekomendasiRawa() — mesin rekomendasi khusus
+    // ============================================================
+
+    function rekomendasiRawa(rawZOM, ensoVal, iodVal) {
+        var now   = new Date();
+        var tahun = now.getFullYear();
+
+        // ── Identifikasi 3 bulan CH tertinggi = periode banjir ─────
+        var sorted = rawZOM.map(function(v,i){ return {v:v,i:i}; })
+                           .sort(function(a,b){ return b.v-a.v; });
+        var banjirSet = {};
+        for (var k=0; k<3; k++) {
+            var bi = sorted[k].i;
+            banjirSet[bi] = true;
+            banjirSet[(bi+1)%12] = true; // buffer: bulan setelah puncak masih tergenang
         }
 
-        // Cari dua window terbaik (MT I & MT II)
+        // ── Bulan aman = bukan bulan banjir ────────────────────────
+        var bulanAman = [];
+        for (var m=0; m<12; m++) { if (!banjirSet[m]) bulanAman.push(m); }
+        if (bulanAman.length === 0) bulanAman = [0,6];
+
+        var JEDA = 20; // hari olah lahan → tanam (lebih cepat di rawa)
+
+        var varianArr = [
+            { kode:'genjah', label:'Genjah (< 95 HST) — DIREKOMENDASIKAN untuk rawa', panen:90  },
+            { kode:'sedang', label:'Sedang (95–115 HST) — jika window cukup',          panen:110 },
+            { kode:'dalam',  label:'Dalam (≥ 116 HST) — risiko tinggi di rawa',        panen:125 }
+        ];
+
         var kandidat = [];
 
         bulanAman.forEach(function(bOlah) {
             varianArr.forEach(function(v) {
-                var tglOlah  = tglDariBulan(bOlah, tahun);
-                var tglTanam = tambahHari(tglOlah, JEDA_OLAH_TANAM);
+                var tglOlah  = new Date(tahun, bOlah, 15);
+                var tglTanam = tambahHari(tglOlah, JEDA);
                 var tglPanen = tambahHari(tglTanam, v.panen);
                 var bPanen   = tglPanen.getMonth();
+                var bGen     = tambahHari(tglTanam, Math.floor(v.panen * 0.60)).getMonth();
 
-                // Apakah bulan panen jatuh di bulan aman?
-                var panenAman = !banjirSet[bPanen] && !banjirSet[(bPanen + 1) % 12];
+                var panenAman = !banjirSet[bPanen] && !banjirSet[(bPanen+1)%12];
+                var genAman   = !banjirSet[bGen];
+                if (!panenAman || !genAman) return;
 
-                // Generatif (sekitar 60% dari umur varietas)
-                var hariGen  = Math.floor(v.panen * 0.60);
-                var bGen     = tambahHari(tglTanam, hariGen).getMonth();
-                var genAman  = !banjirSet[bGen];
-
-                if (!panenAman || !genAman) return; // window tidak aman, skip
-
-                // Hitung nilai: lebih tinggi lebih baik
-                // Faktor: (a) panen di bulan kering, (b) generatif di bulan kering,
-                //         (c) varietas lebih pendek lebih aman
-                var nilaiPanen  = 100 - skorBulan[bPanen];
-                var nilaiGen    = 100 - Math.abs(skorBulan[bGen] - 30);
-                var nilaiUmur   = v.kode === 'genjah' ? 20 : v.kode === 'sedang' ? 10 : 0;
-                var nilaiTotal  = (nilaiPanen * 0.45) + (nilaiGen * 0.40) + nilaiUmur;
-
-                // Jarak ke banjir berikutnya setelah panen (buffer keamanan)
                 var bufferBulan = 0;
-                for (var bb = 1; bb <= 3; bb++) {
-                    if (banjirSet[(bPanen + bb) % 12]) { bufferBulan = bb - 1; break; }
-                    bufferBulan = bb;
+                for (var bb=1; bb<=3; bb++) {
+                    if (banjirSet[(bPanen+bb)%12]) { bufferBulan=bb-1; break; }
+                    bufferBulan=bb;
                 }
 
-                var alasan = 'Window aman: olah lahan ' + NAMA_BULAN[bOlah]
-                    + ' (pasca-surut), panen ' + NAMA_BULAN[bPanen]
-                    + ' (sebelum banjir, buffer ' + bufferBulan + ' bulan). '
-                    + 'Generatif jatuh di ' + NAMA_BULAN[bGen] + ' — '
-                    + (genAman ? 'aman dari banjir.' : 'WASPADA banjir!');
+                var nilaiTotal = (100 - skorBanjirBulan(rawZOM, bPanen)) * 0.45
+                               + (100 - Math.abs(skorBanjirBulan(rawZOM, bGen) - 15)) * 0.40
+                               + (v.kode==='genjah' ? 20 : v.kode==='sedang' ? 10 : 0);
 
-                if (ensoVal < -0.5) alasan += ' La Niña aktif — antisipasi banjir lebih awal dan lebih tinggi dari normal.';
-                if (ensoVal >  0.5) alasan += ' El Niño aktif — banjir kemungkinan lebih ringan, window agak lebih lebar.';
+                // Koreksi ENSO/IOD
+                if (ensoVal < -0.5) nilaiTotal -= 15; // La Niña → banjir lebih intens
+                if (ensoVal >  0.5) nilaiTotal += 10; // El Niño → banjir lebih ringan
+                if (iodVal  < -0.4) nilaiTotal -= 10; // IOD Negatif → tambah basah
+
+                var statusWkt = { isLewat: tglTanam < now, isBerjalan: false };
+
+                var keteranganENSO = '';
+                if (ensoVal < -0.5) keteranganENSO = ' La Niña aktif — antisipasi banjir lebih awal/tinggi.';
+                else if (ensoVal > 0.5) keteranganENSO = ' El Niño aktif — banjir kemungkinan lebih ringan.';
+
+                var jadwalTikusRawa = null;
+                if (typeof window.hitungJadwalTikus === 'function') {
+                    jadwalTikusRawa = window.hitungJadwalTikus(tglOlah, tglTanam);
+                    // Override catatan gropyokan untuk konteks rawa
+                    if (jadwalTikusRawa && jadwalTikusRawa.gropyokan) {
+                        jadwalTikusRawa.gropyokan.catatan =
+                            '🌿 RAWA: Gropyokan paling efektif saat banjir baru surut — '
+                            + 'tikus berkonsentrasi di tanggul. Koordinasi komunal.';
+                    }
+                }
 
                 kandidat.push({
-                    bOlah       : bOlah,
-                    bTanam      : tglTanam.getMonth(),
-                    tglOlahTanah: tglOlah,
-                    tglTanam    : tglTanam,
-                    tglPanen    : tglPanen,
-                    varietas    : v.kode,
-                    labelVar    : v.label,
-                    umurTotal   : v.panen,
-                    nilaiTotal  : nilaiTotal,
-                    alasan      : alasan,
-                    bufferBulan : bufferBulan,
-                    jadwalTikus : window.hitungJadwalTikus
-                        ? window.hitungJadwalTikus(tglOlah, tglTanam)
-                        : null
+                    bOlah        : bOlah,
+                    tglOlahTanah : tglOlah,
+                    tglTanam     : tglTanam,
+                    tglPanen     : tglPanen,
+                    varietas     : v.kode,
+                    labelVar     : v.label,
+                    umurTotal    : v.panen,
+                    nilaiTotal   : nilaiTotal,
+                    bufferBulan  : bufferBulan,
+                    jadwalTikus  : jadwalTikusRawa,
+                    alasan       : 'Olah lahan ' + NAMA_BULAN[bOlah] + ' (pasca-surut), '
+                                 + 'panen ' + NAMA_BULAN[bPanen] + ' (buffer ' + bufferBulan + ' bulan sebelum banjir). '
+                                 + 'Generatif di ' + NAMA_BULAN[bGen] + ' — aman dari banjir.'
+                                 + keteranganENSO,
+                    isLewat      : statusWkt.isLewat,
+                    isBerjalan   : false
                 });
             });
         });
 
-        // Urutkan dari nilai terbaik
-        kandidat.sort(function(a, b){ return b.nilaiTotal - a.nilaiTotal; });
+        kandidat.sort(function(a,b){ return b.nilaiTotal - a.nilaiTotal; });
 
-        // Ambil dua window terbaik yang BERBEDA bulan tanam
-        var hasilDuaMusim = [];
-        var bulanSudahDipakai = {};
+        // Ambil dua window yang berbeda (jarak minimal 3 bulan)
+        var hasil = [];
+        var dipakai = {};
 
         kandidat.forEach(function(k) {
-            if (hasilDuaMusim.length >= 2) return;
-            var keyBulan = k.bOlah;
-            // Pastikan window kedua minimal 2 bulan beda dari pertama
-            var terlalutDekat = Object.keys(bulanSudahDipakai).some(function(b){
-                var diff = Math.abs(parseInt(b) - keyBulan);
-                return Math.min(diff, 12 - diff) < 3;
+            if (hasil.length >= 2) return;
+            var terlalu = Object.keys(dipakai).some(function(b){
+                var diff = Math.abs(parseInt(b) - k.bOlah);
+                return Math.min(diff, 12-diff) < 3;
             });
-            if (terlalutDekat) return;
-            bulanSudahDipakai[keyBulan] = true;
+            if (terlalu) return;
+            dipakai[k.bOlah] = true;
 
-            var musimNama = hasilDuaMusim.length === 0
-                ? 'MT I — Musim Tanam Utama (Rawa)'
-                : 'MT II — Musim Tanam Kedua (Rawa)';
-
-            var statusWkt = { isLewat: false, isBerjalan: false };
-            if (typeof window.statusWaktuTanam === 'function') {
-                statusWkt = window.statusWaktuTanam(k.tglTanam, now);
-            }
-
-            hasilDuaMusim.push({
-                musimNama  : musimNama,
-                musimKode  : hasilDuaMusim.length === 0 ? 'rendeng' : 'gadu',
+            hasil.push({
+                musimNama  : hasil.length===0 ? 'MT I — Musim Tanam Utama (Rawa)' : 'MT II — Musim Tanam Kedua (Rawa)',
+                musimKode  : hasil.length===0 ? 'rendeng' : 'gadu',
                 tglOlahTanah: k.tglOlahTanah,
                 tglTanam   : k.tglTanam,
                 tglPanen   : k.tglPanen,
@@ -528,227 +659,423 @@
                 labelVar   : k.labelVar,
                 umurTotal  : k.umurTotal,
                 alasan     : k.alasan,
-                isLewat    : statusWkt.isLewat,
-                isBerjalan : statusWkt.isBerjalan,
+                isLewat    : k.isLewat,
+                isBerjalan : k.isBerjalan,
                 jadwalTikus: k.jadwalTikus
             });
         });
 
-        // Fallback: jika tidak ada window yang sempurna
-        if (hasilDuaMusim.length === 0) {
-            var bFallback = bulanAman[0] !== undefined ? bulanAman[0] : 4;
-            var tglOlahFb = tglDariBulan(bFallback, tahun);
-            var tglTanamFb = tambahHari(tglOlahFb, JEDA_OLAH_TANAM);
-            hasilDuaMusim.push({
-                musimNama  : 'MT I — Estimasi Terbaik (Rawa)',
-                musimKode  : 'rendeng',
-                tglOlahTanah: tglOlahFb,
-                tglTanam   : tglTanamFb,
-                tglPanen   : tambahHari(tglTanamFb, 90),
-                varietas   : 'genjah',
-                labelVar   : 'Genjah — satu-satunya pilihan realistis',
-                umurTotal  : 90,
-                alasan     : '⚠️ Tidak ditemukan window sempurna. Ini adalah bulan paling aman '
-                           + 'di ' + NAMA_BULAN[bFallback] + '. Gunakan varietas genjah dan '
-                           + 'pantau tinggi muka air setiap hari. Siapkan rencana darurat.',
-                isLewat    : false,
-                isBerjalan : false,
-                jadwalTikus: null
+        // Fallback
+        if (hasil.length === 0) {
+            var bFb  = bulanAman[0] || 4;
+            var tFb  = new Date(tahun, bFb, 15);
+            var ttFb = tambahHari(tFb, JEDA);
+            hasil.push({
+                musimNama:'MT I — Estimasi Terbaik (Rawa)', musimKode:'rendeng',
+                tglOlahTanah:tFb, tglTanam:ttFb, tglPanen:tambahHari(ttFb, 90),
+                varietas:'genjah', labelVar:'Genjah — satu-satunya pilihan realistis',
+                umurTotal:90,
+                alasan:'⚠️ Tidak ada window sempurna. Bulan paling aman: ' + NAMA_BULAN[bFb]
+                       + '. Gunakan varietas genjah dan pantau muka air setiap hari.',
+                isLewat:false, isBerjalan:false, jadwalTikus:null
             });
         }
 
-        hasilDuaMusim.sort(function(a, b){
-            return a.tglOlahTanah.getTime() - b.tglOlahTanah.getTime();
-        });
-
-        return hasilDuaMusim;
+        hasil.sort(function(a,b){ return a.tglOlahTanah.getTime()-b.tglOlahTanah.getTime(); });
+        return hasil;
     }
 
-    // Wrapper untuk rekomendasiWindowTanam
-    function wrapRekomendasi(asli) {
-        return function(skorBulan, rawZOM, zona, ensoVal, iodVal) {
-            if (getJenisSawah() === 'rawa') {
-                return rekomendasiRawa(skorBulan, rawZOM, zona, ensoVal || 0, iodVal || 0);
+    // ============================================================
+    //  BAGIAN 6 — OVERRIDE prosesJadwalOtomatis (KALENDER TNM)
+    //
+    //  Ini adalah fix utama untuk [FIX-1].
+    //  Kita tunggu JTO selesai init (setTimeout 600ms), lalu
+    //  bungkus prosesJadwalOtomatis dengan versi yang sadar rawa.
+    // ============================================================
+
+    function patchProsesJTO() {
+        var _asli = window.prosesJadwalOtomatis;
+        if (typeof _asli !== 'function') {
+            // JTO belum siap, coba lagi
+            setTimeout(patchProsesJTO, 300);
+            return;
+        }
+
+        window.prosesJadwalOtomatis = async function() {
+            // Jika bukan rawa, jalankan fungsi asli tanpa perubahan
+            if (getJenisSawah() !== 'rawa') {
+                return _asli.apply(this, arguments);
             }
-            if (typeof asli === 'function') {
-                return asli(skorBulan, rawZOM, zona, ensoVal, iodVal);
+
+            // ── MODE RAWA ─────────────────────────────────────────
+            var hasilEl  = document.getElementById('jtoHasil');
+            var teksEl   = document.getElementById('jtoTeks');
+            var statusEl = document.getElementById('jtoStatus');
+            var btnJTO   = document.getElementById('btnJadwalOtomatis');
+
+            if (!hasilEl || !teksEl) return;
+
+            hasilEl.style.display = 'block';
+            teksEl.innerHTML = '';
+
+            if (btnJTO) {
+                btnJTO.disabled = true;
+                btnJTO.style.opacity = '0.75';
+                btnJTO.textContent = 'MENGANALISIS IKLIM RAWA...';
+            }
+            if (statusEl) statusEl.innerHTML =
+                '<span style="color:' + WARNA_RAWA + ';">🌿 Mengambil data ZOM & pola banjir...</span>';
+
+            try {
+                // ── GPS ──────────────────────────────────────────
+                var lat = -4.0, lon = 120.0;
+                try {
+                    if (window._lokasiKalender) {
+                        lat = window._lokasiKalender.lat; lon = window._lokasiKalender.lon;
+                    } else if (window._koordinatTerakhir) {
+                        lat = window._koordinatTerakhir.coords.latitude;
+                        lon = window._koordinatTerakhir.coords.longitude;
+                    } else {
+                        var pos = await new Promise(function(res,rej){
+                            navigator.geolocation.getCurrentPosition(res,rej,{
+                                enableHighAccuracy:false,timeout:8000,maximumAge:300000
+                            });
+                        });
+                        lat = pos.coords.latitude; lon = pos.coords.longitude;
+                        window._lokasiKalender = {lat:lat, lon:lon};
+                    }
+                } catch(gpsErr) { console.warn('[Rawa] GPS fallback:', gpsErr.message); }
+
+                // ── ENSO / IOD / ZOM ─────────────────────────────
+                var adaENSO = typeof window.getENSOAnomaly === 'function';
+                var adaIOD  = typeof window.getIODAnomaly  === 'function';
+
+                var FALLBACK_DARURAT = { latestAnomaly:0, status:'Netral',
+                    sumber:'Tidak tersedia (modul tidak termuat)' };
+
+                var getENSOp  = adaENSO ? window.getENSOAnomaly() : Promise.resolve(FALLBACK_DARURAT);
+                var getIODp   = adaIOD  ? window.getIODAnomaly()  : Promise.resolve(FALLBACK_DARURAT);
+
+                // Ambil ZOM via fungsi yang sama dengan JTO asli
+                var getZOM = window._jtoGetDataZOM || function(la,lo){
+                    // Fallback sederhana jika fungsi internal JTO tidak tersedia
+                    var zona = typeof window.tentukanZonaIklim==='function'
+                        ? window.tentukanZonaIklim(la,lo) : 'monsunal';
+                    var fb = {
+                        monsunal:  [0.9,0.8,0.6,0.3,-0.1,-0.8,-1.2,-1.3,-0.9,-0.3,0.4,0.8],
+                        ekuatorial:[0.2,0.3,0.5,0.6,0.4,0.0,-0.3,-0.2,0.3,0.6,0.5,0.3],
+                        peralihan: [0.5,0.5,0.4,0.2,0.0,-0.4,-0.6,-0.6,-0.3,0.1,0.4,0.5],
+                        lokal:     [0.1,0.1,0.1,0.0,0.0,-0.1,-0.1,-0.1,0.0,0.1,0.1,0.1]
+                    };
+                    return Promise.resolve({
+                        data: fb[zona]||fb.monsunal, nama:'Estimasi Lokal',
+                        jarak:null, zona:zona
+                    });
+                };
+
+                var results  = await Promise.all([getENSOp, getIODp, getZOM(lat,lon)]);
+                var ensoData = results[0], iodData = results[1], zonaInfo = results[2];
+                var ensoVal  = ensoData.latestAnomaly || 0;
+                var iodVal   = iodData.latestAnomaly  || 0;
+                var rawZOM   = zonaInfo.data;
+
+                // ── Rekomendasi khusus rawa ───────────────────────
+                var rekArr = rekomendasiRawa(rawZOM, ensoVal, iodVal);
+
+                var elMetode  = document.getElementById('metodeTanamJTO');
+                var metode    = (elMetode && elMetode.value==='tabela') ? 'tabela' : 'tapin';
+                window._jtoMetodeTanam = metode;
+
+                // Bangun kegiatan dengan versi rawa
+                var multiJadwal = rekArr.map(function(rek) {
+                    return {
+                        rekomendasi : rek,
+                        kegiatan    : bangunKegiatanRawa(rek, rawZOM, metode),
+                        _skorBulan  : rawZOM.map(function(_,i){
+                            return skorBanjirBulan(rawZOM,i);
+                        })
+                    };
+                });
+
+                window._jtoData     = multiJadwal;
+                window._jtoEnsoData = ensoData;
+                window._jtoIodData  = iodData;
+
+                if (statusEl) statusEl.innerHTML = '';
+                if (btnJTO) {
+                    btnJTO.disabled = false;
+                    btnJTO.style.opacity = '';
+                    btnJTO.textContent = 'ANALISIS & BUAT JADWAL OTOMATIS';
+                    btnJTO.classList.remove('jto-pulse');
+                }
+
+                // ── Render output dengan fungsi JTO asli jika tersedia ──
+                // Coba render via fungsi renderOutput internal JTO
+                // (dipanggil lewat _jtoRenderOutput yang kita expose)
+                if (typeof window._jtoRenderOutput === 'function') {
+                    teksEl.innerHTML = window._jtoRenderOutput(
+                        multiJadwal, zonaInfo, ensoData, iodData, metode
+                    );
+                } else {
+                    // Render manual yang kompatibel
+                    teksEl.innerHTML = renderOutputRawa(
+                        multiJadwal, zonaInfo, ensoData, iodData, metode
+                    );
+                }
+
+                // Tambahkan kotak info rawa di bawah hasil
+                setTimeout(tambahInfoRawaJTO, 100);
+
+            } catch(err) {
+                console.error('[Rawa JTO]', err);
+                if (statusEl) statusEl.innerHTML = '';
+                if (btnJTO) {
+                    btnJTO.disabled = false;
+                    btnJTO.style.opacity = '';
+                    btnJTO.textContent = 'ANALISIS & BUAT JADWAL OTOMATIS';
+                }
+                teksEl.innerHTML = '<div style="padding:12px;background:rgba(239,68,68,0.1);'
+                    + 'border:1px solid rgba(239,68,68,0.3);border-radius:12px;color:#fca5a5;font-size:13px;">'
+                    + '❌ Gagal membuat jadwal rawa: ' + (err.message||'Error tidak diketahui') + '</div>';
+            }
+        };
+
+        console.log('[patch_sawah_rawa_v1.1] prosesJadwalOtomatis berhasil di-patch.');
+    }
+
+    // ============================================================
+    //  BAGIAN 7 — renderOutputRawa() — render HTML hasil JTO rawa
+    // ============================================================
+
+    function renderOutputRawa(multiJadwal, zonaInfo, ensoData, iodData, metodeTanam) {
+        var WARNA = '#3b82f6';
+
+        function renderKartuRawa(k, nomor, isLewat) {
+            var now     = new Date();
+            var lewat   = isLewat || k.tglSelesai < now;
+            var w       = lewat ? '#64748b' : (k.risiko&&k.risiko.warna ? k.risiko.warna : WARNA_RAWA);
+            var fb      = typeof window.namaFaseBulan==='function'
+                ? window.namaFaseBulan(typeof window.hariFaseBulan==='function'
+                    ? window.hariFaseBulan(k.tglMulai) : 15)
+                : {ikon:'🌿', nama:'Sawah Rawa'};
+
+            var tipsHTML = (k.tips||[]).map(function(t){
+                return '<li style="margin-bottom:5px;color:' + (lewat?'#475569':'#cbd5e1') + ';line-height:1.5;">' + t + '</li>';
+            }).join('');
+
+            var badge = lewat
+                ? '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;background:#1e293b;color:#64748b;white-space:nowrap;flex-shrink:0;border:1px solid #334155;">📋 Referensi</span>'
+                : '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;background:' + w + '22;color:' + w + ';white-space:nowrap;flex-shrink:0;">' + (k.risiko&&k.risiko.level||'OK') + '</span>';
+
+            var catatan = lewat
+                ? '<div style="background:#111c2e;border-radius:10px;padding:9px 11px;margin:10px 0;border-left:3px solid #334155;"><div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:2px;">📋 Data Proyeksi</div><div style="font-size:12px;color:#475569;">Sudah terlewati — ditampilkan sebagai referensi.</div></div>'
+                : '<div style="background:#111c2e;border-radius:10px;padding:9px 11px;margin:10px 0;border-left:3px solid ' + w + ';"><div style="font-size:11px;font-weight:700;color:' + w + ';margin-bottom:2px;">Catatan Kondisi</div><div style="font-size:12px;color:#cbd5e1;">' + (k.risiko&&k.risiko.catatan||'') + '</div></div>';
+
+            return '<div style="background:#1b273a;border:0.5px solid rgba(255,255,255,0.07);border-radius:16px;margin-bottom:9px;overflow:hidden;">'
+                + '<div style="padding:12px 14px;display:flex;align-items:flex-start;gap:12px;cursor:pointer;border-left:3px solid ' + w + ';" onclick="window._jtoToggle(this)">'
+                + '<div style="width:34px;height:34px;border-radius:50%;background:#111c2e;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">' + k.ikon + '</div>'
+                + '<div style="flex:1;min-width:0;">'
+                + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">'
+                + '<div><div style="font-size:10px;color:#64748b;font-weight:600;margin-bottom:1px;">Kegiatan ' + nomor + '</div>'
+                + '<div style="font-size:14px;font-weight:700;color:' + (lewat?'#64748b':'#fff') + ';">' + k.nama + '</div></div>'
+                + badge + '</div>'
+                + '<div style="font-size:12px;color:#94a3b8;margin-top:3px;"><strong style="color:' + (lewat?'#475569':'#e2e8f0') + ';">' + fmtL(k.tglMulai) + '</strong> s/d ' + fmtP(k.tglSelesai) + '</div>'
+                + '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + fb.ikon + ' ' + fb.nama + ' &nbsp;•&nbsp; ' + (k.deskripsi||'') + '</div>'
+                + '</div>'
+                + '<span class="jto-chevron" style="font-size:12px;color:#64748b;flex-shrink:0;margin-top:8px;transition:transform 0.2s;">▼</span>'
+                + '</div>'
+                + '<div class="jto-detail" style="display:none;padding:0 14px 14px;border-top:0.5px solid rgba(255,255,255,0.05);">'
+                + catatan
+                + '<div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Tips Lapangan</div>'
+                + '<ul style="margin:0;padding-left:15px;font-size:12px;">' + tipsHTML + '</ul>'
+                + '</div></div>';
+        }
+
+        var labelZona = zonaInfo.zona ? zonaInfo.zona.toUpperCase() : 'MONSUNAL';
+        var sumber    = zonaInfo.jarak ? zonaInfo.nama + ' (' + zonaInfo.jarak + ' km)' : (zonaInfo.nama||'ZOM Lokal');
+
+        var html = '<div style="padding:4px 0;">'
+            + '<div style="background:rgba(29,158,117,0.09);border:1px solid rgba(29,158,117,0.25);'
+            + 'border-left:4px solid ' + WARNA_RAWA + ';border-radius:14px;padding:14px 16px;margin-bottom:14px;">'
+            + '<div style="font-size:11px;color:' + WARNA_RAWA + ';font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">'
+            + '🌿 INFORMASI IKLIM — SAWAH RAWA / LEBAK / DAS</div>'
+            + '<div style="display:grid;grid-template-columns:1fr;gap:8px;font-size:12px;">'
+            + '<div><span style="color:#64748b;">Zona iklim & sumber data</span><br>'
+            + '<strong style="color:#fff;">' + labelZona + ' • ' + sumber + '</strong></div>'
+            + '<div><span style="color:#64748b;">Kondisi ENSO / IOD</span><br>'
+            + '<strong style="color:#fff;">' + (ensoData.status||'Netral') + ' / ' + (iodData.status||'Netral') + '</strong></div>'
+            + '<div><span style="color:#64748b;">Strategi utama</span><br>'
+            + '<strong style="color:' + WARNA_RAWA + ';">Cari jendela aman antara dua puncak banjir</strong></div>'
+            + '</div></div>';
+
+        multiJadwal.forEach(function(jadwal) {
+            var rek     = jadwal.rekomendasi;
+            var keg     = jadwal.kegiatan;
+            var opacity = rek.isLewat ? '0.6' : '1';
+
+            var badge = rek.isLewat
+                ? '<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;margin-left:10px;vertical-align:middle;">📋 Blueprint</span>'
+                : rek.isBerjalan
+                    ? '<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(29,158,117,0.15);color:' + WARNA_RAWA + ';border:1px solid rgba(29,158,117,0.4);margin-left:10px;vertical-align:middle;">🟢 Aktif</span>'
+                    : '';
+
+            var tglMasuk = metodeTanam==='tabela' ? rek.tglTanam : tambahHari(rek.tglTanam,-8);
+
+            html += '<div style="margin-top:20px;margin-bottom:10px;font-size:15px;font-weight:bold;color:#fff;'
+                  + 'border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:6px;opacity:' + opacity + ';">'
+                  + '🌿 ' + rek.musimNama.toUpperCase() + badge + '</div>';
+
+            html += '<div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;'
+                  + 'padding:12px;margin-bottom:12px;opacity:' + opacity + ';">'
+                  + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">'
+                  + '<div><span style="color:#64748b;">Olah Lahan (Pasca-Surut)</span><br>'
+                  + '<strong style="color:' + WARNA_RAWA + ';font-size:13px;">' + fmtL(rek.tglOlahTanah||rek.tglTanam) + '</strong></div>'
+                  + '<div><span style="color:#64748b;">Varietas</span><br>'
+                  + '<strong style="color:#fff;font-size:13px;">' + rek.labelVar + '</strong></div>'
+                  + '</div>'
+                  + '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);font-size:11px;color:#94a3b8;line-height:1.5;">💡 ' + rek.alasan + '</div>'
+                  + '</div>';
+
+            keg.forEach(function(k,i){ html += renderKartuRawa(k,i+1,rek.isLewat); });
+        });
+
+        html += '<div style="margin-top:16px;background:rgba(100,116,139,0.1);border-radius:10px;padding:10px 12px;'
+              + 'font-size:10px;color:#64748b;line-height:1.6;border:1px solid rgba(255,255,255,0.04);">'
+              + '⚠️ Jadwal rawa dihitung dari jendela aman antara puncak banjir (ZOM lokal). '
+              + 'Sesuaikan dengan kondisi aktual tinggi muka air di lapangan.<br>'
+              + '📚 Sumber: IRRI Flood-Prone Lowland (2019) · Balitbangtan (2018) · BB Padi (2022)</div>';
+
+        html += '<button onclick="window._jtoKirimWA()" style="width:100%;margin-top:10px;padding:13px;'
+              + 'background:#25D366;color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;">'
+              + '📲 Kirim Jadwal ke WhatsApp ↗</button>';
+
+        html += '</div>';
+        return html;
+    }
+
+    function tambahInfoRawaJTO() {
+        var teksEl = document.getElementById('jtoTeks');
+        if (!teksEl || getJenisSawah() !== 'rawa') return;
+
+        var existing = document.getElementById('rawaInfoPanelJTO');
+        if (existing) existing.remove();
+
+        var panel = document.createElement('div');
+        panel.id = 'rawaInfoPanelJTO';
+        panel.style.cssText = 'margin-top:16px;padding:14px;border-radius:14px;'
+            + 'background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.3);'
+            + 'border-left:4px solid ' + WARNA_RAWA + ';font-size:0.8rem;color:#cbd5e1;line-height:1.7;';
+        panel.innerHTML = '<div style="font-weight:700;color:' + WARNA_RAWA + ';margin-bottom:8px;">'
+            + '🌿 PANDUAN KHUSUS SAWAH RAWA / LEBAK / DAS</div>'
+            + '• Olah lahan hanya saat air surut (kaki tidak tenggelam >15 cm di lahan)<br>'
+            + '• Generatif & panen HARUS selesai sebelum puncak banjir berikutnya<br>'
+            + '• Varietas prioritas: <b>Inpari 30</b> (tahan rendaman 14 hari), <b>Inpari 33</b><br>'
+            + '• Kurangi Urea 20% — rawa sudah kaya bahan organik (N alami tinggi)<br>'
+            + '• Saat banjir surut = momen gropyokan terbaik (tikus berkonsentrasi di tanggul)<br>'
+            + '• Periksa & perbaiki pintu air (tabat/stoplog) sebelum setiap musim tanam<br>'
+            + '<div style="margin-top:8px;font-size:0.72rem;opacity:0.6;">'
+            + 'Sumber: Balitbangtan (2018); IRRI Flood-Prone Lowland (2019); BB Padi (2022)</div>';
+
+        teksEl.appendChild(panel);
+    }
+
+    // ============================================================
+    //  BAGIAN 8 — OVERRIDE rekomendasiWindowTanam & hitungRisikoD
+    // ============================================================
+
+    function patchFungsiGlobal() {
+        // hitungRisikoDinamis (Risiko Iklim)
+        _hitungRisikoDinamisAsli = window.hitungRisikoDinamis;
+        window.hitungRisikoDinamis = function(bulanIndex, fase, ensoVal, iodVal, baselineData) {
+            if (getJenisSawah() === 'rawa') {
+                return hitungRisikoDinamisRawa(bulanIndex, fase, ensoVal, iodVal, baselineData);
+            }
+            if (typeof _hitungRisikoDinamisAsli === 'function') {
+                return _hitungRisikoDinamisAsli(bulanIndex, fase, ensoVal, iodVal, baselineData);
+            }
+            return { skor:50, statusCuaca:'Normal', masalah:'-', tipeBahaya:'aman' };
+        };
+
+        // rekomendasiWindowTanam — wrapper sadar rawa
+        var _rekAsli = window.rekomendasiWindowTanam;
+        window.rekomendasiWindowTanam = function(skorBulan, rawZOM, zona, ensoVal, iodVal) {
+            if (getJenisSawah() === 'rawa') {
+                return rekomendasiRawa(rawZOM, ensoVal||0, iodVal||0);
+            }
+            if (typeof _rekAsli === 'function') {
+                return _rekAsli(skorBulan, rawZOM, zona, ensoVal, iodVal);
             }
             return [];
         };
     }
 
-    if (typeof _rekomendasiWindowTanamV4Asli === 'function') {
-        window.rekomendasiWindowTanam = wrapRekomendasi(_rekomendasiWindowTanamV4Asli);
-    } else if (typeof _rekomendasiWindowTanamAsli === 'function') {
-        window.rekomendasiWindowTanam = wrapRekomendasi(_rekomendasiWindowTanamAsli);
+    // ============================================================
+    //  BAGIAN 9 — PATCH prosesAnalisisKalender (Risiko Iklim)
+    // ============================================================
+
+    var _prosesKalenderAsli = null;
+
+    function patchProsesKalender() {
+        _prosesKalenderAsli = window.prosesAnalisisKalender;
+        window.prosesAnalisisKalender = async function() {
+            if (typeof _prosesKalenderAsli === 'function') {
+                await _prosesKalenderAsli.apply(this, arguments);
+            }
+            if (getJenisSawah() !== 'rawa') return;
+
+            var kontainer = document.getElementById('teksAnalisisFase');
+            if (!kontainer) return;
+            var ex = document.getElementById('rawaInfoPanel');
+            if (ex) ex.remove();
+
+            var panel = document.createElement('div');
+            panel.id = 'rawaInfoPanel';
+            panel.style.cssText = 'margin-top:16px;padding:14px;border-radius:14px;'
+                + 'background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.3);'
+                + 'border-left:4px solid ' + WARNA_RAWA + ';font-size:0.8rem;color:#cbd5e1;line-height:1.7;';
+            panel.innerHTML = '<div style="font-weight:700;color:' + WARNA_RAWA + ';margin-bottom:8px;">'
+                + '🌿 CATATAN KHUSUS SAWAH RAWA / LEBAK / DAS</div>'
+                + '• Olah lahan hanya saat air benar-benar surut (tinggi muka air <10 cm di luar saluran)<br>'
+                + '• Fase generatif & panen HARUS selesai sebelum puncak banjir berikutnya<br>'
+                + '• Varietas wajib: <b>Inpari 30</b> (tahan rendaman 14 hari), <b>Inpari 33</b>, <b>Inpari IR Nutri Zinc</b><br>'
+                + '• Kurangi Urea 20% — rawa sudah kaya N organik, kelebihan picu Blast<br>'
+                + '• Saat banjir surut = momen gropyokan tikus terbaik (tikus migrasi ke tanggul)<br>'
+                + '<div style="margin-top:8px;font-size:0.72rem;opacity:0.6;">'
+                + 'Sumber: Balitbangtan (2018); IRRI Flood-Prone Lowland (2019); BB Padi (2022)</div>';
+
+            kontainer.appendChild(panel);
+        };
     }
 
     // ============================================================
-    //  BAGIAN 4 — PATCH TEKS ANALISIS DI boxKalender
-    //
-    //  Setelah prosesAnalisisKalender() selesai render,
-    //  tambahkan kotak info khusus rawa di bawah grafik.
+    //  BAGIAN 10 — INIT
     // ============================================================
 
-    var _prosesAnalisisKalenderAsli = window.prosesAnalisisKalender;
-
-    window.prosesAnalisisKalender = async function() {
-        if (typeof _prosesAnalisisKalenderAsli === 'function') {
-            await _prosesAnalisisKalenderAsli.apply(this, arguments);
-        }
-
-        if (getJenisSawah() !== 'rawa') return;
-
-        // Tambahkan panel info rawa setelah container analisis
-        var kontainerTeks = document.getElementById('teksAnalisisFase');
-        if (!kontainerTeks) return;
-
-        var existingRawa = document.getElementById('rawaInfoPanel');
-        if (existingRawa) existingRawa.remove();
-
-        var panel = document.createElement('div');
-        panel.id = 'rawaInfoPanel';
-        panel.style.cssText = 'margin-top:16px;padding:14px;border-radius:14px;'
-            + 'background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.3);'
-            + 'border-left:4px solid #1D9E75;font-size:0.8rem;color:#cbd5e1;line-height:1.7;';
-        panel.innerHTML = '<div style="font-weight:700;color:#1D9E75;margin-bottom:8px;font-size:0.85rem;">'
-            + '🌿 CATATAN KHUSUS SAWAH RAWA / LEBAK / DAS'
-            + '</div>'
-            + '<b>Strategi utama:</b> Cari jendela aman antara dua periode banjir.<br>'
-            + '• Olah lahan hanya saat air benar-benar surut (tinggi muka air &lt; 10 cm di luar saluran)<br>'
-            + '• Fase generatif & panen HARUS selesai sebelum puncak banjir berikutnya<br>'
-            + '• Varietas wajib: <b>Inpari 30</b> (tahan rendaman s/d 14 hari), '
-            + '<b>Inpari 33</b>, atau <b>Inpari IR Nutri Zinc</b><br>'
-            + '• Pupuk: kurangi Urea 20% — rawa sudah kaya bahan organik, N berlebih picu Blast<br>'
-            + '• Saat banjir datang saat vegetatif: aktifkan pompanisasi jika ada, atau pasrah '
-            + 'mengandalkan ketahanan varietas<br><br>'
-            + '<b>Saat banjir = peluang tikus:</b> tikus migrasi ke tanggul yang tidak tergenang. '
-            + 'Ini waktu terbaik untuk gropyokan — kepadatan tikus di tanggul sangat tinggi.<br><br>'
-            + '<div style="font-size:0.72rem;opacity:0.6;">Sumber: Balitbangtan (2018); IRRI Flood-Prone Lowland (2019); '
-            + 'Noor (2007) Lahan Rawa Lebak; BB Padi Varietas Tahan Rendaman (2022)</div>';
-
-        kontainerTeks.appendChild(panel);
-    };
-
-    // ============================================================
-    //  BAGIAN 5 — PATCH JADWAL TIKUS UNTUK RAWA
-    //
-    //  Mengganti catatan gropyokan agar relevan dengan kondisi rawa:
-    //  saat banjir, tikus migrasi ke tanggul → justru momen tangkap.
-    // ============================================================
-
-    var _hitungJadwalTikusAsli = window.hitungJadwalTikus;
-
-    window.hitungJadwalTikus = function(tglOlahTanah, tglTanam) {
-        var jadwal = _hitungJadwalTikusAsli
-            ? _hitungJadwalTikusAsli(tglOlahTanah, tglTanam)
-            : {};
-
-        if (getJenisSawah() !== 'rawa') return jadwal;
-
-        // Override catatan gropyokan untuk konteks rawa
-        if (jadwal.gropyokan) {
-            jadwal.gropyokan.catatan = '🌿 SAWAH RAWA: Gropyokan paling efektif dilakukan '
-                + 'saat banjir baru surut — tikus berkonsentrasi di tanggul dan galengan yang '
-                + 'tidak tergenang. Koordinasi dengan petani blok sekitar untuk hasil maksimal.';
-        }
-        if (jadwal.sanitasiPematang) {
-            jadwal.sanitasiPematang.catatan = 'Bersihkan tanggul dan saluran dari gulma. '
-                + 'Tutup lubang tikus dengan tanah basah SEBELUM lahan bisa diolah. '
-                + 'Periksa juga kondisi pintu air (tabat/stoplog).';
-        }
-        if (jadwal.pasangTBS) {
-            jadwal.pasangTBS.catatan = 'Pasang TBS di tanggul luar yang tidak tergenang. '
-                + 'Di sawah rawa, tikus bersembunyi di tanggul — TBS di tanggul 3× lebih efektif '
-                + 'daripada di dalam petakan.';
-        }
-        if (jadwal.umpanRacun) {
-            jadwal.umpanRacun.catatan = 'Letakkan umpan di liang aktif di tanggul. '
-                + 'JANGAN pasang umpan di dalam petakan saat masih ada genangan — umpan larut.';
-        }
-
-        return jadwal;
-    };
-
-    // ============================================================
-    //  BAGIAN 6 — PATCH SIMPULAN PREDIKSI IKLIM TERPADU
-    //
-    //  Menambahkan catatan khusus rawa di kotak iklimTerpaduBox
-    //  setelah fungsi asli selesai render.
-    // ============================================================
-
-    var _simpulkanAsli = window.simpulkanPrediksiIklimTerpadu;
-
-    window.simpulkanPrediksiIklimTerpadu = function(enso, iod, sstLokal, isSulsel) {
-        if (typeof _simpulkanAsli === 'function') {
-            _simpulkanAsli(enso, iod, sstLokal, isSulsel);
-        }
-
-        if (getJenisSawah() !== 'rawa') return;
-
-        var box = document.getElementById('iklimTerpaduBox');
-        if (!box) return;
-
-        var existing = document.getElementById('rawaCatatanIklim');
-        if (existing) existing.remove();
-
-        var nilaiEnso = enso && enso.anomalies ? (enso.anomalies[enso.anomalies.length - 1] || 0) : 0;
-        var nilaiIod  = iod  && iod.anomalies  ? (iod.anomalies[iod.anomalies.length - 1]  || 0) : 0;
-
-        var laNina  = nilaiEnso < -0.5;
-        var elNino  = nilaiEnso >  0.5;
-        var iodNeg  = nilaiIod  < -0.4;
-        var iodPos  = nilaiIod  >  0.4;
-
-        var teksIklimRawa = '';
-        if (laNina && iodNeg) {
-            teksIklimRawa = '⚠️ <b>La Niña + IOD Negatif — BAHAYA BANJIR EKSTRA di Rawa:</b> '
-                + 'Periode banjir berpotensi lebih panjang dan lebih tinggi dari normal. '
-                + 'Window tanam aman akan lebih sempit. Hanya gunakan varietas genjah. '
-                + 'Siapkan rencana evakuasi padi darurat.';
-        } else if (laNina) {
-            teksIklimRawa = '⚠️ <b>La Niña — Banjir Lebih Intens di Rawa:</b> '
-                + 'Durasi banjir berpotensi 2-4 minggu lebih panjang dari tahun normal. '
-                + 'Geser jadwal tanam agar cukup buffer setelah surut.';
-        } else if (elNino && iodPos) {
-            teksIklimRawa = '✅ <b>El Niño + IOD Positif — Kondisi Menguntungkan untuk Rawa:</b> '
-                + 'Banjir lebih ringan dan surut lebih cepat dari biasanya. '
-                + 'Window tanam lebih lebar. Bisa mempertimbangkan varietas sedang.';
-        } else if (elNino) {
-            teksIklimRawa = '✅ <b>El Niño — Window Rawa Lebih Lebar:</b> '
-                + 'Curah hujan lebih rendah dari normal, banjir tidak separah tahun La Niña. '
-                + 'Manfaatkan window yang lebih lebar, namun tetap prioritaskan varietas tahan.';
-        } else {
-            teksIklimRawa = 'ℹ️ <b>Kondisi Normal/Netral:</b> Ikuti pola banjir historis wilayah. '
-                + 'Konsultasikan dengan sesepuh tani atau Dinas Irigasi untuk data tinggi muka air '
-                + 'tahun-tahun sebelumnya.';
-        }
-
-        var catatanEl = document.createElement('div');
-        catatanEl.id = 'rawaCatatanIklim';
-        catatanEl.style.cssText = 'margin-top:12px;padding:10px 14px;border-radius:10px;'
-            + 'font-size:0.78rem;line-height:1.6;color:#cbd5e1;'
-            + 'background:rgba(29,158,117,0.08);border-left:3px solid #1D9E75;';
-        catatanEl.innerHTML = '<div style="font-size:0.72rem;font-weight:700;color:#1D9E75;margin-bottom:4px;">'
-            + '🌿 IMPLIKASI UNTUK SAWAH RAWA</div>' + teksIklimRawa;
-        box.appendChild(catatanEl);
-    };
-
-    // ============================================================
-    //  BAGIAN 7 — INIT
-    // ============================================================
+    function injectDropdowns() {
+        injectDropdownRisiko();
+        injectDropdownJTO();
+    }
 
     function init() {
-        // Inject dropdown setelah DOM siap
+        // Inject dropdown
         injectDropdowns();
 
-        // Re-inject jika tab berganti (switchMode akan merender ulang box)
-        var _switchModeAsli = window.switchMode;
-        if (typeof _switchModeAsli === 'function') {
+        // Patch fungsi global (hitungRisikoDinamis & rekomendasiWindowTanam)
+        patchFungsiGlobal();
+
+        // Patch prosesAnalisisKalender (Risiko Iklim)
+        patchProsesKalender();
+
+        // Patch prosesJadwalOtomatis (Kalender TNM) — tunggu JTO init dulu
+        setTimeout(patchProsesJTO, 600);
+
+        // Re-inject dropdown saat tab berganti
+        var _switchAsli = window.switchMode;
+        if (typeof _switchAsli === 'function') {
             window.switchMode = function(mode) {
-                _switchModeAsli.apply(this, arguments);
-                if (mode === 'kalender' || mode === 'jadwaltanam') {
-                    setTimeout(injectDropdowns, 200);
+                _switchAsli.apply(this, arguments);
+                if (mode==='kalender' || mode==='jadwaltanam') {
+                    setTimeout(injectDropdowns, 250);
                 }
             };
         }
@@ -756,30 +1083,28 @@
         window.__sawahRawaV1Aktif = true;
 
         console.log(
-            '%c✅ patch_sawah_rawa_v1.js AKTIF\n'
-            + '\n  ╔══ DIFERENSIASI JENIS SAWAH ══════════════════╗\n'
-            + '  ║ [RAWA-1] Dropdown jenis sawah di Risiko Iklim\n'
-            + '  ║          & Kalender Tanam Otomatis\n'
-            + '  ║ [RAWA-2] hitungRisikoDinamis() — logika terbalik:\n'
-            + '  ║          risiko TINGGI = banjir (bukan kering)\n'
-            + '  ║ [RAWA-3] rekomendasiWindowTanam() — cari window\n'
-            + '  ║          aman antara dua puncak banjir\n'
-            + '  ║          Varietas genjah diutamakan\n'
-            + '  ║ [RAWA-4] Teks analisis & rekomendasi PPL rawa\n'
-            + '  ║ [RAWA-5] Jadwal tikus disesuaikan:\n'
-            + '  ║          gropyokan saat banjir surut (migrasi tikus)\n'
-            + '  ║ [RAWA-6] Catatan iklim ENSO/IOD spesifik rawa\n'
-            + '  ║ 📚 Sumber: Balitbangtan (2018), IRRI Flood (2019),\n'
-            + '  ║    Noor (2007), BB Padi (2022)\n'
+            '%c✅ patch_sawah_rawa_v1.1.js AKTIF\n'
+            + '\n  ╔══ DIFERENSIASI SAWAH RAWA v1.1 ══════════════╗\n'
+            + '  ║ [FIX-1] prosesJadwalOtomatis di-patch SETELAH\n'
+            + '  ║          JTO init (setTimeout 600ms)\n'
+            + '  ║ [FIX-2] bangunKegiatanRawa() — urutan & teks\n'
+            + '  ║          khusus: gropyokan saat surut, pintu air,\n'
+            + '  ║          bedeng apung, varietas tahan rendaman\n'
+            + '  ║ [FIX-3] tglOlahTanah dari rekomendasiRawa()\n'
+            + '  ║          diteruskan ke bangunKegiatanRawa()\n'
+            + '  ║ [FIX-4] Label "SAWAH RAWA" di kotak info JTO\n'
+            + '  ║ [FIX-5] Kotak info rawa di bawah hasil JTO\n'
+            + '  ║ ✅ Risiko Iklim: hitungRisikoDinamis() rawa\n'
+            + '  ║ ✅ Kalender TNM: rekomendasiRawa() + render rawa\n'
             + '  ╚═══════════════════════════════════════════════╝',
-            'color:#1D9E75;font-weight:bold;'
+            'color:' + WARNA_RAWA + ';font-weight:bold;'
         );
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function(){ setTimeout(init, 400); });
+        document.addEventListener('DOMContentLoaded', function(){ setTimeout(init, 300); });
     } else {
-        setTimeout(init, 400);
+        setTimeout(init, 300);
     }
 
 })();
