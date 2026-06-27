@@ -315,7 +315,7 @@
             + '<select id="selectJenisSawahJTO" class="form-select" style="margin-bottom:0;" '
             + 'onchange="window.__rawaOnChangeJTO()">'
             + '<option value="irigasi">💧 Irigasi / Tadah Hujan</option>'
-            + '<option value="rawa">🌿 Sawah Rawa / Lebak / DAS (menunggu air surut)</option>'
+            + '<option value="rawa">🌿 Sawah Rawa / Lebak / DAS</option>'
             + '</select>'
             + INFO_RAWA_HTML
             + '</div>';
