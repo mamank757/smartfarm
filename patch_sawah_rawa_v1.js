@@ -106,12 +106,13 @@
     }
 
     // ============================================================
-    //  BAGIAN 1 — INJECT DROPDOWN JENIS SAWAH
+    //  BAGIAN 1 — INJECT DROPDOWN JENIS SAWAH (FIX SINKRONISASI)
     // ============================================================
 
+    // Tambahkan (event) pada onchange
     var HTML_DROPDOWN_RISIKO = '<div class="form-group" id="groupJenisSawahRisiko" style="margin-bottom:14px;">'
         + '<label>🌊 JENIS LAHAN SAWAH</label>'
-        + '<select id="selectJenisSawahRisiko" class="form-select" onchange="window.__rawaOnChange()">'
+        + '<select id="selectJenisSawahRisiko" class="form-select" onchange="window.__rawaOnChange(event)">'
         + '<option value="irigasi">💧 Irigasi / Tadah Hujan (mengandalkan hujan)</option>'
         + '<option value="rawa">🌿 Sawah Rawa / Lebak / DAS (menunggu air surut)</option>'
         + '</select>'
@@ -121,7 +122,7 @@
 
     var HTML_DROPDOWN_KALENDER = '<div class="form-group" id="groupJenisSawahKalender" style="margin-bottom:14px;">'
         + '<label>🌊 JENIS LAHAN SAWAH</label>'
-        + '<select id="selectJenisSawahKalender" class="form-select" onchange="window.__rawaOnChange()">'
+        + '<select id="selectJenisSawahKalender" class="form-select" onchange="window.__rawaOnChange(event)">'
         + '<option value="irigasi">💧 Irigasi / Tadah Hujan</option>'
         + '<option value="rawa">🌿 Sawah Rawa / Lebak / DAS</option>'
         + '</select>'
@@ -131,7 +132,7 @@
 
     var HTML_DROPDOWN_JTO = '<div class="form-group" id="groupJenisSawahJTO" style="margin-bottom:14px;">'
         + '<label>🌊 JENIS LAHAN SAWAH</label>'
-        + '<select id="selectJenisSawahJTO" class="form-select" onchange="window.__rawaOnChange()">'
+        + '<select id="selectJenisSawahJTO" class="form-select" onchange="window.__rawaOnChange(event)">'
         + '<option value="irigasi">💧 Irigasi / Tadah Hujan</option>'
         + '<option value="rawa">🌿 Sawah Rawa / Lebak / DAS</option>'
         + '</select>'
@@ -143,6 +144,7 @@
         + 'diutamakan (Inpari 30, Inpari 33).';
 
     function injectDropdowns() {
+        // [Tetap sama dengan aslinya, lewati bagian ini]
         var boxKalender = document.getElementById('boxKalender');
         if (boxKalender && !document.getElementById('groupJenisSawahRisiko')) {
             var btnAnalisis = boxKalender.querySelector('button.btn-main');
@@ -169,8 +171,20 @@
         }
     }
 
-    window.__rawaOnChange = function() {
-        var isRawa = getJenisSawah() === 'rawa';
+    // [FIX KUNCI]: Sinkronisasi semua dropdown di menu manapun
+    window.__rawaOnChange = function(event) {
+        var selectedVal = event ? event.target.value : 'irigasi';
+        
+        // Otomatis samakan pilihan di Tab Risiko Iklim, JTO, dll
+        var ids = ['selectJenisSawahRisiko', 'selectJenisSawahKalender', 'selectJenisSawahJTO'];
+        ids.forEach(function(id){
+            var el = document.getElementById(id);
+            if (el && el.value !== selectedVal) {
+                el.value = selectedVal; // Sinkron
+            }
+        });
+
+        var isRawa = selectedVal === 'rawa';
         ['infoJenisSawahRisiko','infoJenisSawahKalender'].forEach(function(id){
             var el = document.getElementById(id);
             if (!el) return;
@@ -182,7 +196,6 @@
             }
         });
     };
-
     // ============================================================
     //  BAGIAN 2 — OVERRIDE hitungRisikoDinamis() UNTUK SAWAH RAWA
     // ============================================================
