@@ -5,52 +5,52 @@
  * ============================================================
  *
  * CARA PASANG:
- *   Tambahkan SETELAH patch_risiko_iklim.js dan
- *   patch_deteksi_musim_v3.0.js di bagian bawah <body>:
+ * Tambahkan SETELAH patch_risiko_iklim.js (atau v2) dan
+ * patch_deteksi_musim_v3.0.js di bagian bawah <body>:
  *
- *     <script src="patch_risiko_iklim.js"></script>
- *     <script src="patch_deteksi_musim_v3.0.js"></script>
- *     <script src="patch_sawah_rawa_v1.js"></script>
- *     <script src="patch_jadwal_tanam_otomatis.js"></script>
- *     <script src="patch_jadwal_tapin_tabela_fix.js"></script>
+ * <script src="patch_risiko_iklim_v2.js"></script>
+ * <script src="patch_deteksi_musim_v3.0.js"></script>
+ * <script src="patch_sawah_rawa_v1.js"></script>
+ * <script src="patch_jadwal_tanam_otomatis.js"></script>
+ * <script src="patch_jadwal_tapin_tabela_fix.js"></script>
  *
  * APA YANG BERUBAH:
  *
- *   [RAWA-1] Tambah dropdown "Jenis Sawah" di form Risiko Iklim
- *            dan Kalender Tanam (dua form yang berbeda).
+ * [RAWA-1] Tambah dropdown "Jenis Sawah" di form Risiko Iklim
+ * dan Kalender Tanam (dua form yang berbeda).
  *
- *   [RAWA-2] Override hitungRisikoDinamis() — skor risiko berbeda
- *            untuk sawah rawa:
- *            - Olah lahan: risiko TINGGI saat masih tergenang/banjir
- *            - Vegetatif : risiko TINGGI saat banjir mendadak naik
- *            - Generatif : risiko KRITIS saat banjir (bukan kering)
- *            - Panen     : risiko TINGGI saat hujan naik lagi (banjir
- *                          datang sebelum panen selesai)
+ * [RAWA-2] Override hitungRisikoDinamis() — skor risiko berbeda
+ * untuk sawah rawa:
+ * - Olah lahan: risiko TINGGI saat masih tergenang/banjir
+ * - Vegetatif : risiko TINGGI saat banjir mendadak naik
+ * - Generatif : risiko KRITIS saat banjir (bukan kering)
+ * - Panen     : risiko TINGGI saat hujan naik lagi (banjir
+ * datang sebelum panen selesai)
  *
- *   [RAWA-3] Override rekomendasiWindowTanam() / rekomendasiWindowTanamV4()
- *            — mencari WINDOW AMAN antara dua puncak banjir:
- *            - Olah lahan setelah air surut (bulan CH rendah/turun)
- *            - Panen harus selesai SEBELUM puncak banjir berikutnya
- *            - Varietas genjah sangat diutamakan agar cukup waktu
+ * [RAWA-3] Override rekomendasiWindowTanam() — mencari WINDOW AMAN 
+ * antara dua puncak banjir:
+ * - Olah lahan setelah air surut (bulan CH rendah/turun)
+ * - Panen harus selesai SEBELUM puncak banjir berikutnya
+ * - Varietas genjah sangat diutamakan agar cukup waktu
  *
- *   [RAWA-4] Teks analisis & rekomendasi PPL disesuaikan per jenis:
- *            - Irigasi/Tadah hujan: teks asli (tidak berubah)
- *            - Sawah rawa: teks spesifik banjir, surut, varietas
- *              tahan rendaman (Inpari 30, Inpari 33, Inpari IR Nutri Zinc)
+ * [RAWA-4] Teks analisis & rekomendasi PPL disesuaikan per jenis:
+ * - Irigasi/Tadah hujan: teks asli (tidak berubah)
+ * - Sawah rawa: teks spesifik banjir, surut, varietas
+ * tahan rendaman (Inpari 30, Inpari 33, Inpari IR Nutri Zinc)
  *
- *   [RAWA-5] Jadwal tikus di sawah rawa disesuaikan:
- *            - Gropyokan saat SURUT (bukan sebelum bajak saja)
- *            - Pasang TBS di tanggul yang tidak tergenang
- *            - Peringatan: saat banjir tikus migrasi ke tanggul —
- *              justru momen penangkapan terbaik
+ * [RAWA-5] Jadwal tikus di sawah rawa disesuaikan:
+ * - Gropyokan saat SURUT (bukan sebelum bajak saja)
+ * - Pasang TBS di tanggul yang tidak tergenang
+ * - Peringatan: saat banjir tikus migrasi ke tanggul —
+ * justru momen penangkapan terbaik
  *
  * DASAR ILMIAH:
- *   - IRRI Rice Knowledge Bank — Flood-Prone Lowland Rice (2019)
- *   - BB Padi (2022) Varietas Unggul Tahan Rendaman: Inpari 30, 33
- *   - Balitbangtan (2018) Pola Tanam Lahan Rawa Lebak Sulsel
- *   - Noor (2007) Lahan Rawa: Sifat dan Pengelolaan Tanah Bermasalah
- *     Sulfat Masam (Balittra Banjarbaru)
- *   - Subagyo (2006) Lahan Rawa Pasang Surut & Lebak (FAO-Indonesia)
+ * - IRRI Rice Knowledge Bank — Flood-Prone Lowland Rice (2019)
+ * - BB Padi (2022) Varietas Unggul Tahan Rendaman: Inpari 30, 33
+ * - Balitbangtan (2018) Pola Tanam Lahan Rawa Lebak Sulsel
+ * - Noor (2007) Lahan Rawa: Sifat dan Pengelolaan Tanah Bermasalah
+ * Sulfat Masam (Balittra Banjarbaru)
+ * - Subagyo (2006) Lahan Rawa Pasang Surut & Lebak (FAO-Indonesia)
  * ============================================================
  */
 
@@ -82,13 +82,6 @@
     /**
      * Kembalikan true jika bulan yang diperiksa termasuk puncak
      * banjir berdasarkan pola ZOM.
-     *
-     * Logika: bulan banjir = 2 bulan dengan CH tertinggi + 1 bulan
-     * setelah puncak (air belum surut).
-     *
-     * @param {number[]} baselineData - 12 nilai ZOM/CH bulanan
-     * @param {number}   bulanIndex   - 0-11
-     * @returns {boolean}
      */
     function isBulanBanjir(baselineData, bulanIndex) {
         if (!baselineData || baselineData.length < 12) return false;
@@ -114,10 +107,6 @@
 
     // ============================================================
     //  BAGIAN 1 — INJECT DROPDOWN JENIS SAWAH
-    //
-    //  Menyisipkan pilihan jenis sawah di dua form yang berbeda:
-    //  (a) Form Risiko Iklim (tab RISIKO IKLIM / Kalender)
-    //  (b) Form Kalender Tanam Otomatis (tab KALENDER TNM / JTO)
     // ============================================================
 
     var HTML_DROPDOWN_RISIKO = '<div class="form-group" id="groupJenisSawahRisiko" style="margin-bottom:14px;">'
@@ -154,7 +143,6 @@
         + 'diutamakan (Inpari 30, Inpari 33).';
 
     function injectDropdowns() {
-        // (a) Di dalam boxKalender, sebelum tombol analisis
         var boxKalender = document.getElementById('boxKalender');
         if (boxKalender && !document.getElementById('groupJenisSawahRisiko')) {
             var btnAnalisis = boxKalender.querySelector('button.btn-main');
@@ -170,7 +158,6 @@
             }
         }
 
-        // (b) Di dalam boxJadwalTanam (JTO)
         var boxJTO = document.getElementById('boxJadwalTanam');
         if (boxJTO && !document.getElementById('groupJenisSawahJTO')) {
             var selectMetode = boxJTO.querySelector('#metodeTanamJTO');
@@ -182,7 +169,6 @@
         }
     }
 
-    // Callback saat dropdown berubah
     window.__rawaOnChange = function() {
         var isRawa = getJenisSawah() === 'rawa';
         ['infoJenisSawahRisiko','infoJenisSawahKalender'].forEach(function(id){
@@ -204,16 +190,12 @@
     var _hitungRisikoDinamisAsli = window.hitungRisikoDinamis;
 
     function hitungRisikoDinamisRawa(bulanIndex, fase, ensoVal, iodVal, baselineData) {
-        // Skor banjir bulan ini (0-100): makin tinggi makin banjir
         var sb = skorBanjir(baselineData, bulanIndex);
-        // Apakah bulan ini atau bulan sebelumnya termasuk puncak banjir?
         var banjirAktif = isBulanBanjir(baselineData, bulanIndex);
-        // Bulan berikutnya apakah banjir? (ancaman panen tergesa)
         var banjirMendekat = isBulanBanjir(baselineData, (bulanIndex + 1) % 12);
 
-        // Apakah ENSO/IOD memperparah banjir? La Niña + IOD Negatif = sangat basah
-        var ensoBasah = (ensoVal < -0.5); // La Niña
-        var iodBasah  = (iodVal  < -0.4); // IOD Negatif
+        var ensoBasah = (ensoVal < -0.5); 
+        var iodBasah  = (iodVal  < -0.4); 
         var amplifikasiBanjir = (ensoBasah && iodBasah) ? 20 : (ensoBasah || iodBasah) ? 10 : 0;
         sb = Math.min(100, sb + amplifikasiBanjir);
 
@@ -221,7 +203,6 @@
         var statusCuaca, masalah, tipeBahaya;
 
         if (fase === 'Tanam') {
-            // Sawah rawa: olah lahan hanya bisa saat air SUDAH SURUT
             if (banjirAktif) {
                 skor    = 92;
                 statusCuaca = 'Tergenang / Banjir Aktif';
@@ -249,7 +230,6 @@
             }
         }
         else if (fase === 'Vegetatif') {
-            // Sawah rawa: vegetatif tidak boleh kena banjir mendadak yang tidak terkendali
             if (banjirAktif && sb > 75) {
                 skor    = 80;
                 statusCuaca = 'Banjir Saat Vegetatif';
@@ -278,7 +258,6 @@
             }
         }
         else if (fase === 'Generatif') {
-            // Sawah rawa: fase paling kritis — banjir saat bunting = gagal panen total
             if (banjirAktif || sb > 70) {
                 skor    = 97;
                 statusCuaca = 'KRITIS: Banjir Saat Bunting';
@@ -308,7 +287,6 @@
             }
         }
         else if (fase === 'Panen') {
-            // Sawah rawa: panen harus selesai SEBELUM banjir kembali datang
             if (banjirAktif || sb > 70) {
                 skor    = 90;
                 statusCuaca = 'KRITIS: Banjir Saat Panen';
@@ -342,7 +320,6 @@
         return { skor: skor, statusCuaca: statusCuaca || 'Normal', masalah: masalah || '-', tipeBahaya: tipeBahaya || 'aman' };
     }
 
-    // Wrapper: pilih implementasi sesuai jenis sawah
     window.hitungRisikoDinamis = function(bulanIndex, fase, ensoVal, iodVal, baselineData) {
         if (getJenisSawah() === 'rawa') {
             return hitungRisikoDinamisRawa(bulanIndex, fase, ensoVal, iodVal, baselineData);
@@ -350,71 +327,42 @@
         if (typeof _hitungRisikoDinamisAsli === 'function') {
             return _hitungRisikoDinamisAsli(bulanIndex, fase, ensoVal, iodVal, baselineData);
         }
-        // Sangat tidak mungkin tapi tetap ada fallback
         return { skor: 50, statusCuaca: 'Normal', masalah: '-', tipeBahaya: 'aman' };
     };
 
     // ============================================================
     //  BAGIAN 3 — OVERRIDE rekomendasiWindowTanam() UNTUK RAWA
-    //
-    //  Algoritma khusus sawah rawa:
-    //  1. Identifikasi bulan BANJIR (CH tertinggi + buffer)
-    //  2. Cari window AMAN: olah lahan saat CH turun setelah puncak
-    //  3. Hitung apakah panen bisa selesai sebelum banjir berikutnya
-    //  4. Jika window cukup: rekomendasikan; jika tidak: cari window lain
-    //  5. Varietas genjah diutamakan karena window sering sempit
     // ============================================================
 
-    var _rekomendasiWindowTanamAsli = window.rekomendasiWindowTanam;
-    var _rekomendasiWindowTanamV4Asli = window.rekomendasiWindowTanamV4;
+    var _rekomendasiWindowTanamAsli = window.rekomendasiWindowTanam; // Tangkap fungsi yang sedang aktif (bisa dari v3.0.1)
 
-    /**
-     * Rekomendasikan jadwal tanam untuk sawah rawa.
-     *
-     * @param {number[]} skorBulan  - skor kelembapan 12 bulan (0-100)
-     * @param {number[]} rawZOM     - CH/ZOM baseline 12 bulan
-     * @param {string}   zona       - zona iklim
-     * @param {number}   ensoVal    - anomali ENSO
-     * @param {number}   iodVal     - anomali IOD
-     * @returns {Object[]} array rekomendasi 1-2 musim
-     */
     function rekomendasiRawa(skorBulan, rawZOM, zona, ensoVal, iodVal) {
         var now = new Date();
         var tahun = now.getFullYear();
 
-        // ── 1. Identifikasi bulan puncak banjir ─────────────────
-        // Urutkan bulan dari CH tertinggi. Dua bulan teratas = puncak banjir.
-        // Satu bulan setelah puncak = banjir masih aktif (air belum surut).
         var sorted = rawZOM.map(function(v, i){ return { v: v, i: i }; })
                            .sort(function(a, b){ return b.v - a.v; });
         var banjirSet = {};
-        // 3 bulan CH tertinggi = periode banjir
         for (var k = 0; k < 3; k++) {
             var bi = sorted[k].i;
             banjirSet[bi] = true;
-            // buffer: bulan setelah puncak masih tergenang
-            banjirSet[(bi + 1) % 12] = true;
+            banjirSet[(bi + 1) % 12] = true; 
         }
 
-        // ── 2. Bulan yang AMAN untuk olah lahan ─────────────────
-        // Aman = bukan bulan banjir DAN bukan bulan buffer
         var bulanAman = [];
         for (var m = 0; m < 12; m++) {
             if (!banjirSet[m]) bulanAman.push(m);
         }
 
-        // Jika tidak ada bulan aman (sangat tidak mungkin), fallback
         if (bulanAman.length === 0) {
-            bulanAman = [0, 6]; // Jan & Jul sebagai default
+            bulanAman = [0, 6]; 
         }
 
-        // ── 3. Cari window tanam dengan panen sebelum banjir ────
-        // Varietas: utamakan genjah (90 hari) agar window cukup
-        var JEDA_OLAH_TANAM = 20; // hari dari olah lahan ke tanam (lebih pendek di rawa)
+        var JEDA_OLAH_TANAM = 20; 
         var varianArr = [
             { kode: 'genjah', label: 'Genjah (< 95 HST) — DIREKOMENDASIKAN untuk rawa', panen: 90  },
-            { kode: 'sedang', label: 'Sedang (95–115 HST) — jika window cukup',          panen: 110 },
-            { kode: 'dalam',  label: 'Dalam (≥ 116 HST) — risiko tinggi di rawa',        panen: 125 }
+            { kode: 'sedang', label: 'Sedang (95–115 HST) — jika window cukup',         panen: 110 },
+            { kode: 'dalam',  label: 'Dalam (≥ 116 HST) — risiko tinggi di rawa',       panen: 125 }
         ];
 
         var NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni',
@@ -428,7 +376,6 @@
             return new Date(tahunRef, bulanIdx, 15);
         }
 
-        // Cari dua window terbaik (MT I & MT II)
         var kandidat = [];
 
         bulanAman.forEach(function(bOlah) {
@@ -438,25 +385,19 @@
                 var tglPanen = tambahHari(tglTanam, v.panen);
                 var bPanen   = tglPanen.getMonth();
 
-                // Apakah bulan panen jatuh di bulan aman?
                 var panenAman = !banjirSet[bPanen] && !banjirSet[(bPanen + 1) % 12];
 
-                // Generatif (sekitar 60% dari umur varietas)
                 var hariGen  = Math.floor(v.panen * 0.60);
                 var bGen     = tambahHari(tglTanam, hariGen).getMonth();
                 var genAman  = !banjirSet[bGen];
 
-                if (!panenAman || !genAman) return; // window tidak aman, skip
+                if (!panenAman || !genAman) return; 
 
-                // Hitung nilai: lebih tinggi lebih baik
-                // Faktor: (a) panen di bulan kering, (b) generatif di bulan kering,
-                //         (c) varietas lebih pendek lebih aman
                 var nilaiPanen  = 100 - skorBulan[bPanen];
                 var nilaiGen    = 100 - Math.abs(skorBulan[bGen] - 30);
                 var nilaiUmur   = v.kode === 'genjah' ? 20 : v.kode === 'sedang' ? 10 : 0;
                 var nilaiTotal  = (nilaiPanen * 0.45) + (nilaiGen * 0.40) + nilaiUmur;
 
-                // Jarak ke banjir berikutnya setelah panen (buffer keamanan)
                 var bufferBulan = 0;
                 for (var bb = 1; bb <= 3; bb++) {
                     if (banjirSet[(bPanen + bb) % 12]) { bufferBulan = bb - 1; break; }
@@ -491,17 +432,14 @@
             });
         });
 
-        // Urutkan dari nilai terbaik
         kandidat.sort(function(a, b){ return b.nilaiTotal - a.nilaiTotal; });
 
-        // Ambil dua window terbaik yang BERBEDA bulan tanam
         var hasilDuaMusim = [];
         var bulanSudahDipakai = {};
 
         kandidat.forEach(function(k) {
             if (hasilDuaMusim.length >= 2) return;
             var keyBulan = k.bOlah;
-            // Pastikan window kedua minimal 2 bulan beda dari pertama
             var terlalutDekat = Object.keys(bulanSudahDipakai).some(function(b){
                 var diff = Math.abs(parseInt(b) - keyBulan);
                 return Math.min(diff, 12 - diff) < 3;
@@ -534,7 +472,6 @@
             });
         });
 
-        // Fallback: jika tidak ada window yang sempurna
         if (hasilDuaMusim.length === 0) {
             var bFallback = bulanAman[0] !== undefined ? bulanAman[0] : 4;
             var tglOlahFb = tglDariBulan(bFallback, tahun);
@@ -564,30 +501,20 @@
         return hasilDuaMusim;
     }
 
-    // Wrapper untuk rekomendasiWindowTanam
-    function wrapRekomendasi(asli) {
-        return function(skorBulan, rawZOM, zona, ensoVal, iodVal) {
-            if (getJenisSawah() === 'rawa') {
-                return rekomendasiRawa(skorBulan, rawZOM, zona, ensoVal || 0, iodVal || 0);
-            }
-            if (typeof asli === 'function') {
-                return asli(skorBulan, rawZOM, zona, ensoVal, iodVal);
-            }
-            return [];
-        };
-    }
-
-    if (typeof _rekomendasiWindowTanamV4Asli === 'function') {
-        window.rekomendasiWindowTanam = wrapRekomendasi(_rekomendasiWindowTanamV4Asli);
-    } else if (typeof _rekomendasiWindowTanamAsli === 'function') {
-        window.rekomendasiWindowTanam = wrapRekomendasi(_rekomendasiWindowTanamAsli);
-    }
+    // ── FIX BUG OVERRIDE ──────────────────────────────────────
+    window.rekomendasiWindowTanam = function(skorBulan, rawZOM, zona, ensoVal, iodVal) {
+        if (getJenisSawah() === 'rawa') {
+            return rekomendasiRawa(skorBulan, rawZOM, zona, ensoVal || 0, iodVal || 0);
+        }
+        // Jika bukan rawa, serahkan kembali pada patch iklim/musim yang terinstal
+        if (typeof _rekomendasiWindowTanamAsli === 'function') {
+            return _rekomendasiWindowTanamAsli(skorBulan, rawZOM, zona, ensoVal, iodVal);
+        }
+        return [];
+    };
 
     // ============================================================
     //  BAGIAN 4 — PATCH TEKS ANALISIS DI boxKalender
-    //
-    //  Setelah prosesAnalisisKalender() selesai render,
-    //  tambahkan kotak info khusus rawa di bawah grafik.
     // ============================================================
 
     var _prosesAnalisisKalenderAsli = window.prosesAnalisisKalender;
@@ -599,7 +526,6 @@
 
         if (getJenisSawah() !== 'rawa') return;
 
-        // Tambahkan panel info rawa setelah container analisis
         var kontainerTeks = document.getElementById('teksAnalisisFase');
         if (!kontainerTeks) return;
 
@@ -632,9 +558,6 @@
 
     // ============================================================
     //  BAGIAN 5 — PATCH JADWAL TIKUS UNTUK RAWA
-    //
-    //  Mengganti catatan gropyokan agar relevan dengan kondisi rawa:
-    //  saat banjir, tikus migrasi ke tanggul → justru momen tangkap.
     // ============================================================
 
     var _hitungJadwalTikusAsli = window.hitungJadwalTikus;
@@ -646,7 +569,6 @@
 
         if (getJenisSawah() !== 'rawa') return jadwal;
 
-        // Override catatan gropyokan untuk konteks rawa
         if (jadwal.gropyokan) {
             jadwal.gropyokan.catatan = '🌿 SAWAH RAWA: Gropyokan paling efektif dilakukan '
                 + 'saat banjir baru surut — tikus berkonsentrasi di tanggul dan galengan yang '
@@ -672,9 +594,6 @@
 
     // ============================================================
     //  BAGIAN 6 — PATCH SIMPULAN PREDIKSI IKLIM TERPADU
-    //
-    //  Menambahkan catatan khusus rawa di kotak iklimTerpaduBox
-    //  setelah fungsi asli selesai render.
     // ============================================================
 
     var _simpulkanAsli = window.simpulkanPrediksiIklimTerpadu;
@@ -739,10 +658,8 @@
     // ============================================================
 
     function init() {
-        // Inject dropdown setelah DOM siap
         injectDropdowns();
 
-        // Re-inject jika tab berganti (switchMode akan merender ulang box)
         var _switchModeAsli = window.switchMode;
         if (typeof _switchModeAsli === 'function') {
             window.switchMode = function(mode) {
@@ -756,14 +673,14 @@
         window.__sawahRawaV1Aktif = true;
 
         console.log(
-            '%c✅ patch_sawah_rawa_v1.js AKTIF\n'
+            '%c✅ patch_sawah_rawa_v1.js AKTIF (FIXED)\n'
             + '\n  ╔══ DIFERENSIASI JENIS SAWAH ══════════════════╗\n'
             + '  ║ [RAWA-1] Dropdown jenis sawah di Risiko Iklim\n'
             + '  ║          & Kalender Tanam Otomatis\n'
             + '  ║ [RAWA-2] hitungRisikoDinamis() — logika terbalik:\n'
             + '  ║          risiko TINGGI = banjir (bukan kering)\n'
             + '  ║ [RAWA-3] rekomendasiWindowTanam() — cari window\n'
-            + '  ║          aman antara dua puncak banjir\n'
+            + '  ║          aman antara dua puncak banjir (Sinkron v3)\n'
             + '  ║          Varietas genjah diutamakan\n'
             + '  ║ [RAWA-4] Teks analisis & rekomendasi PPL rawa\n'
             + '  ║ [RAWA-5] Jadwal tikus disesuaikan:\n'
