@@ -317,10 +317,10 @@
                 `Generatif\n(${formatTgl(tglGeneratif)})`, `Panen\n(${formatTgl(tglPanen)})`
             ];
     
-            const riskTanam = hitungRisikoDinamis(awalTanam.getMonth(),    'Tanam',      ensoVal, iodVal, baselineData);
-            const riskVeg   = hitungRisikoDinamis(tglVegetatif.getMonth(), 'Vegetatif',  ensoVal, iodVal, baselineData);
-            const riskGen   = hitungRisikoDinamis(tglGeneratif.getMonth(), 'Generatif',  ensoVal, iodVal, baselineData);
-            const riskPanen = hitungRisikoDinamis(tglPanen.getMonth(),     'Panen',      ensoVal, iodVal, baselineData);
+            const riskTanam = window.hitungRisikoDinamis(awalTanam.getMonth(),    'Tanam',      ensoVal, iodVal, baselineData);
+const riskVeg   = window.hitungRisikoDinamis(tglVegetatif.getMonth(), 'Vegetatif',  ensoVal, iodVal, baselineData);
+const riskGen   = window.hitungRisikoDinamis(tglGeneratif.getMonth(), 'Generatif',  ensoVal, iodVal, baselineData);
+const riskPanen = window.hitungRisikoDinamis(tglPanen.getMonth(),     'Panen',      ensoVal, iodVal, baselineData);
     
             const dataSkor   = [riskTanam.skor, riskVeg.skor, riskGen.skor, riskPanen.skor];
             const dataStatus = [riskTanam.statusCuaca, riskVeg.statusCuaca, riskGen.statusCuaca, riskPanen.statusCuaca];
