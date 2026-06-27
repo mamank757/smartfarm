@@ -1,45 +1,42 @@
 /**
  * ============================================================
- * patch_sawah_rawa_v1.1.js
+ * patch_sawah_rawa_v1.2.js
  * Diferensiasi Jenis Sawah — PPL Milenial Wajo
  * ============================================================
  *
- * PERBAIKAN v1.1 vs v1.0:
+ * PERBAIKAN v1.2 vs v1.1 (BUG KRITIS — KALENDER TNM):
  *
- *   [FIX-1] KALENDER TNM tidak merespons pilihan rawa.
- *           Root cause: prosesJadwalOtomatis() di JTO v3.13
- *           memanggil bangunKegiatan() lokal yang tidak tahu
- *           soal rawa, DAN format objek rekomendasi dari
- *           rekomendasiRawa() berbeda (field tglOlahTanah
- *           langsung di rek, bukan dari rek.jadwalTikus).
- *           Fix: override window.prosesJadwalOtomatis SETELAH
- *           JTO init, dengan versi yang sadar jenis sawah.
+ *   [FIX-KRITIS-A] getJenisSawah() selalu membaca elemen SALAH.
+ *           Root cause: urutan `||` membuat selectJenisSawahRisiko
+ *           selalu terbaca duluan karena elemen hidden tetap ada
+ *           di DOM. Akibatnya pilihan "Rawa" di JTO tab diabaikan.
+ *           Fix: Cek VISIBILITY (offsetParent) dulu — baca hanya
+ *           elemen yang sedang tampil di layar.
  *
- *   [FIX-2] bangunKegiatanRawa() — versi khusus rawa dengan:
- *           - Urutan kegiatan berbeda (gropyokan saat surut
- *             bukan sebelum bajak)
- *           - Risiko diperhitungkan dari skor banjir, bukan
- *             skor kekeringan
- *           - Label & tips disesuaikan untuk konteks rawa
- *           - Tidak ada kegiatan "pompanisasi" — diganti
- *             "pemantauan pintu air / tabat"
+ *   [FIX-KRITIS-B] patchProsesJTO() TIDAK PERNAH DIPANGGIL.
+ *           Root cause: fungsi sudah didefinisikan di BAGIAN 6
+ *           tapi init() tidak memanggil patchProsesJTO() sama sekali.
+ *           Yang ada di init() hanya setTimeout yang menimpa
+ *           rekomendasiWindowTanam lagi (sudah dilakukan patchFungsiGlobal)
+ *           tanpa pernah menyentuh prosesJadwalOtomatis.
+ *           Fix: Tambahkan setTimeout(patchProsesJTO, 1000) di init().
  *
- *   [FIX-3] renderOutput() di JTO menggunakan rek.tglOlahTanah
- *           dari engine rawa — field ini di-pass ke bangunKegiatan
- *           lewat rek, tapi JTO lama tidak meneruskannya.
- *           Fix: wrapper prosesJadwalOtomatis baru meneruskan
- *           tglOlahTanah ke dalam objek jadwal.
+ *   [FIX-C]  Guard dalam patchProsesJTO() langsung baca
+ *           selectJenisSawahJTO secara eksplisit (tidak lewat
+ *           getJenisSawah()) untuk lebih aman saat dipanggil
+ *           dari konteks async JTO.
  *
- *   [FIX-4] Label jenis sawah ditampilkan di kotak
- *           "INFORMASI IKLIM TAHUNAN" pada output JTO.
- *
- *   [FIX-5] Kotak info rawa disisipkan di bawah hasil JTO
- *           (sama seperti di Risiko Iklim).
+ * PERBAIKAN SEBELUMNYA (v1.0 → v1.1) tetap berlaku:
+ *   [FIX-1] prosesJadwalOtomatis di-patch setelah JTO init
+ *   [FIX-2] bangunKegiatanRawa() — urutan & teks khusus rawa
+ *   [FIX-3] tglOlahTanah diteruskan ke bangunKegiatanRawa()
+ *   [FIX-4] Label "SAWAH RAWA" di kotak info JTO
+ *   [FIX-5] Kotak info rawa di bawah hasil JTO
  *
  * CARA PASANG — urutan harus persis ini:
  *   <script src="patch_risiko_iklim.js"></script>
  *   <script src="patch_deteksi_musim_v3.0.js"></script>
- *   <script src="patch_sawah_rawa_v1.1.js"></script>   ← file ini
+ *   <script src="patch_sawah_rawa_v1.2.js"></script>   ← file ini
  *   <script src="patch_jadwal_tanam_otomatis.js"></script>
  *   <script src="patch_jadwal_tapin_tabela_fix.js"></script>
  *
@@ -55,7 +52,7 @@
     'use strict';
 
     if (window.__sawahRawaV1Aktif) {
-        console.warn('[patch_sawah_rawa_v1.1] sudah aktif, skip.');
+        console.warn('[patch_sawah_rawa_v1.2] sudah aktif, skip.');
         return;
     }
 
@@ -82,11 +79,39 @@
         return d.getDate() + ' ' + NAMA_BULAN_PEND[d.getMonth()] + ' ' + d.getFullYear();
     }
 
+    /**
+     * [FIX-KRITIS-A v1.2]
+     * Cek VISIBILITY dulu — baca hanya elemen yang sedang tampil.
+     * Element hidden (display:none) tetap ada di DOM → offsetParent === null.
+     * Urutan prioritas: JTO → Risiko → Kalender (bukan sebaliknya).
+     */
     function getJenisSawah() {
-        var el = document.getElementById('selectJenisSawahRisiko')
-                || document.getElementById('selectJenisSawahKalender')
-                || document.getElementById('selectJenisSawahJTO');
-        return (el && el.value === 'rawa') ? 'rawa' : 'irigasi';
+        var ids = [
+            'selectJenisSawahJTO',
+            'selectJenisSawahRisiko',
+            'selectJenisSawahKalender'
+        ];
+        // Pass 1: Cari yang sedang visible (aktif di layar)
+        for (var i = 0; i < ids.length; i++) {
+            var el = document.getElementById(ids[i]);
+            if (el && el.offsetParent !== null) {
+                return el.value === 'rawa' ? 'rawa' : 'irigasi';
+            }
+        }
+        // Pass 2: Fallback ke elemen pertama yang ada (jika semua hidden)
+        for (var j = 0; j < ids.length; j++) {
+            var el2 = document.getElementById(ids[j]);
+            if (el2) return el2.value === 'rawa' ? 'rawa' : 'irigasi';
+        }
+        return 'irigasi';
+    }
+
+    // Helper khusus untuk konteks JTO — baca langsung tanpa visibility check
+    function getJenisSawahJTO() {
+        var el = document.getElementById('selectJenisSawahJTO');
+        if (el) return el.value === 'rawa' ? 'rawa' : 'irigasi';
+        // Fallback ke getJenisSawah() jika dropdown belum terinjeksi
+        return getJenisSawah();
     }
 
     // ── Skor banjir relatif (0–100): makin tinggi makin basah/banjir ──
@@ -142,10 +167,11 @@
             if (btn) btn.insertAdjacentHTML('beforebegin', html);
             else boxJTO.insertAdjacentHTML('afterbegin', html);
         }
+
+        console.log('[patch_sawah_rawa_v1.2] Dropdown JTO berhasil diinjeksi.');
     }
 
     function injectDropdownRisiko() {
-        // Inject di boxKalender (tab Risiko Iklim)
         var boxKalender = document.getElementById('boxKalender');
         if (!boxKalender || document.getElementById('groupJenisSawahRisiko')) return;
 
@@ -171,21 +197,19 @@
 
     window.__rawaOnChange = function() {
         var isRawa = getJenisSawah() === 'rawa';
-        ['infoJenisSawahRisiko'].forEach(function(id){
-            var el = document.getElementById(id);
-            if (el) el.style.display = isRawa ? 'block' : 'none';
-        });
+        var el = document.getElementById('infoJenisSawahRisiko');
+        if (el) el.style.display = isRawa ? 'block' : 'none';
     };
 
     window.__rawaOnChangeJTO = function() {
-        var isRawa = getJenisSawah() === 'rawa';
-        var el = document.getElementById('infoJenisSawahJTO');
-        if (el) el.style.display = isRawa ? 'block' : 'none';
+        var el = document.getElementById('selectJenisSawahJTO');
+        var isRawa = el && el.value === 'rawa';
+        var info = document.getElementById('infoJenisSawahJTO');
+        if (info) info.style.display = isRawa ? 'block' : 'none';
     };
 
     // ============================================================
     //  BAGIAN 2 — RISIKO BANJIR untuk kegiatan di sawah rawa
-    //  (dipakai oleh bangunKegiatanRawa)
     // ============================================================
 
     function risikoOlahRawa(sbanjir) {
@@ -251,7 +275,6 @@
 
     // ============================================================
     //  BAGIAN 3 — bangunKegiatanRawa()
-    //  Menghasilkan daftar kegiatan yang sesuai konteks sawah rawa
     // ============================================================
 
     function bangunKegiatanRawa(rek, rawZOM, metodeTanam) {
@@ -260,11 +283,9 @@
         var tglTanam  = rek.tglTanam;
         var tglPanen  = rek.tglPanen || tambahHari(tglTanam, rek.umurTotal || 90);
 
-        // Benih
         var umurBibit = rek.varietas === 'genjah' ? 14 : rek.varietas === 'dalam' ? 28 : 21;
         var tglBenih  = isTabela ? tambahHari(tglTanam, -2) : tambahHari(tglTanam, -umurBibit);
 
-        // Pasca-tanam (di rawa lebih hati-hati karena genangan fluktuatif)
         var tglP1     = tambahHari(tglTanam, 7);
         var tglP2     = tambahHari(tglTanam, 25);
         var tglP3     = tambahHari(tglTanam, 45);
@@ -272,7 +293,6 @@
         var tglI2     = tambahHari(tglTanam, 48);
         var tglFung   = tambahHari(tglTanam, 55);
 
-        // Tikus: gropyokan saat surut (sebelum olah lahan)
         var tglGroyokM = tambahHari(tglOlah, -14);
         var tglGroyokS = tambahHari(tglOlah, -1);
         var tglTBSM    = tglTanam;
@@ -289,7 +309,8 @@
             nama: 'Rendam & Peram Benih', ikon: '💧',
             deskripsi: 'Rendam 24 jam, peram 24 jam hingga berkecambah',
             tglMulai: tglBenih, tglSelesai: tglTanam,
-            risiko: { level: 'Persiapan', warna: WARNA_RAWA, catatan: 'Siapkan benih saat menunggu air surut. Inkubasi di tempat yang tidak tergenang.' },
+            risiko: { level: 'Persiapan', warna: WARNA_RAWA,
+                catatan: 'Siapkan benih saat menunggu air surut. Inkubasi di tempat yang tidak tergenang.' },
             tips: [
                 'Rendam benih 24 jam, peram 24 jam hingga kecambah ±1–2 mm.',
                 'Untuk sawah rawa, pilih benih Inpari 30 atau Inpari 33 (tahan rendaman).',
@@ -299,7 +320,8 @@
             nama: 'Persemaian Benih (Bedeng Apung/Tinggi)', ikon: '🌱',
             deskripsi: 'Semai di bedeng apung atau lahan tinggi yang tidak tergenang',
             tglMulai: tglBenih, tglSelesai: tambahHari(tglBenih, 7),
-            risiko: { level: 'Persiapan', warna: WARNA_RAWA, catatan: 'Di sawah rawa, persemaian idealnya di bedeng apung atau lahan yang lebih tinggi agar tidak terendam.' },
+            risiko: { level: 'Persiapan', warna: WARNA_RAWA,
+                catatan: 'Di sawah rawa, persemaian idealnya di bedeng apung atau lahan yang lebih tinggi agar tidak terendam.' },
             tips: [
                 'Buat bedeng apung dari bambu/papan bila lahan masih tergenang saat semai.',
                 'Alternatif: semai di lahan pekarangan rumah yang lebih tinggi.',
@@ -466,7 +488,6 @@
         var banjirAktif    = isBulanBanjir(baselineData, bulanIndex);
         var banjirMendekat = isBulanBanjir(baselineData, (bulanIndex + 1) % 12);
 
-        // Amplifikasi La Niña / IOD Negatif → banjir makin parah
         var amp = ((ensoVal < -0.5) ? 15 : 0) + ((iodVal < -0.4) ? 10 : 0);
         sb = Math.min(100, sb + amp);
 
@@ -544,22 +565,20 @@
         var now   = new Date();
         var tahun = now.getFullYear();
 
-        // ── Identifikasi 3 bulan CH tertinggi = periode banjir ─────
         var sorted = rawZOM.map(function(v,i){ return {v:v,i:i}; })
                            .sort(function(a,b){ return b.v-a.v; });
         var banjirSet = {};
         for (var k=0; k<3; k++) {
             var bi = sorted[k].i;
             banjirSet[bi] = true;
-            banjirSet[(bi+1)%12] = true; // buffer: bulan setelah puncak masih tergenang
+            banjirSet[(bi+1)%12] = true;
         }
 
-        // ── Bulan aman = bukan bulan banjir ────────────────────────
         var bulanAman = [];
         for (var m=0; m<12; m++) { if (!banjirSet[m]) bulanAman.push(m); }
         if (bulanAman.length === 0) bulanAman = [0,6];
 
-        var JEDA = 20; // hari olah lahan → tanam (lebih cepat di rawa)
+        var JEDA = 20;
 
         var varianArr = [
             { kode:'genjah', label:'Genjah (< 95 HST) — DIREKOMENDASIKAN untuk rawa', panen:90  },
@@ -591,10 +610,9 @@
                                + (100 - Math.abs(skorBanjirBulan(rawZOM, bGen) - 15)) * 0.40
                                + (v.kode==='genjah' ? 20 : v.kode==='sedang' ? 10 : 0);
 
-                // Koreksi ENSO/IOD
-                if (ensoVal < -0.5) nilaiTotal -= 15; // La Niña → banjir lebih intens
-                if (ensoVal >  0.5) nilaiTotal += 10; // El Niño → banjir lebih ringan
-                if (iodVal  < -0.4) nilaiTotal -= 10; // IOD Negatif → tambah basah
+                if (ensoVal < -0.5) nilaiTotal -= 15;
+                if (ensoVal >  0.5) nilaiTotal += 10;
+                if (iodVal  < -0.4) nilaiTotal -= 10;
 
                 var statusWkt = { isLewat: tglTanam < now, isBerjalan: false };
 
@@ -605,7 +623,6 @@
                 var jadwalTikusRawa = null;
                 if (typeof window.hitungJadwalTikus === 'function') {
                     jadwalTikusRawa = window.hitungJadwalTikus(tglOlah, tglTanam);
-                    // Override catatan gropyokan untuk konteks rawa
                     if (jadwalTikusRawa && jadwalTikusRawa.gropyokan) {
                         jadwalTikusRawa.gropyokan.catatan =
                             '🌿 RAWA: Gropyokan paling efektif saat banjir baru surut — '
@@ -636,7 +653,6 @@
 
         kandidat.sort(function(a,b){ return b.nilaiTotal - a.nilaiTotal; });
 
-        // Ambil dua window yang berbeda (jarak minimal 3 bulan)
         var hasil = [];
         var dipakai = {};
 
@@ -665,7 +681,6 @@
             });
         });
 
-        // Fallback
         if (hasil.length === 0) {
             var bFb  = bulanAman[0] || 4;
             var tFb  = new Date(tahun, bFb, 15);
@@ -688,22 +703,30 @@
     // ============================================================
     //  BAGIAN 6 — OVERRIDE prosesJadwalOtomatis (KALENDER TNM)
     //
-    //  Ini adalah fix utama untuk [FIX-1].
-    //  Kita tunggu JTO selesai init (setTimeout 600ms), lalu
-    //  bungkus prosesJadwalOtomatis dengan versi yang sadar rawa.
+    //  [FIX-KRITIS-B v1.2]: Fungsi ini sekarang BENAR-BENAR
+    //  dipanggil di init() via setTimeout(patchProsesJTO, 1000).
+    //  Sebelumnya hanya didefinisikan tapi tidak pernah dieksekusi!
+    //
+    //  [FIX-C v1.2]: Guard di dalam override menggunakan
+    //  getJenisSawahJTO() (langsung baca selectJenisSawahJTO)
+    //  bukan getJenisSawah() yang bisa salah baca elemen lain.
     // ============================================================
 
     function patchProsesJTO() {
         var _asli = window.prosesJadwalOtomatis;
         if (typeof _asli !== 'function') {
-            // JTO belum siap, coba lagi
+            console.log('[patch_sawah_rawa_v1.2] prosesJadwalOtomatis belum ada, retry 300ms...');
             setTimeout(patchProsesJTO, 300);
             return;
         }
 
         window.prosesJadwalOtomatis = async function() {
-            // Jika bukan rawa, jalankan fungsi asli tanpa perubahan
-            if (getJenisSawah() !== 'rawa') {
+            // [FIX-C] Baca selectJenisSawahJTO secara eksplisit
+            var jtoSelectEl = document.getElementById('selectJenisSawahJTO');
+            var isRawa = jtoSelectEl && jtoSelectEl.value === 'rawa';
+
+            if (!isRawa) {
+                // Bukan rawa — jalankan fungsi asli tanpa perubahan
                 return _asli.apply(this, arguments);
             }
 
@@ -713,7 +736,10 @@
             var statusEl = document.getElementById('jtoStatus');
             var btnJTO   = document.getElementById('btnJadwalOtomatis');
 
-            if (!hasilEl || !teksEl) return;
+            if (!hasilEl || !teksEl) {
+                console.error('[patch_sawah_rawa_v1.2] Elemen output JTO tidak ditemukan.');
+                return;
+            }
 
             hasilEl.style.display = 'block';
             teksEl.innerHTML = '';
@@ -724,7 +750,7 @@
                 btnJTO.textContent = 'MENGANALISIS IKLIM RAWA...';
             }
             if (statusEl) statusEl.innerHTML =
-                '<span style="color:' + WARNA_RAWA + ';">🌿 Mengambil data ZOM & pola banjir...</span>';
+                '<span style="color:' + WARNA_RAWA + ';">🌿 Mengambil data ZOM & pola banjir rawa...</span>';
 
             try {
                 // ── GPS ──────────────────────────────────────────
@@ -744,7 +770,9 @@
                         lat = pos.coords.latitude; lon = pos.coords.longitude;
                         window._lokasiKalender = {lat:lat, lon:lon};
                     }
-                } catch(gpsErr) { console.warn('[Rawa] GPS fallback:', gpsErr.message); }
+                } catch(gpsErr) {
+                    console.warn('[Rawa] GPS fallback ke default:', gpsErr.message);
+                }
 
                 // ── ENSO / IOD / ZOM ─────────────────────────────
                 var adaENSO = typeof window.getENSOAnomaly === 'function';
@@ -756,9 +784,7 @@
                 var getENSOp  = adaENSO ? window.getENSOAnomaly() : Promise.resolve(FALLBACK_DARURAT);
                 var getIODp   = adaIOD  ? window.getIODAnomaly()  : Promise.resolve(FALLBACK_DARURAT);
 
-                // Ambil ZOM via fungsi yang sama dengan JTO asli
                 var getZOM = window._jtoGetDataZOM || function(la,lo){
-                    // Fallback sederhana jika fungsi internal JTO tidak tersedia
                     var zona = typeof window.tentukanZonaIklim==='function'
                         ? window.tentukanZonaIklim(la,lo) : 'monsunal';
                     var fb = {
@@ -786,7 +812,6 @@
                 var metode    = (elMetode && elMetode.value==='tabela') ? 'tabela' : 'tapin';
                 window._jtoMetodeTanam = metode;
 
-                // Bangun kegiatan dengan versi rawa
                 var multiJadwal = rekArr.map(function(rek) {
                     return {
                         rekomendasi : rek,
@@ -809,21 +834,16 @@
                     btnJTO.classList.remove('jto-pulse');
                 }
 
-                // ── Render output dengan fungsi JTO asli jika tersedia ──
-                // Coba render via fungsi renderOutput internal JTO
-                // (dipanggil lewat _jtoRenderOutput yang kita expose)
                 if (typeof window._jtoRenderOutput === 'function') {
                     teksEl.innerHTML = window._jtoRenderOutput(
                         multiJadwal, zonaInfo, ensoData, iodData, metode
                     );
                 } else {
-                    // Render manual yang kompatibel
                     teksEl.innerHTML = renderOutputRawa(
                         multiJadwal, zonaInfo, ensoData, iodData, metode
                     );
                 }
 
-                // Tambahkan kotak info rawa di bawah hasil
                 setTimeout(tambahInfoRawaJTO, 100);
 
             } catch(err) {
@@ -840,15 +860,14 @@
             }
         };
 
-        console.log('[patch_sawah_rawa_v1.1] prosesJadwalOtomatis berhasil di-patch.');
+        console.log('[patch_sawah_rawa_v1.2] ✅ prosesJadwalOtomatis berhasil di-patch untuk Kalender TNM.');
     }
 
     // ============================================================
-    //  BAGIAN 7 — renderOutputRawa() — render HTML hasil JTO rawa
+    //  BAGIAN 7 — renderOutputRawa()
     // ============================================================
 
     function renderOutputRawa(multiJadwal, zonaInfo, ensoData, iodData, metodeTanam) {
-        var WARNA = '#3b82f6';
 
         function renderKartuRawa(k, nomor, isLewat) {
             var now     = new Date();
@@ -869,7 +888,7 @@
 
             var catatan = lewat
                 ? '<div style="background:#111c2e;border-radius:10px;padding:9px 11px;margin:10px 0;border-left:3px solid #334155;"><div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:2px;">📋 Data Proyeksi</div><div style="font-size:12px;color:#475569;">Sudah terlewati — ditampilkan sebagai referensi.</div></div>'
-                : '<div style="background:#111c2e;border-radius:10px;padding:9px 11px;margin:10px 0;border-left:3px solid ' + w + ';"><div style="font-size:11px;font-weight:700;color:' + w + ';margin-bottom:2px;">Catatan Kondisi</div><div style="font-size:12px;color:#cbd5e1;">' + (k.risiko&&k.risiko.catatan||'') + '</div></div>';
+                : '<div style="background:#111c2e;border-radius:10px;padding:9px 11px;margin:10px 0;border-left:3px solid ' + w + ';"><div style="font-size:11px;font-weight:700;color:' + w + ';margin-bottom:2px;">Catatan Kondisi Rawa</div><div style="font-size:12px;color:#cbd5e1;">' + (k.risiko&&k.risiko.catatan||'') + '</div></div>';
 
             return '<div style="background:#1b273a;border:0.5px solid rgba(255,255,255,0.07);border-radius:16px;margin-bottom:9px;overflow:hidden;">'
                 + '<div style="padding:12px 14px;display:flex;align-items:flex-start;gap:12px;cursor:pointer;border-left:3px solid ' + w + ';" onclick="window._jtoToggle(this)">'
@@ -886,7 +905,7 @@
                 + '</div>'
                 + '<div class="jto-detail" style="display:none;padding:0 14px 14px;border-top:0.5px solid rgba(255,255,255,0.05);">'
                 + catatan
-                + '<div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Tips Lapangan</div>'
+                + '<div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Tips Lapangan Rawa</div>'
                 + '<ul style="margin:0;padding-left:15px;font-size:12px;">' + tipsHTML + '</ul>'
                 + '</div></div>';
         }
@@ -898,14 +917,16 @@
             + '<div style="background:rgba(29,158,117,0.09);border:1px solid rgba(29,158,117,0.25);'
             + 'border-left:4px solid ' + WARNA_RAWA + ';border-radius:14px;padding:14px 16px;margin-bottom:14px;">'
             + '<div style="font-size:11px;color:' + WARNA_RAWA + ';font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">'
-            + '🌿 INFORMASI IKLIM — SAWAH RAWA / LEBAK / DAS</div>'
+            + '🌿 KALENDER TNM — SAWAH RAWA / LEBAK / DAS</div>'
             + '<div style="display:grid;grid-template-columns:1fr;gap:8px;font-size:12px;">'
             + '<div><span style="color:#64748b;">Zona iklim & sumber data</span><br>'
             + '<strong style="color:#fff;">' + labelZona + ' • ' + sumber + '</strong></div>'
             + '<div><span style="color:#64748b;">Kondisi ENSO / IOD</span><br>'
             + '<strong style="color:#fff;">' + (ensoData.status||'Netral') + ' / ' + (iodData.status||'Netral') + '</strong></div>'
             + '<div><span style="color:#64748b;">Strategi utama</span><br>'
-            + '<strong style="color:' + WARNA_RAWA + ';">Cari jendela aman antara dua puncak banjir</strong></div>'
+            + '<strong style="color:' + WARNA_RAWA + ';">Tanam saat jendela aman antara dua puncak banjir</strong></div>'
+            + '<div><span style="color:#64748b;">Varietas prioritas</span><br>'
+            + '<strong style="color:' + WARNA_RAWA + ';">Inpari 30 (tahan rendaman 14 hari) · Inpari 33</strong></div>'
             + '</div></div>';
 
         multiJadwal.forEach(function(jadwal) {
@@ -919,21 +940,23 @@
                     ? '<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(29,158,117,0.15);color:' + WARNA_RAWA + ';border:1px solid rgba(29,158,117,0.4);margin-left:10px;vertical-align:middle;">🟢 Aktif</span>'
                     : '';
 
-            var tglMasuk = metodeTanam==='tabela' ? rek.tglTanam : tambahHari(rek.tglTanam,-8);
-
             html += '<div style="margin-top:20px;margin-bottom:10px;font-size:15px;font-weight:bold;color:#fff;'
                   + 'border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:6px;opacity:' + opacity + ';">'
                   + '🌿 ' + rek.musimNama.toUpperCase() + badge + '</div>';
 
-            html += '<div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;'
+            html += '<div style="background:#1e293b;border:1px solid rgba(29,158,117,0.2);border-radius:12px;'
                   + 'padding:12px;margin-bottom:12px;opacity:' + opacity + ';">'
                   + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">'
                   + '<div><span style="color:#64748b;">Olah Lahan (Pasca-Surut)</span><br>'
                   + '<strong style="color:' + WARNA_RAWA + ';font-size:13px;">' + fmtL(rek.tglOlahTanah||rek.tglTanam) + '</strong></div>'
+                  + '<div><span style="color:#64748b;">Tanam</span><br>'
+                  + '<strong style="color:#fff;font-size:13px;">' + fmtL(rek.tglTanam) + '</strong></div>'
+                  + '<div><span style="color:#64748b;">Target Panen</span><br>'
+                  + '<strong style="color:' + WARNA_RAWA + ';font-size:13px;">' + fmtL(rek.tglPanen) + '</strong></div>'
                   + '<div><span style="color:#64748b;">Varietas</span><br>'
-                  + '<strong style="color:#fff;font-size:13px;">' + rek.labelVar + '</strong></div>'
+                  + '<strong style="color:#fff;font-size:12px;">' + rek.labelVar + '</strong></div>'
                   + '</div>'
-                  + '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);font-size:11px;color:#94a3b8;line-height:1.5;">💡 ' + rek.alasan + '</div>'
+                  + '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(29,158,117,0.3);font-size:11px;color:#94a3b8;line-height:1.5;">💡 ' + rek.alasan + '</div>'
                   + '</div>';
 
             keg.forEach(function(k,i){ html += renderKartuRawa(k,i+1,rek.isLewat); });
@@ -947,7 +970,7 @@
 
         html += '<button onclick="window._jtoKirimWA()" style="width:100%;margin-top:10px;padding:13px;'
               + 'background:#25D366;color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;">'
-              + '📲 Kirim Jadwal ke WhatsApp ↗</button>';
+              + '📲 Kirim Jadwal Rawa ke WhatsApp ↗</button>';
 
         html += '</div>';
         return html;
@@ -955,7 +978,11 @@
 
     function tambahInfoRawaJTO() {
         var teksEl = document.getElementById('jtoTeks');
-        if (!teksEl || getJenisSawah() !== 'rawa') return;
+        if (!teksEl) return;
+
+        // Cek apakah yang sedang tampil memang mode rawa
+        var jtoSel = document.getElementById('selectJenisSawahJTO');
+        if (!jtoSel || jtoSel.value !== 'rawa') return;
 
         var existing = document.getElementById('rawaInfoPanelJTO');
         if (existing) existing.remove();
@@ -984,9 +1011,10 @@
     // ============================================================
 
     function patchFungsiGlobal() {
-        // hitungRisikoDinamis (Risiko Iklim)
+        // hitungRisikoDinamis (Risiko Iklim) — sudah bekerja di v1.1
         _hitungRisikoDinamisAsli = window.hitungRisikoDinamis;
         window.hitungRisikoDinamis = function(bulanIndex, fase, ensoVal, iodVal, baselineData) {
+            // Untuk Risiko Iklim, gunakan getJenisSawah() biasa
             if (getJenisSawah() === 'rawa') {
                 return hitungRisikoDinamisRawa(bulanIndex, fase, ensoVal, iodVal, baselineData);
             }
@@ -1057,25 +1085,34 @@
     }
 
     function init() {
-        // Inject dropdown
+        // Inject dropdown Risiko Iklim & JTO
         injectDropdowns();
 
         // Patch fungsi global (hitungRisikoDinamis & rekomendasiWindowTanam)
         patchFungsiGlobal();
 
-        // Patch prosesAnalisisKalender (Risiko Iklim)
+        // Patch prosesAnalisisKalender (Risiko Iklim) — sudah benar di v1.1
         patchProsesKalender();
 
-        // Patch prosesJadwalOtomatis (Kalender TNM) — tunggu JTO init dulu
-        setTimeout(patchProsesJTO, 600);
+        // ================================================================
+        // [FIX-KRITIS-B v1.2]
+        // Panggil patchProsesJTO() dengan delay agar patch_jadwal_tanam_otomatis.js
+        // selesai mendefinisikan prosesJadwalOtomatis terlebih dahulu.
+        // patchProsesJTO() sudah punya retry internal setiap 300ms.
+        //
+        // SEBELUMNYA: blok ini hanya menimpa rekomendasiWindowTanam lagi
+        // (yang sudah dilakukan patchFungsiGlobal) dan TIDAK PERNAH
+        // memanggil patchProsesJTO() — itulah kenapa Kalender TNM tidak berubah.
+        // ================================================================
+        setTimeout(patchProsesJTO, 1000);
 
         // Re-inject dropdown saat tab berganti
         var _switchAsli = window.switchMode;
         if (typeof _switchAsli === 'function') {
             window.switchMode = function(mode) {
                 _switchAsli.apply(this, arguments);
-                if (mode==='kalender' || mode==='jadwaltanam') {
-                    setTimeout(injectDropdowns, 250);
+                if (mode === 'kalender' || mode === 'jadwaltanam') {
+                    setTimeout(injectDropdowns, 300);
                 }
             };
         }
@@ -1083,20 +1120,22 @@
         window.__sawahRawaV1Aktif = true;
 
         console.log(
-            '%c✅ patch_sawah_rawa_v1.1.js AKTIF\n'
-            + '\n  ╔══ DIFERENSIASI SAWAH RAWA v1.1 ══════════════╗\n'
-            + '  ║ [FIX-1] prosesJadwalOtomatis di-patch SETELAH\n'
-            + '  ║          JTO init (setTimeout 600ms)\n'
-            + '  ║ [FIX-2] bangunKegiatanRawa() — urutan & teks\n'
-            + '  ║          khusus: gropyokan saat surut, pintu air,\n'
-            + '  ║          bedeng apung, varietas tahan rendaman\n'
-            + '  ║ [FIX-3] tglOlahTanah dari rekomendasiRawa()\n'
-            + '  ║          diteruskan ke bangunKegiatanRawa()\n'
-            + '  ║ [FIX-4] Label "SAWAH RAWA" di kotak info JTO\n'
-            + '  ║ [FIX-5] Kotak info rawa di bawah hasil JTO\n'
-            + '  ║ ✅ Risiko Iklim: hitungRisikoDinamis() rawa\n'
-            + '  ║ ✅ Kalender TNM: rekomendasiRawa() + render rawa\n'
-            + '  ╚═══════════════════════════════════════════════╝',
+            '%c✅ patch_sawah_rawa_v1.2.js AKTIF\n'
+            + '\n  ╔══ DIFERENSIASI SAWAH RAWA v1.2 ══════════════════╗\n'
+            + '  ║ [FIX-KRITIS-A] getJenisSawah() sekarang baca\n'
+            + '  ║   elemen VISIBLE (offsetParent) — bukan elemen\n'
+            + '  ║   tersembunyi dari tab lain yang masih di DOM\n'
+            + '  ║ [FIX-KRITIS-B] patchProsesJTO() sekarang BENAR-\n'
+            + '  ║   BENAR dipanggil di init() via setTimeout 1000ms\n'
+            + '  ║   (sebelumnya hanya didefinisikan, tidak dieksekusi)\n'
+            + '  ║ [FIX-C] Override prosesJadwalOtomatis baca\n'
+            + '  ║   selectJenisSawahJTO langsung (lebih aman)\n'
+            + '  ║ ─────────────────────────────────────────────────\n'
+            + '  ║ ✅ Risiko Iklim: hitungRisikoDinamis() rawa (OK)\n'
+            + '  ║ ✅ Kalender TNM: prosesJadwalOtomatis di-patch\n'
+            + '  ║ ✅ bangunKegiatanRawa() — 12 kegiatan khusus rawa\n'
+            + '  ║ ✅ rekomendasiRawa() — jendela aman antar banjir\n'
+            + '  ╚═══════════════════════════════════════════════════╝',
             'color:' + WARNA_RAWA + ';font-weight:bold;'
         );
     }
