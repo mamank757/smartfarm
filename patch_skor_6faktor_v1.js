@@ -49,10 +49,10 @@
     //  Nilai tengah dari rentang proporsi ideal di tabel
     // ============================================================
     var BOBOT_6F = {
-        enso:   0.35,   // 25%–30% → nilai tengah 27%
+        enso:   0.40,   // 25%–30% → nilai tengah 27%
         sst:    0.10,   // 15%–20% → nilai tengah 18%
         iod:    0.25,   // 15%–20% → nilai tengah 17%
-        zom:    0.15,   // 15%–20% → nilai tengah 18%
+        zom:    0.10,   // 15%–20% → nilai tengah 18%
         mjo:    0.10,   // 10%     → tetap 10%
         bulan:  0.05,   // 5%      → tetap 5%
         // Cek: 0.27+0.18+0.17+0.18+0.10+0.05 = 0.95
