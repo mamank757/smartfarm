@@ -1012,9 +1012,9 @@ SMART FARMING - IoT
                 <canvas id="localSstChart"></canvas>
             </div>
             <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 15px; text-align: center; display: flex; justify-content: center; gap: 15px;">
-                <span><span style="color:#00ff9d;">&#9632;</span> Laut Teluk Bone (&#176;C)</span>
-                <span><span style="color:#38b6ff;">&#9632;</span> Laut Selat Makassar (&#176;C)</span>
-            </div>
+    <span><span style="color:#00ff9d;">&#9632;</span> <span id="namaPerairan1">Laut Teluk Bone</span> (&#176;C)</span>
+    <span><span style="color:#38b6ff;">&#9632;</span> <span id="namaPerairan2">Laut Selat Makassar</span> (&#176;C)</span>
+</div>
         </div>
 
         <div id="iklimTerpaduBox"></div>
@@ -6125,8 +6125,35 @@ async function cariHargaPestisida() {
     <script src="patch_iklim_terpadu_v1.js"></script>
     
         <script src="patch_zom_kalibrasi_v2.js"></script>
-    
-    <script src="patch_fix_label_sst.js"></script>
+    <script src="patch_skor_6faktor_v1.js"></script>
+    <script>
+// Sinkronisasi Label Legenda HTML dengan GPS
+setInterval(function() {
+    if (typeof window._deteksiPerairan === 'function' && typeof window._bacaKoordinatGPS === 'function') {
+        var gps = window._bacaKoordinatGPS();
+        var zona = window._deteksiPerairan(gps.lat, gps.lon);
+        
+        if (zona) {
+            // Update Legend HTML
+            var span1 = document.getElementById('namaPerairan1');
+            var span2 = document.getElementById('namaPerairan2');
+            
+            if (span1 && span1.innerText !== zona.nama1) span1.innerText = zona.nama1;
+            if (span2 && span2.innerText !== zona.nama2) span2.innerText = zona.nama2;
+            
+            // Update Label Tooltip di dalam Chart.js (jika grafik disorot)
+            if (typeof localChartInstance !== 'undefined' && localChartInstance) {
+                var ds = localChartInstance.data.datasets;
+                if (ds[0] && ds[0].label !== zona.nama1) {
+                    ds[0].label = zona.nama1;
+                    ds[1].label = zona.nama2;
+                    localChartInstance.update('none');
+                }
+            }
+        }
+    }
+}, 1000);
+</script>
     
     </body>
 </html>
