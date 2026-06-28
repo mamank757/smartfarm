@@ -378,16 +378,31 @@
             baselineBulanIni = window.normalisasiCurahHujan(baselineBulanIni, bulanIndex);
         }
 
-        var ws;
-        if (typeof window.hitungWetnessScore === 'function') {
-            ws = window.hitungWetnessScore(baselineBulanIni, ensoVal, iodVal, lat, lon, bulanIndex);
-        } else if (window._hitungRisikoAsli6F) {
-            // Fallback: panggil fungsi asli dan ambil ws dari hasilnya
-            var h = window._hitungRisikoAsli6F(bulanIndex, fase, ensoVal, iodVal, baselineData);
-            ws = h.ws !== undefined ? h.ws : baselineBulanIni;
-        } else {
-            ws = baselineBulanIni;
-        }
+        var AMPLIFIKASI_WS = 5;
+
+var ws;
+if (typeof window.hitungWetnessScore === 'function') {
+    // Jika patch_risiko_iklim.js export hitungWetnessScore → pakai itu
+    ws = window.hitungWetnessScore(baselineBulanIni, ensoVal, iodVal, lat, lon, bulanIndex);
+} else {
+    // ✅ FIX: Hitung sendiri — tidak bergantung pada .ws property dari patch lama
+    // Bobot korelasi ENSO/IOD per bulan (zona monsunal, default Sulsel)
+    var _wBobot = [
+        [0.15,0.10],[0.15,0.10],[0.12,0.08],[0.10,0.08],
+        [0.18,0.12],[0.35,0.20],[0.45,0.28],[0.50,0.38],
+        [0.45,0.40],[0.35,0.30],[0.20,0.15],[0.15,0.10]
+    ];
+    var _wE       = _wBobot[bulanIndex][0];
+    var _wI       = _wBobot[bulanIndex][1];
+    var _ensoNorm = (ensoVal / 0.5) * AMPLIFIKASI_WS;
+    var _iodNorm  = (iodVal  / 0.5) * AMPLIFIKASI_WS;
+    var _totalW   = _wE + _wI;
+    var _penguatB = _totalW < 0.25 ? 1.5 : 1.0;
+    var _koreksi  = _totalW > 0
+        ? ((_ensoNorm * _wE) + (_iodNorm * _wI)) * _penguatB
+        : 0;
+    ws = baselineBulanIni - _koreksi;
+}
 
         // ── 2. Koreksi kecil dari SST + MJO + Fase Bulan ──
         //    Skala koreksi ~5% dari rentang ws (max ±0.5)
