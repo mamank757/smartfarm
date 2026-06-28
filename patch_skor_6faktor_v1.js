@@ -684,13 +684,15 @@ if (typeof window.hitungWetnessScore === 'function') {
                       : '⚖️ NETRAL';
         var warnaSkor = skor6F > 0.3 ? '#38b6ff' : (skor6F < -0.3 ? '#f59e0b' : '#10b981');
 
+        // Ubah bagian ini di dalam window.perbarui6FaktorPanel
         isi.innerHTML =
-            barFaktor('🌏 ENSO',     -ensoVal,  BOBOT_6F.enso,  '°C (ONI)') +
+            barFaktor('🌏 ENSO',     ensoVal,  BOBOT_6F.enso,  '°C (ONI)') + // Hapus tanda minus
             barFaktor('🌊 SST Lokal', sstAnom,  BOBOT_6F.sst,   '°C (anom)') +
-            barFaktor('🌤️ IOD',      -iodVal,   BOBOT_6F.iod,   '°C (DMI)') +
-            barFaktor('🗺️ ZOM',       zomNorm,  BOBOT_6F.zom,   ' (normed)') +
+            barFaktor('🌤️ IOD',     iodVal,   BOBOT_6F.iod,   '°C (DMI)') + // Hapus tanda minus
+            barFaktor('🗺️ ZOM',        zomNorm,  BOBOT_6F.zom,   ' (normed)') +
             barFaktor('🌀 MJO',       mjoVal,   BOBOT_6F.mjo,   ' (fase)') +
             barFaktor('🌙 Fase Bulan', bulanVal, BOBOT_6F.bulan, '') +
+            // ... (lanjutan kode lainnya)
             '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);">' +
                 '<span style="font-weight:700;color:' + warnaSkor + ';">' +
                     'Skor Terpadu: ' + (skor6F > 0 ? '+' : '') + skor6F.toFixed(3) +
