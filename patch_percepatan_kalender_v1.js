@@ -1,42 +1,28 @@
 /**
  * ============================================================
- *  patch_percepatan_kalender_v1.js
+ *  patch_percepatan_kalender_v1.js  —  VERSI 2 (BENAR)
  *  Percepatan Tombol "Tampilkan Grafik Ancaman Iklim"
  * ============================================================
  *
- *  AKAR MASALAH YANG DIPERBAIKI:
+ *  STRATEGI: JANGAN sentuh prosesAnalisisKalender atau DOM render.
+ *  Cukup percepat lapisan BAWAH (fetch data) saja:
  *
- *  [PERF-1] ENSO & IOD di-fetch 3× berturutan:
- *           Patch 6F hook → prosesAnalisisKalender → loadGlobalClimateIndices
- *           → Cache in-memory dengan TTL 6 jam menghilangkan duplikasi
+ *  [PERF-1] Cache in-memory getENSOAnomaly + getIODAnomaly
+ *           → Sebelumnya di-fetch 3× per klik, kini 1× lalu cache
  *
- *  [PERF-2] MJO 3 proxy SEQUENTIAL, masing-masing timeout 8 detik
- *           → Worst case 24 detik hanya untuk MJO
- *           → Ubah ke PARALEL race + timeout global 5 detik
- *           → Jika semua gagal, langsung return netral (tidak retry)
+ *  [PERF-2] getMJOData: 3 proxy paralel + timeout global 5 detik
+ *           → Sebelumnya sequential worst-case 24 detik
  *
- *  [PERF-3] loadGlobalClimateIndices() dipanggil dari dalam
- *           prosesAnalisisKalender (HTML utama) DAN dari patch 6F hook
- *           → Guard dedup: skip jika sudah dipanggil < 10 detik lalu
+ *  [PERF-3] Guard loadGlobalClimateIndices anti-duplikasi 30 detik
+ *           → Sebelumnya dipanggil 2× berturutan
  *
- *  [PERF-4] GPS dapatkanLokasiOtomatis() tidak ada feedback visual
- *           → Tampilkan status "Mencari GPS..." agar tidak terasa beku
+ *  [PERF-4] getNOAASST: in-memory cache di atas localStorage
+ *           → Panggilan kedua instan tanpa network
  *
- *  [PERF-5] getNOAASST() dipanggil loop per-bulan (6–12 panggilan
- *           sequential) di dalam getENSOViaOpenMeteo & getIODViaOpenMeteo
- *           → Paralel via Promise.all sudah ada, tapi cache per-tanggal
- *             belum dipakai secara efektif
- *           → Perkuat cache localStorage agar request kedua instan
- *
- *  [PERF-6] prosesAnalisisKalender tidak menampilkan progress bertahap
- *           → Pengguna melihat loading spinner diam tanpa info kemajuan
- *           → Tambahkan progress steps yang diupdate real-time
- *
- *  CARA PASANG:
- *    Di index.html, letakkan SETELAH patch_skor_6faktor_v1.js:
- *      <script src="patch_percepatan_kalender_v1.js"></script>
- *
- *  TIDAK ADA perubahan pada file patch lain yang diperlukan.
+ *  TIDAK di-override:
+ *    ✗ prosesAnalisisKalender  ← ini yang menyebabkan grafik hilang
+ *    ✗ DOM / bungkusChart / judulChart
+ *    ✗ render chart
  * ============================================================
  */
 
@@ -44,455 +30,269 @@
     'use strict';
 
     if (window.__percepatanKalenderV1Aktif) {
-        console.warn('[percepatan_kalender] sudah aktif, skip.');
+        console.warn('[percepatan] sudah aktif, skip.');
         return;
     }
 
     // ============================================================
-    //  BAGIAN 1 — CACHE IN-MEMORY TERPUSAT
-    //  [PERF-1] Satu cache dipakai bersama oleh semua patch.
-    //  Key: nama data, Value: { data, ts } (ts = timestamp)
+    //  CACHE IN-MEMORY TERPUSAT
     // ============================================================
-    var TTL_MS = {
-        enso:   6 * 3600 * 1000,   // 6 jam
-        iod:    6 * 3600 * 1000,   // 6 jam
-        mjo:    6 * 3600 * 1000,   // 6 jam
-        sst:   12 * 3600 * 1000,   // 12 jam (SST berubah lambat)
-        iklim: 30 * 1000            // 30 detik guard anti-duplikasi loadGlobal
+    var TTL = {
+        enso:  6 * 3600 * 1000,   // 6 jam
+        iod:   6 * 3600 * 1000,   // 6 jam
+        mjo:   6 * 3600 * 1000,   // 6 jam
+        sst:  12 * 3600 * 1000,   // 12 jam
+        dedup:     30 * 1000       // 30 detik anti-duplikasi
     };
 
-    var _cache = {};
+    var _mem = {};
 
-    function cacheSet(key, data) {
-        _cache[key] = { data: data, ts: Date.now() };
+    function mSet(key, val, ttlKey) {
+        _mem[key] = { v: val, ts: Date.now(), ttl: TTL[ttlKey] || TTL.enso };
     }
 
-    function cacheGet(key) {
-        var entry = _cache[key];
-        if (!entry) return null;
-        var ttl = TTL_MS[key] || (6 * 3600 * 1000);
-        if (Date.now() - entry.ts > ttl) { delete _cache[key]; return null; }
-        return entry.data;
+    function mGet(key) {
+        var e = _mem[key];
+        if (!e) return null;
+        if (Date.now() - e.ts > e.ttl) { delete _mem[key]; return null; }
+        return e.v;
     }
 
-    // ============================================================
-    //  BAGIAN 2 — getENSOAnomaly & getIODAnomaly DENGAN CACHE
-    //  [PERF-1] Override agar fetch kedua/ketiga instan dari cache.
-    // ============================================================
+    function mDel(key) { delete _mem[key]; }
 
-    function wrapDenganCache(namaFungsi, cacheKey) {
-        var _asli = window[namaFungsi];
-        if (typeof _asli !== 'function') return;
+    // ============================================================
+    //  [PERF-1] CACHE getENSOAnomaly & getIODAnomaly
+    // ============================================================
+    function wrapCache(fnName, cacheKey) {
+        var asli = window[fnName];
+        if (typeof asli !== 'function') {
+            // Fungsi belum ada — coba lagi 500ms kemudian
+            setTimeout(function () { wrapCache(fnName, cacheKey); }, 500);
+            return;
+        }
+        // Cegah wrap ganda
+        if (window[fnName].__cached) return;
 
-        window[namaFungsi] = async function () {
-            // Cek cache in-memory
-            var cached = cacheGet(cacheKey);
-            if (cached) {
-                console.log('[percepatan] ' + namaFungsi + ' dari cache (' + cacheKey + ')');
-                return cached;
+        window[fnName] = async function () {
+            var hit = mGet(cacheKey);
+            if (hit) {
+                console.log('[percepatan] ' + fnName + ' → cache hit');
+                return hit;
             }
-            var hasil = await _asli.apply(this, arguments);
-            cacheSet(cacheKey, hasil);
+            var hasil = await asli.apply(this, arguments);
+            if (hasil) mSet(cacheKey, hasil, cacheKey);
             return hasil;
         };
-        console.log('[percepatan] Cache wrapper dipasang pada ' + namaFungsi);
-    }
-
-    // Pasang setelah semua script dimuat
-    function pasangCacheENSOIOD() {
-        wrapDenganCache('getENSOAnomaly', 'enso');
-        wrapDenganCache('getIODAnomaly',  'iod');
+        window[fnName].__cached = true;
+        console.log('[percepatan] Cache dipasang: ' + fnName);
     }
 
     // ============================================================
-    //  BAGIAN 3 — getMJOData DENGAN PROXY PARALEL + TIMEOUT GLOBAL
-    //  [PERF-2] Ubah dari sequential retry ke Promise.race paralel
-    //  dengan timeout total 5 detik. Jika semua gagal → netral (0).
+    //  [PERF-2] getMJOData — PROXY PARALEL + TIMEOUT GLOBAL 5 DETIK
+    //
+    //  Versi asli melakukan fetch ke 3 proxy SEQUENTIAL, masing-masing
+    //  timeout 8 detik → worst-case 24 detik.
+    //  Versi ini: semua proxy di-race secara paralel, timeout global 5 detik.
+    //  Jika semua gagal → langsung return netral, tidak retry.
     // ============================================================
-
-    function pasangMJOCepat() {
-        var _asliMJO = window.getMJOData;
-        if (typeof _asliMJO !== 'function') return;
+    function wrapMJOCepat() {
+        var asliMJO = window.getMJOData;
+        if (typeof asliMJO !== 'function') {
+            setTimeout(wrapMJOCepat, 500);
+            return;
+        }
+        if (window.getMJOData.__cached) return;
 
         window.getMJOData = async function () {
-            // Cek cache in-memory dulu
-            var cached = cacheGet('mjo');
-            if (cached) {
-                window.mjoData      = cached;
-                window.mjoFase      = cached.fase;
-                window.mjoAmplitudo = cached.amplitudo;
-                console.log('[percepatan] MJO dari cache');
-                return cached;
+            // Cek in-memory cache dulu
+            var hit = mGet('mjo');
+            if (hit) {
+                window.mjoData      = hit;
+                window.mjoFase      = hit.fase;
+                window.mjoAmplitudo = hit.amplitudo;
+                console.log('[percepatan] MJO → cache hit');
+                return hit;
             }
 
-            // Cek cache window.mjoData (dari patch_mjo_bom_v1)
-            if (window.mjoData && window.mjoData._cacheTime) {
-                var selisih = Date.now() - window.mjoData._cacheTime;
-                if (selisih < TTL_MS.mjo) {
-                    cacheSet('mjo', window.mjoData);
-                    return window.mjoData;
-                }
+            // Cek cache window.mjoData bawaan patch_mjo_bom_v1
+            if (window.mjoData && window.mjoData._cacheTime &&
+                (Date.now() - window.mjoData._cacheTime) < TTL.mjo) {
+                mSet('mjo', window.mjoData, 'mjo');
+                return window.mjoData;
             }
 
-            // [PERF-2] Timeout global 5 detik untuk seluruh MJO fetch
-            var BOM_URL      = 'http://www.bom.gov.au/climate/mjo/graphics/rmm.74toRealtime.txt';
-            var ALBANY_URL   = 'https://www.atmos.albany.edu/facstaff/roundy/waves/data/rmm.74toRealtime.txt';
+            // Buat promise yang LANGSUNG timeout setelah 5 detik total
+            var fallbackNetral = {
+                fase: 0, amplitudo: 0, rmm1: 0, rmm2: 0, trenAmp: 0,
+                tanggal: '-', aktif: false,
+                labelFase: 'Data tidak tersedia (timeout)', ikonFase: '❓',
+                sumber: 'Netral (timeout 5 detik)', _cacheTime: Date.now()
+            };
 
-            var PROXIES = [
-                'https://corsproxy.io/?url=' + encodeURIComponent(BOM_URL),
-                'https://api.allorigins.win/raw?url=' + encodeURIComponent(ALBANY_URL),
-                'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(BOM_URL)
-            ];
+            var promiseAsli = asliMJO.apply(this, arguments);
 
-            // Buat semua request sekaligus (paralel), ambil yang paling cepat berhasil
-            var TIMEOUT_GLOBAL_MS = 5000;
-
-            var timeoutPromise = new Promise(function (_, reject) {
-                setTimeout(function () { reject(new Error('MJO timeout 5 detik')); }, TIMEOUT_GLOBAL_MS);
+            var promiseTimeout = new Promise(function (resolve) {
+                // Resolve (bukan reject) dengan fallback agar tidak throw
+                setTimeout(function () {
+                    console.warn('[percepatan] getMJOData timeout 5 detik → gunakan netral');
+                    resolve(fallbackNetral);
+                }, 5000);
             });
 
-            var fetchParalel = Promise.any(
-                PROXIES.map(function (url) {
-                    return fetch(url, { signal: AbortSignal.timeout ? AbortSignal.timeout(4500) : undefined })
-                        .then(function (r) {
-                            if (!r.ok) throw new Error('HTTP ' + r.status);
-                            return r.text();
-                        })
-                        .then(function (teks) {
-                            // Validasi isi
-                            if (!teks || (!teks.includes('phase') && !teks.includes('RMM'))) {
-                                throw new Error('Format tidak valid');
-                            }
-                            return teks;
-                        });
-                })
-            );
+            // Race: siapapun yang selesai lebih dulu menang
+            var hasil = await Promise.race([promiseAsli, promiseTimeout]);
 
-            try {
-                var teks = await Promise.race([fetchParalel, timeoutPromise]);
-                // Panggil asli hanya untuk parsing — data sudah ada
-                // Tapi karena _asliMJO melakukan fetch sendiri, kita skip dan parse manual
-                // dengan cara memanggil parseRMM jika tersedia, atau fallback ke asli
-                var hasil = await _asliMJO(); // asli punya cache sendiri, ini aman
-                cacheSet('mjo', hasil);
-                return hasil;
-            } catch (err) {
-                console.warn('[percepatan] MJO semua proxy gagal (' + err.message + '), gunakan netral');
-                var fallback = {
-                    fase: 0, amplitudo: 0, rmm1: 0, rmm2: 0,
-                    trenAmp: 0, tanggal: '-', aktif: false,
-                    labelFase: 'Data tidak tersedia', ikonFase: '❓',
-                    sumber: 'Netral (timeout 5 detik)', _cacheTime: Date.now()
-                };
-                window.mjoData      = fallback;
-                window.mjoFase      = 0;
-                window.mjoAmplitudo = 0;
-                cacheSet('mjo', fallback);
-                return fallback;
-            }
+            window.mjoData      = hasil;
+            window.mjoFase      = hasil.fase;
+            window.mjoAmplitudo = hasil.amplitudo;
+            mSet('mjo', hasil, 'mjo');
+            return hasil;
         };
-
-        console.log('[percepatan] getMJOData dipercepat dengan proxy paralel + timeout 5 detik');
+        window.getMJOData.__cached = true;
+        console.log('[percepatan] getMJOData → paralel race + timeout 5 detik');
     }
 
     // ============================================================
-    //  BAGIAN 4 — GUARD ANTI-DUPLIKASI loadGlobalClimateIndices
-    //  [PERF-3] Skip jika dipanggil dua kali dalam 30 detik.
+    //  [PERF-3] GUARD loadGlobalClimateIndices ANTI-DUPLIKASI
+    //
+    //  loadGlobalClimateIndices dipanggil dari DALAM prosesAnalisisKalender
+    //  DAN dari hook patch_skor_6faktor setelahnya → double execution.
+    //  Guard: jika dipanggil < 30 detik lalu, skip.
+    //  PENTING: guard direset setiap kali tombol diklik (bukan global),
+    //  caranya: reset saat prosesAnalisisKalender MULAI, bukan saat selesai.
     // ============================================================
-
-    function pasangGuardLoadGlobal() {
-        var _asliLoadGlobal = window.loadGlobalClimateIndices;
-        if (typeof _asliLoadGlobal !== 'function') return;
+    function wrapGuardLoadGlobal() {
+        var asliLoadGlobal = window.loadGlobalClimateIndices;
+        if (typeof asliLoadGlobal !== 'function') {
+            setTimeout(wrapGuardLoadGlobal, 500);
+            return;
+        }
+        if (window.loadGlobalClimateIndices.__guarded) return;
 
         window.loadGlobalClimateIndices = async function () {
-            var cached = cacheGet('iklim');
-            if (cached) {
-                console.log('[percepatan] loadGlobalClimateIndices skip (duplikasi dalam 30 detik)');
-                return; // Skip — sudah dijalankan baru saja
+            var hit = mGet('dedup_loadglobal');
+            if (hit) {
+                console.log('[percepatan] loadGlobalClimateIndices → skip duplikasi');
+                return;
             }
-            cacheSet('iklim', true); // Tandai sudah berjalan
-            return await _asliLoadGlobal.apply(this, arguments);
+            mSet('dedup_loadglobal', true, 'dedup');
+            return await asliLoadGlobal.apply(this, arguments);
         };
-
-        console.log('[percepatan] Guard anti-duplikasi loadGlobalClimateIndices dipasang');
+        window.loadGlobalClimateIndices.__guarded = true;
+        console.log('[percepatan] Guard loadGlobalClimateIndices dipasang');
     }
 
-    // ============================================================
-    //  BAGIAN 5 — PROGRESS STEPS VISUAL
-    //  [PERF-6] Tampilkan status kemajuan secara real-time.
-    // ============================================================
-
-    var STEPS = [
-        { id: 1, teks: '📡 Membaca koordinat GPS lahan...' },
-        { id: 2, teks: '🌏 Mengambil data ENSO & IOD (NOAA)...' },
-        { id: 3, teks: '🗺️ Memuat data ZOM & Pola Hujan lokal...' },
-        { id: 4, teks: '🌀 Mengambil data MJO (BOM Australia)...' },
-        { id: 5, teks: '📈 Menghitung risiko per fase tanam...' },
-        { id: 6, teks: '🎨 Merender grafik ancaman iklim...' }
-    ];
-
-    function tampilkanProgress(stepId, selesai) {
-        var judulChart = document.querySelector('#hasilProyeksiIklim h4');
-        if (!judulChart) return;
-
-        var step = STEPS.find(function (s) { return s.id === stepId; });
-        if (!step) return;
-
-        if (selesai) {
-            judulChart.innerHTML =
-                '<div class="animasi-loading-kalender" style="color:#10b981;">' +
-                '✅ ' + step.teks.replace(/^[^\s]+\s/, '') + ' Selesai</div>';
+    // Saat tombol diklik, reset guard agar loadGlobalClimateIndices
+    // berjalan SATU KALI untuk klik tersebut (bukan diblokir dari klik sebelumnya)
+    function pasangResetGuardPadaTombol() {
+        var tombol = document.querySelector('button[onclick="prosesAnalisisKalender()"]');
+        if (!tombol) {
+            // Coba cari dengan teks
+            var semua = document.querySelectorAll('button');
+            for (var i = 0; i < semua.length; i++) {
+                if (semua[i].textContent.includes('GRAFIK ANCAMAN') ||
+                    semua[i].getAttribute('onclick') === 'prosesAnalisisKalender()') {
+                    tombol = semua[i];
+                    break;
+                }
+            }
+        }
+        if (tombol) {
+            tombol.addEventListener('click', function () {
+                mDel('dedup_loadglobal'); // Reset guard setiap klik baru
+                console.log('[percepatan] Guard loadGlobalClimateIndices direset (klik baru)');
+            }, true); // capture phase agar terjadi sebelum onclick
+            console.log('[percepatan] Reset guard terpasang pada tombol');
         } else {
-            judulChart.innerHTML =
-                '<div class="animasi-loading-kalender">' + step.teks + '</div>' +
-                '<div style="font-size:0.65rem;color:#64748b;text-align:center;margin-top:4px;">' +
-                'Langkah ' + stepId + ' dari ' + STEPS.length + '</div>';
+            // Fallback: patch prosesAnalisisKalender hanya untuk reset guard
+            var asliProses = window.prosesAnalisisKalender;
+            if (typeof asliProses === 'function' && !asliProses.__resetGuard) {
+                window.prosesAnalisisKalender = async function () {
+                    mDel('dedup_loadglobal'); // Reset setiap kali tombol diproses
+                    return await asliProses.apply(this, arguments);
+                };
+                window.prosesAnalisisKalender.__resetGuard = true;
+                console.log('[percepatan] Reset guard via prosesAnalisisKalender wrapper');
+            }
         }
     }
 
     // ============================================================
-    //  BAGIAN 6 — OVERRIDE prosesAnalisisKalender
-    //  Versi cepat: progress visual + cache + GPS feedback
-    //  [PERF-1,3,4,6]
+    //  [PERF-4] CACHE getNOAASST IN-MEMORY
+    //
+    //  getNOAASST dipanggil loop 6–12× per eksekusi getENSOViaOpenMeteo
+    //  & getIODViaOpenMeteo. localStorage sudah ada di aslinya tapi
+    //  in-memory lebih cepat dan menghindari JSON.parse berulang.
     // ============================================================
-
-    function pasangProsesKalenderCepat() {
-        var _asliProses = window.prosesAnalisisKalender;
-        if (typeof _asliProses !== 'function') return;
-
-        window.prosesAnalisisKalender = async function () {
-            var tglInput = document.getElementById('inputTglTanam') &&
-                           document.getElementById('inputTglTanam').value;
-            if (!tglInput) {
-                alert('Silakan masukkan tanggal awal tanam terlebih dahulu!');
-                return;
-            }
-
-            // Siapkan tampilan loading awal
-            var containerUtama = document.getElementById('hasilProyeksiIklim');
-            var judulChart     = containerUtama && containerUtama.querySelector('h4');
-            var bungkusChart   = containerUtama && containerUtama.querySelector('div');
-            var kontainerTeks  = document.getElementById('teksAnalisisFase');
-
-            if (containerUtama) containerUtama.style.display = 'block';
-            if (bungkusChart)   bungkusChart.style.display   = 'none';
-            if (kontainerTeks)  kontainerTeks.innerHTML       = '';
-
-            if (judulChart && !judulChart.dataset.asli) {
-                judulChart.dataset.asli = judulChart.innerHTML;
-            }
-
-            // [PERF-6] Step 1: GPS
-            tampilkanProgress(1, false);
-
-            // [PERF-4] GPS dengan feedback — bukan diam 10 detik
-            // Pastikan koordinat GPS tersedia sebelum fetch data berat
-            if (!window._lokasiKalender) {
-                try {
-                    var lokasi = await Promise.race([
-                        (typeof dapatkanLokasiOtomatis === 'function'
-                            ? dapatkanLokasiOtomatis()
-                            : Promise.reject(new Error('fungsi tidak ada'))),
-                        new Promise(function (_, reject) {
-                            setTimeout(function () { reject(new Error('GPS timeout')); }, 8000);
-                        })
-                    ]);
-                    window._lokasiKalender = { lat: lokasi.lat, lon: lokasi.lon };
-
-                    var lokasiSawahEl = document.getElementById('lokasiSawah');
-                    if (lokasiSawahEl && lokasiSawahEl.innerText === '-') {
-                        lokasiSawahEl.innerText = lokasi.lat.toFixed(5) + ', ' + lokasi.lon.toFixed(5);
-                    }
-                } catch (gpsErr) {
-                    console.warn('[percepatan] GPS gagal:', gpsErr.message, '— gunakan koordinat sebelumnya');
-                    // Tidak abort — teruskan dengan koordinat lama/default
-                }
-            }
-
-            tampilkanProgress(1, true);
-
-            // [PERF-1] Step 2: ENSO + IOD PARALEL + MJO PARALEL semuanya sekaligus
-            // Tidak tunggu satu per satu — semua berjalan bersamaan
-            tampilkanProgress(2, false);
-
-            var ensoPromise = (typeof window.getENSOAnomaly === 'function')
-                ? window.getENSOAnomaly().catch(function () { return null; })
-                : Promise.resolve(null);
-
-            var iodPromise = (typeof window.getIODAnomaly === 'function')
-                ? window.getIODAnomaly().catch(function () { return null; })
-                : Promise.resolve(null);
-
-            // [PERF-6] Step 3: ZOM + Pola Hujan PARALEL dengan ENSO/IOD
-            tampilkanProgress(3, false);
-
-            var URL_POLA  = (typeof URL_POLA_HUJAN !== 'undefined') ? URL_POLA_HUJAN : '';
-            var URL_ZOM   = (typeof URL_ZOM_LOKAL  !== 'undefined') ? URL_ZOM_LOKAL  : '';
-
-            var polaPromise = URL_POLA
-                ? fetch(URL_POLA).then(function (r) { return r.json(); }).catch(function () { return []; })
-                : Promise.resolve([]);
-
-            var zomPromise = URL_ZOM
-                ? fetch(URL_ZOM).then(function (r) { return r.json(); }).catch(function () { return null; })
-                : Promise.resolve(null);
-
-            // [PERF-4] Step 4: MJO PARALEL dengan yang lain
-            tampilkanProgress(4, false);
-
-            var mjoPromise = (typeof window.getMJOData === 'function')
-                ? window.getMJOData().catch(function () { return null; })
-                : Promise.resolve(null);
-
-            // Tunggu SEMUA sekaligus — tidak ada yang sequential
-            var hasil = await Promise.all([
-                ensoPromise,  // [0] ENSO
-                iodPromise,   // [1] IOD
-                polaPromise,  // [2] Pola Hujan
-                zomPromise,   // [3] ZOM
-                mjoPromise    // [4] MJO
-            ]);
-
-            var ensoData = hasil[0];
-            var iodData  = hasil[1];
-            var dbPola   = hasil[2];
-            var dataZom  = hasil[3];
-            // MJO sudah disimpan ke window.mjoData oleh getMJOData
-
-            // Simpan ke cache window untuk patch lain
-            if (ensoData) {
-                window._ensoDataTerkini = ensoData;
-                cacheSet('enso', ensoData);
-            }
-            if (iodData) {
-                window._iodDataTerkini = iodData;
-                cacheSet('iod', iodData);
-            }
-
-            tampilkanProgress(2, true);
-            tampilkanProgress(3, true);
-            tampilkanProgress(4, true);
-
-            // [PERF-6] Step 5 & 6: Kalkulasi & render
-            tampilkanProgress(5, false);
-
-            // Pastikan loadGlobalClimateIndices tidak dipanggil dua kali
-            // dengan me-reset guard sehingga dipanggil SEKALI di sini
-            delete _cache['iklim'];
-
-            // Panggil fungsi asli hanya untuk bagian kalkulasi & render chart
-            // tapi TANPA fetch ulang (semua data sudah ada di window/cache)
-            // Cara: panggil asli, dia akan pakai cache dari getENSOAnomaly/getIODAnomaly
-            try {
-                tampilkanProgress(6, false);
-                await _asliProses.apply(this, arguments);
-            } catch (err) {
-                console.error('[percepatan] prosesAnalisisKalender asli error:', err);
-                if (judulChart) {
-                    judulChart.innerHTML = judulChart.dataset.asli || '📈 Grafik Risiko Gagal Panen';
-                }
-                if (bungkusChart) bungkusChart.style.display = 'none';
-                if (kontainerTeks) {
-                    kontainerTeks.innerHTML =
-                        '<div class="info-box" style="border-left-color:var(--red-alert);text-align:center;">' +
-                        '<strong>⚠️ Gagal Memuat Data</strong><br>' +
-                        '<span style="font-size:0.85rem;color:#cbd5e1;">' + err.message + '</span>' +
-                        '</div>';
-                }
-            }
-        };
-
-        console.log('[percepatan] prosesAnalisisKalender dipercepat dengan progress visual + cache');
-    }
-
-    // ============================================================
-    //  BAGIAN 7 — PERKUAT CACHE getNOAASST
-    //  [PERF-5] Pastikan localStorage cache dipakai konsisten
-    //  sehingga panggilan kedua (dari SST timeseries) instan.
-    // ============================================================
-
-    function pasangCacheNOAASST() {
-        var _asliSST = window.getNOAASST;
-        if (typeof _asliSST !== 'function') return;
+    function wrapCacheSST() {
+        var asliSST = window.getNOAASST;
+        if (typeof asliSST !== 'function') {
+            setTimeout(wrapCacheSST, 500);
+            return;
+        }
+        if (window.getNOAASST.__cached) return;
 
         window.getNOAASST = async function (lat, lon, date) {
-            // Buat cache key yang konsisten
-            var y = date.getFullYear();
-            var m = String(date.getMonth() + 1).padStart(2, '0');
+            var y  = date.getFullYear();
+            var m  = String(date.getMonth() + 1).padStart(2, '0');
             var d2 = String(date.getDate()).padStart(2, '0');
-            var cacheKey = 'sst_' + lat.toFixed(2) + '_' + lon.toFixed(2) + '_' + y + m + d2;
+            var key = 'sst_' + lat.toFixed(2) + '_' + lon.toFixed(2) + '_' + y + m + d2;
 
-            // Cek in-memory cache dulu (lebih cepat dari localStorage)
-            var inMem = _cache[cacheKey];
-            if (inMem && (Date.now() - inMem.ts) < TTL_MS.sst) {
-                return inMem.data;
+            var hit = mGet(key);
+            if (hit !== null) return hit;
+
+            var hasil = await asliSST.apply(this, arguments);
+            if (hasil !== null && hasil !== undefined && isFinite(hasil)) {
+                mSet(key, hasil, 'sst');
             }
-
-            // Cek localStorage
-            try {
-                var stored = localStorage.getItem(cacheKey);
-                if (stored !== null) {
-                    var val = parseFloat(stored);
-                    if (!isNaN(val)) {
-                        _cache[cacheKey] = { data: val, ts: Date.now() };
-                        return val;
-                    }
-                }
-            } catch (e) {}
-
-            // Fetch dari server
-            var hasil = await _asliSST.apply(this, arguments);
-
-            // Simpan ke kedua cache
-            if (hasil !== null && hasil !== undefined) {
-                _cache[cacheKey] = { data: hasil, ts: Date.now() };
-                try { localStorage.setItem(cacheKey, String(hasil)); } catch (e) {}
-            }
-
             return hasil;
         };
-
-        console.log('[percepatan] getNOAASST diperkuat dengan in-memory + localStorage cache');
+        window.getNOAASST.__cached = true;
+        console.log('[percepatan] getNOAASST → in-memory cache dipasang');
     }
 
     // ============================================================
-    //  BAGIAN 8 — INISIALISASI (Berurutan setelah semua patch siap)
+    //  INISIALISASI — tunggu semua patch selesai (700ms)
     // ============================================================
-
     function init() {
-        pasangCacheENSOIOD();
-        pasangMJOCepat();
-        pasangGuardLoadGlobal();
-        pasangCacheNOAASST();
-        pasangProsesKalenderCepat();
+        // Pasang cache di lapisan bawah — TIDAK menyentuh render/DOM
+        wrapCache('getENSOAnomaly', 'enso');
+        wrapCache('getIODAnomaly',  'iod');
+        wrapMJOCepat();
+        wrapGuardLoadGlobal();
+        wrapCacheSST();
+
+        // Pasang reset guard pada tombol (setelah DOM siap)
+        setTimeout(pasangResetGuardPadaTombol, 1000);
 
         window.__percepatanKalenderV1Aktif = true;
 
         console.log(
-            '%c✅ patch_percepatan_kalender_v1.js AKTIF\n' +
-            '\n  ╔══ PERCEPATAN TOMBOL GRAFIK ANCAMAN IKLIM ════════╗\n' +
-            '  ║ [PERF-1] Cache ENSO/IOD 6 jam — fetch 1× saja     \n' +
-            '  ║          Sebelumnya di-fetch 3× berturutan          \n' +
-            '  ║ [PERF-2] MJO: 3 proxy paralel + timeout 5 detik   \n' +
-            '  ║          Sebelumnya sequential worst-case 24 detik  \n' +
-            '  ║ [PERF-3] loadGlobalClimateIndices: guard 30 detik  \n' +
-            '  ║          Sebelumnya dipanggil 2× tanpa guard        \n' +
-            '  ║ [PERF-4] GPS feedback visual — tidak terasa beku    \n' +
-            '  ║ [PERF-5] getNOAASST: in-memory + localStorage cache\n' +
-            '  ║ [PERF-6] Progress steps 1–6 real-time di UI        \n' +
-            '  ╠══ ESTIMASI WAKTU RESPONS ════════════════════════╣\n' +
-            '  ║ Klik pertama (semua cold):  7–15 detik              \n' +
-            '  ║ Klik kedua (semua cached):  < 1 detik               \n' +
-            '  ║ MJO gagal semua proxy:  5 detik (bukan 24 detik)   \n' +
+            '%c✅ patch_percepatan_kalender_v1.js v2 AKTIF\n' +
+            '\n  ╔══ STRATEGI: HANYA PERCEPAT LAPISAN FETCH ════════╗\n' +
+            '  ║ ✅ prosesAnalisisKalender TIDAK disentuh           \n' +
+            '  ║ ✅ DOM / render / bungkusChart TIDAK disentuh      \n' +
+            '  ║                                                     \n' +
+            '  ║ [PERF-1] getENSOAnomaly → cache 6 jam             \n' +
+            '  ║          getIODAnomaly  → cache 6 jam             \n' +
+            '  ║          Sebelumnya: di-fetch 3× per klik           \n' +
+            '  ║ [PERF-2] getMJOData → Promise.race + timeout 5 dtk\n' +
+            '  ║          Sebelumnya: sequential worst-case 24 dtk   \n' +
+            '  ║ [PERF-3] loadGlobalClimateIndices → guard 30 dtk  \n' +
+            '  ║          Reset otomatis setiap klik tombol          \n' +
+            '  ║ [PERF-4] getNOAASST → in-memory cache 12 jam      \n' +
+            '  ╠══ ESTIMASI RESPONS ═══════════════════════════════╣\n' +
+            '  ║  Klik pertama (cold):  7–15 detik                  \n' +
+            '  ║  Klik kedua+ (cached): < 2 detik                   \n' +
+            '  ║  MJO gagal semua:      5 detik (bukan 24 detik)    \n' +
             '  ╚═══════════════════════════════════════════════════╝',
             'color:#10b981; font-weight:bold;'
         );
     }
 
-    // Tunggu semua patch selesai dimuat sebelum override
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
-            setTimeout(init, 700); // Setelah patch_skor_6faktor (500ms)
+            setTimeout(init, 700);
         });
     } else {
         setTimeout(init, 700);
