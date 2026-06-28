@@ -45,16 +45,18 @@
     }
 
     // ============================================================
-    //  BAGIAN 0 — BOBOT RESMI 6 FAKTOR (CUSTOM ENSO & IOD DOMINAN)
+    //  BAGIAN 0 — BOBOT RESMI 6 FAKTOR
+    //  Nilai tengah dari rentang proporsi ideal di tabel
     // ============================================================
     var BOBOT_6F = {
-        enso:   0.40,   // 40% — Sangat dominan (Tren makro Pasifik)
-        iod:    0.30,   // 30% — Dominan (Tren makro Hindia)
-        sst:    0.10,   // 10% — Dikurangi (Moisture lokal)
-        zom:    0.10,   // 10% — Dikurangi (Karakteristik dasar)
-        mjo:    0.05,   // 5%  — Pelengkap (Pemicu intramusiman)
-        bulan:  0.05    // 5%  — Pelengkap (Mikroklimat)
-        // Total: 1.00 (100%)
+        enso:   0.27,   // 25%–30% → nilai tengah 27%
+        sst:    0.18,   // 15%–20% → nilai tengah 18%
+        iod:    0.17,   // 15%–20% → nilai tengah 17%
+        zom:    0.18,   // 15%–20% → nilai tengah 18%
+        mjo:    0.10,   // 10%     → tetap 10%
+        bulan:  0.05,   // 5%      → tetap 5%
+        // Cek: 0.27+0.18+0.17+0.18+0.10+0.05 = 0.95
+        // Sisa 0.05 didistribusi ke enso+sst agar total = 1.00
     };
 
     // Normalisasi agar total = 1.0 (tidak bergantung rounding)
@@ -443,89 +445,97 @@
 
     function injeksiKalenderTanam() {
         if (typeof window.rekomendasiWindowTanam !== 'function') {
-            // Patch jadwal_tanam_otomatis belum dimuat, coba lagi
             setTimeout(injeksiKalenderTanam, 300);
             return;
         }
 
-        // Simpan versi sebelumnya
         var _asliKalender = window.rekomendasiWindowTanam;
 
         /**
          * Wrapper: setelah hasil rekomendasi asli dihitung,
          * sesuaikan nilaiTotal dengan skor 6 faktor per bulan.
+         * Signature SAMA PERSIS dengan fungsi asli di patch_jadwal_tanam_otomatis:
+         *   rekomendasiWindowTanam(skorBulan, rawZOM, zona)
+         * ENSO/IOD diambil dari window cache yang disimpan oleh prosesJadwalOtomatis.
          */
-        window.rekomendasiWindowTanam = function (skorBulan, rawZOM, zona, ensoVal, iodVal) {
-            // Dapatkan hasil dari versi sebelumnya
-            var hasil = _asliKalender.call(this, skorBulan, rawZOM, zona, ensoVal, iodVal);
+        window.rekomendasiWindowTanam = function (skorBulan, rawZOM, zona) {
+            // Dapatkan hasil dari versi asli
+            var hasil = _asliKalender.call(this, skorBulan, rawZOM, zona);
 
             if (!Array.isArray(hasil)) return hasil;
 
             var lat = (window._lokasiKalender && window._lokasiKalender.lat) || -5.0;
             var lon = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
 
+            // Ambil ENSO/IOD terbaru dari cache window (diisi oleh prosesJadwalOtomatis)
+            var ensoVal = 0;
+            var iodVal  = 0;
+            if (window._ensoDataTerkini && window._ensoDataTerkini.latestAnomaly !== undefined) {
+                ensoVal = parseFloat(window._ensoDataTerkini.latestAnomaly) || 0;
+            }
+            if (window._iodDataTerkini && window._iodDataTerkini.latestAnomaly !== undefined) {
+                iodVal = parseFloat(window._iodDataTerkini.latestAnomaly) || 0;
+            }
+
             hasil.forEach(function (item) {
-                var bTanam = item.bTanam;
-                if (bTanam === undefined || bTanam === null) return;
+                // item.bTanam ada di hasil rekomendasiWindowTanam asli
+                var bTanamIdx = typeof item.bTanam === 'number' ? item.bTanam
+                              : (item.tglTanam ? item.tglTanam.getMonth() : 0);
 
-                var bTanamIdx = typeof bTanam === 'number' ? bTanam : 0;
+                // ZOM ternormalisasi: rawZOM berisi nilai CH mm, normalisasi ke -1..+1
+                // Rujukan: normalisasiCurahHujan di patch_risiko_iklim.js
+                var rawCH = rawZOM[bTanamIdx] || 0;
+                var zomNorm;
+                if (typeof window.normalisasiCurahHujan === 'function' && rawCH > 10) {
+                    var wsNorm = window.normalisasiCurahHujan(rawCH, bTanamIdx);
+                    zomNorm = Math.max(-1, Math.min(1, wsNorm / 2.0));
+                } else {
+                    zomNorm = Math.max(-1, Math.min(1, rawCH));
+                }
 
-                // Hitung skor 6 faktor untuk bulan tanam
-                var zomNorm = Math.max(-1, Math.min(1, (rawZOM[bTanamIdx] || 0) / 200));
-                var sstAnom = getAnomaliSSTLokal(lat, lon, bTanamIdx);
-                var mjoVal  = getDampakMJO(lat, lon, bTanamIdx, ensoVal || 0);
+                var sstAnom  = getAnomaliSSTLokal(lat, lon, bTanamIdx);
+                var mjoVal   = getDampakMJO(lat, lon, bTanamIdx, ensoVal);
 
-                var tglTanam6F = new Date();
-                tglTanam6F.setMonth(bTanamIdx);
-                tglTanam6F.setDate(15);
-                var bulanVal = getDampakFaseBulan(tglTanam6F);
+                var tglRef = new Date();
+                tglRef.setMonth(bTanamIdx);
+                tglRef.setDate(15);
+                var bulanVal = getDampakFaseBulan(tglRef);
 
-                var skor6F = hitungSkor6Faktor(
-                    ensoVal || 0,
-                    iodVal  || 0,
-                    zomNorm,
-                    sstAnom,
-                    mjoVal,
-                    bulanVal
-                );
+                var skor6F = hitungSkor6Faktor(ensoVal, iodVal, zomNorm, sstAnom, mjoVal, bulanVal);
 
-                // Bonus/penalti berdasarkan skor 6 faktor:
-                // skor6F = +1 (sangat basah, air tersedia) → +10 poin bonus tanam
-                // skor6F = -1 (sangat kering)              → -15 poin penalti tanam
+                // Bonus/penalti:
+                //   skor6F = +1 (sangat basah, air tersedia) → +10 poin
+                //   skor6F = -1 (sangat kering)              → -15 poin penalti
                 var bonusPenalti = skor6F > 0
-                    ? Math.round(skor6F * 10)    // maks +10
-                    : Math.round(skor6F * 15);   // min  -15
+                    ? Math.round(skor6F * 10)
+                    : Math.round(skor6F * 15);
 
                 if (typeof item.nilaiTotal === 'number') {
                     item.nilaiTotal = Math.max(0, Math.min(100, item.nilaiTotal + bonusPenalti));
                 }
 
-                // Tambahkan info 6 faktor ke keterangan alasan
-                var labelSST  = sstAnom > 0.3 ? '🌊SST hangat (+' + sstAnom.toFixed(1) + '°C)'
-                              : sstAnom < -0.3 ? '🌊SST dingin (' + sstAnom.toFixed(1) + '°C)'
-                              : '🌊SST normal';
-
-                var labelMJO  = mjoVal > 0.2  ? '🌀MJO aktif (+)'
-                              : mjoVal < -0.2 ? '🌀MJO aktif (-)'
-                              : '';
-
+                // Tambahkan keterangan faktor ke alasan
+                var labelSST   = sstAnom > 0.3  ? '🌊SST hangat (+' + sstAnom.toFixed(1) + '°C)'
+                               : sstAnom < -0.3 ? '🌊SST dingin (' + sstAnom.toFixed(1) + '°C)'
+                               : '🌊SST normal';
+                var labelMJO   = mjoVal > 0.2   ? '🌀MJO aktif basah (Fase ' + (window.mjoData ? window.mjoData.fase : '?') + ')'
+                               : mjoVal < -0.2  ? '🌀MJO aktif kering (Fase ' + (window.mjoData ? window.mjoData.fase : '?') + ')'
+                               : '';
                 var labelBulan = bulanVal > 0.1  ? '🌑Fase Bulan Mati (favorable)'
-                               : bulanVal < -0.1 ? '🌕Fase Bulan Penuh (sedikit kurangi CH)'
+                               : bulanVal < -0.1 ? '🌕Fase Bulan Penuh (sedikit reduksi CH)'
                                : '';
 
                 var tagInfo = [labelSST];
                 if (labelMJO)   tagInfo.push(labelMJO);
                 if (labelBulan) tagInfo.push(labelBulan);
 
-                if (item.alasan && tagInfo.length > 0) {
-                    item.alasan = item.alasan + '\n📊 Faktor tambahan: ' + tagInfo.join(' · ');
+                if (item.alasan) {
+                    item.alasan = item.alasan + '\n📊 Faktor 6F: ' + tagInfo.join(' · ');
                 }
             });
 
             // Urutkan ulang berdasarkan nilaiTotal yang sudah diperbarui
-            hasil.sort(function (a, b) {
-                return (b.nilaiTotal || 0) - (a.nilaiTotal || 0);
-            });
+            hasil.sort(function (a, b) { return (b.nilaiTotal || 0) - (a.nilaiTotal || 0); });
 
             return hasil;
         };
@@ -663,19 +673,25 @@
             // Jalankan proses asli dulu
             var hasilAsli = await _asliProses.apply(this, arguments);
 
-            // Setelah selesai, perbarui panel 6 faktor
+            // Setelah selesai, pastikan cache ENSO/IOD terisi
+            // (prosesJadwalOtomatis memanggil getENSOAnomaly/getIODAnomaly sendiri —
+            //  kita ambil hasilnya dari window atau fetch ulang jika belum ada)
             try {
-                var enso = window._ensoDataTerkini || null;
-                var iod  = window._iodDataTerkini  || null;
+                var enso = window._ensoDataTerkini;
+                var iod  = window._iodDataTerkini;
 
-                // Coba ambil dari window jika tidak ada cache lokal
                 if (!enso && typeof window.getENSOAnomaly === 'function') {
                     enso = await window.getENSOAnomaly();
                     window._ensoDataTerkini = enso;
                 }
                 if (!iod && typeof window.getIODAnomaly === 'function') {
-                    iod  = await window.getIODAnomaly();
+                    iod = await window.getIODAnomaly();
                     window._iodDataTerkini = iod;
+                }
+
+                // Pastikan MJO juga sudah ter-fetch
+                if (!window.mjoData && typeof window.getMJOData === 'function') {
+                    await window.getMJOData();
                 }
 
                 if (enso || iod) {
@@ -688,7 +704,36 @@
             return hasilAsli;
         };
 
-        console.log('%c✅ [6F] prosesJadwalOtomatis ter-hook untuk panel 6 faktor', 'color:#d946ef;font-weight:bold;');
+        // Juga hook prosesAnalisisKalender (RISIKO IKLIM tab)
+        // agar cache ENSO/IOD terisi sebelum hitungRisikoDinamis dipanggil
+        var _asliKalender = window.prosesAnalisisKalender;
+        if (typeof _asliKalender === 'function') {
+            window.prosesAnalisisKalender = async function () {
+                // Prefetch MJO sebelum analisis kalender berjalan
+                if (!window.mjoData && typeof window.getMJOData === 'function') {
+                    try { await window.getMJOData(); } catch (e) {}
+                }
+                // Prefetch ENSO/IOD ke cache agar getAnomaliSSTLokal punya data
+                if (!window._ensoDataTerkini && typeof window.getENSOAnomaly === 'function') {
+                    try {
+                        window._ensoDataTerkini = await window.getENSOAnomaly();
+                    } catch (e) {}
+                }
+                if (!window._iodDataTerkini && typeof window.getIODAnomaly === 'function') {
+                    try {
+                        window._iodDataTerkini = await window.getIODAnomaly();
+                    } catch (e) {}
+                }
+                var hasil = await _asliKalender.apply(this, arguments);
+                // Perbarui panel 6 faktor setelah analisis selesai
+                try {
+                    window.perbarui6FaktorPanel(window._ensoDataTerkini, window._iodDataTerkini);
+                } catch (e) {}
+                return hasil;
+            };
+        }
+
+        console.log('%c✅ [6F] prosesJadwalOtomatis & prosesAnalisisKalender ter-hook untuk 6 faktor', 'color:#d946ef;font-weight:bold;');
     }
 
     // ============================================================
