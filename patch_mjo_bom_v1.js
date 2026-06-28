@@ -172,30 +172,44 @@
     }
 
     // ── Fetch dengan urutan prioritas ────────────────────────────
+    // ── Fetch dengan Proxy Alternatif dan Mirror Akademik ──
     async function fetchRMMData() {
-        // Coba GAS proxy dulu (lebih cepat)
-        try {
-            var teks = await fetchViaGAS(BOM_RMM_URL, 12000);
-            if (teks && teks.length > 500) {
-                console.log('✅ MJO RMM diambil via proxy GAS');
-                return teks;
-            }
-        } catch (e1) {
-            console.warn('⚠️ Proxy GAS MJO gagal:', e1.message, '— coba AllOrigins...');
-        }
+        var BOM_URL = 'http://www.bom.gov.au/climate/mjo/graphics/rmm.74toRealtime.txt';
+        var ALBANY_MIRROR = 'https://www.atmos.albany.edu/facstaff/roundy/waves/data/rmm.74toRealtime.txt';
 
-        // Fallback ke AllOrigins
-        try {
-            var teks2 = await fetchViaAllOrigins(BOM_RMM_URL, 12000);
-            if (teks2 && teks2.length > 500) {
-                console.log('✅ MJO RMM diambil via AllOrigins');
-                return teks2;
-            }
-        } catch (e2) {
-            console.warn('⚠️ AllOrigins MJO gagal:', e2.message);
-        }
+        // Antrean Proxy (berhenti di proxy pertama yang berhasil ditarik)
+        // Semuanya me-return teks RAW murni, tidak perlu parsing JSON.contents
+        var jalurProxy = [
+            'https://corsproxy.io/?url=' + encodeURIComponent(BOM_URL),
+            'https://api.allorigins.win/raw?url=' + encodeURIComponent(ALBANY_MIRROR),
+            'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(BOM_URL)
+        ];
 
-        throw new Error('Semua sumber MJO gagal');
+        for (var i = 0; i < jalurProxy.length; i++) {
+            try {
+                var controller = new AbortController();
+                // Timeout 8 detik per jalur
+                var timer = setTimeout(function () { controller.abort(); }, 8000);
+                
+                var res = await fetch(jalurProxy[i], { signal: controller.signal });
+                clearTimeout(timer);
+                
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                var teks = await res.text();
+                
+                // Validasi ringkas: Pastikan data yang ditarik benar-benar tabel RMM
+                if (teks.includes('year') && teks.includes('phase') && teks.includes('amplitude')) {
+                    console.log('✅ MJO RMM berhasil ditarik via jalur proxy ' + (i + 1));
+                    return teks;
+                } else {
+                    throw new Error('Format data tidak sesuai ekspektasi');
+                }
+            } catch (err) {
+                console.warn('⚠️ Proxy MJO jalur ' + (i + 1) + ' gagal:', err.message);
+            }
+        }
+        
+        throw new Error('Semua proxy & mirror MJO gagal menembus server.');
     }
 
     // ── Fungsi utama: ambil & proses data MJO ───────────────────
