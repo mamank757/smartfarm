@@ -416,67 +416,54 @@ if (typeof window.hitungWetnessScore === 'function') {
         var koreksiExtra = (sstAnom * 0.20) + (mjoVal * 0.15) + (bulanVal * 0.20);
         var wsTotal = ws + koreksiExtra;
 
-        // ── 3. Status cuaca berdasarkan skala ws nyata ──
+        // ── 3. Status cuaca berdasarkan skala ws V2 yang lebih sensitif ──
         var statusCuaca;
-        if      (wsTotal <= -8.0) statusCuaca = 'Sangat Kering Ekstrem';
-        else if (wsTotal <= -5.0) statusCuaca = 'Sangat Kering';
-        else if (wsTotal <= -2.5) statusCuaca = 'Kering';
-        else if (wsTotal <= -0.5) statusCuaca = 'Cenderung Kering';
-        else if (wsTotal <=  0.5) statusCuaca = 'Normal';
-        else if (wsTotal <=  2.5) statusCuaca = 'Cenderung Basah';
-        else if (wsTotal <=  5.0) statusCuaca = 'Basah';
-        else if (wsTotal <=  8.0) statusCuaca = 'Sangat Basah';
+        if      (wsTotal <= -1.0) statusCuaca = 'Sangat Kering Ekstrem';
+        else if (wsTotal <= -0.5) statusCuaca = 'Kering';
+        else if (wsTotal <= -0.2) statusCuaca = 'Cenderung Kering';
+        else if (wsTotal <=  0.2) statusCuaca = 'Normal';
+        else if (wsTotal <=  0.5) statusCuaca = 'Cenderung Basah';
+        else if (wsTotal <=  1.0) statusCuaca = 'Basah';
         else                      statusCuaca = 'Sangat Basah Ekstrem';
 
         var tipeBahaya = 'aman';
-        if      (wsTotal < -0.5) tipeBahaya = 'kekeringan';
-        else if (wsTotal >  0.5) tipeBahaya = 'banjir';
+        if      (wsTotal < -0.2) tipeBahaya = 'kekeringan';
+        else if (wsTotal >  0.2) tipeBahaya = 'banjir';
 
-        // ── 4. Tabel skor per fase — threshold disesuaikan skala ws ──
+        // ── 4. Tabel skor per fase (Threshold disesuaikan dengan V2) ──
         var skor    = 15;
         var masalah = 'Kondisi air optimal.';
 
         if (fase === 'Tanam') {
-            if      (wsTotal <= -8.0) { skor = 90; tipeBahaya = 'kekeringan'; masalah = 'KRITIS: El Niño/IOD+ ekstrem. Tanah retak parah, tunda tanam atau pompanisasi penuh.'; }
-            else if (wsTotal <= -5.0) { skor = 72; tipeBahaya = 'kekeringan'; masalah = 'Kekeringan parah (El Niño moderat/IOD+). Pompanisasi wajib sebelum bajak.'; }
-            else if (wsTotal <= -2.5) { skor = 50; tipeBahaya = 'kekeringan'; masalah = 'Kekeringan (El Niño lemah). Pompanisasi tambahan mungkin diperlukan.'; }
-            else if (wsTotal <= -0.5) { skor = 30; tipeBahaya = 'kekeringan'; masalah = 'Curah hujan di bawah normal. Pantau ketersediaan air irigasi.'; }
-            else if (wsTotal <=  0.5) { skor = 15;                            masalah = 'Curah hujan cukup. Kondisi air ideal untuk olah lahan dan tanam.'; }
-            else if (wsTotal <=  2.5) { skor = 32; tipeBahaya = 'banjir';     masalah = 'Curah hujan di atas normal (La Niña lemah). Waspada genangan drainase buruk.'; }
-            else if (wsTotal <=  5.0) { skor = 55; tipeBahaya = 'banjir';     masalah = 'Hujan lebat (La Niña moderat/IOD-). Risiko pesemaian terendam. Pertimbangkan tapin.'; }
-            else if (wsTotal <=  8.0) { skor = 72; tipeBahaya = 'banjir';     masalah = 'Hujan sangat lebat (La Niña kuat). Tunda sebar benih sampai hujan mereda.'; }
-            else                      { skor = 88; tipeBahaya = 'banjir';     masalah = 'BAHAYA: La Niña/IOD- ekstrem. Banjir mengancam lahan, koordinasikan dengan pihak irigasi.'; }
+            if      (wsTotal <= -1.5) { skor = 90; masalah = 'KRITIS: Tanah retak parah, tidak bisa olah lahan. Tunda tanam atau pompanisasi penuh.'; tipeBahaya = 'kekeringan'; }
+            else if (wsTotal <= -0.8) { skor = 65; masalah = 'Hujan kurang. Perlu pompanisasi tambahan agar lahan bisa dibajak.'; tipeBahaya = 'kekeringan'; }
+            else if (wsTotal <= -0.3) { skor = 35; masalah = 'Curah hujan sedikit di bawah normal. Pantau ketersediaan air irigasi.'; tipeBahaya = 'kekeringan'; }
+            else if (wsTotal <=  0.8) { skor = 15; masalah = 'Curah hujan cukup. Kondisi air ideal untuk olah lahan dan tanam.'; }
+            else if (wsTotal <=  1.5) { skor = 45; masalah = 'Curah hujan di atas normal. Waspada genangan di lahan yang drainase-nya buruk.'; tipeBahaya = 'banjir'; }
+            else                      { skor = 70; masalah = 'Hujan sangat lebat. Risiko pesemaian terendam. Pertimbangkan tapin atau tunda sebar benih.'; tipeBahaya = 'banjir'; }
 
         } else if (fase === 'Vegetatif') {
-            if      (wsTotal <= -8.0) { skor = 85; tipeBahaya = 'kekeringan'; masalah = 'KRITIS: El Niño kuat. Anakan tidak tumbuh, jumlah malai produktif sangat sedikit.'; }
-            else if (wsTotal <= -5.0) { skor = 65; tipeBahaya = 'kekeringan'; masalah = 'Kekeringan parah (El Niño moderat). Anakan terhambat, segera cek debit saluran irigasi.'; }
-            else if (wsTotal <= -2.5) { skor = 45; tipeBahaya = 'kekeringan'; masalah = 'Kekeringan (El Niño lemah). Pertahankan tinggi air 3–5 cm, perlu pompanisasi tambahan.'; }
-            else if (wsTotal <= -0.5) { skor = 25; tipeBahaya = 'kekeringan'; masalah = 'Sedikit kekurangan air. Pantau tinggi air di petak sawah, pertahankan 3–5 cm.'; }
-            else if (wsTotal <=  0.5) { skor = 12;                            masalah = 'Curah hujan normal. Kondisi air ideal untuk pertumbuhan anakan produktif.'; }
-            else if (wsTotal <=  2.5) { skor = 32; tipeBahaya = 'banjir';     masalah = 'Curah hujan lebat (La Niña lemah). Jika tergenang >7 hari, buka saluran drainase.'; }
-            else if (wsTotal <=  5.0) { skor = 52; tipeBahaya = 'banjir';     masalah = 'Hujan sangat lebat (La Niña moderat). Risiko genangan panjang, akar busuk.'; }
-            else if (wsTotal <=  8.0) { skor = 68; tipeBahaya = 'banjir';     masalah = 'La Niña kuat. Genangan kronis mengancam anakan produktif dan pertumbuhan akar.'; }
-            else                      { skor = 82; tipeBahaya = 'banjir';     masalah = 'BAHAYA: La Niña/IOD- ekstrem. Anakan produktif berkurang drastis akibat genangan parah.'; }
+            if      (wsTotal <= -1.5) { skor = 80; masalah = 'KRITIS: Kekeringan parah. Anakan padi tidak tumbuh, jumlah malai sangat sedikit.'; tipeBahaya = 'kekeringan'; }
+            else if (wsTotal <= -0.8) { skor = 55; masalah = 'Kekeringan. Pertumbuhan anakan terhambat. Segera cek debit saluran irigasi.'; tipeBahaya = 'kekeringan'; }
+            else if (wsTotal <= -0.3) { skor = 28; masalah = 'Sedikit kekurangan air. Pantau tinggi air di petak sawah, pertahankan 3–5 cm.'; tipeBahaya = 'kekeringan'; }
+            else if (wsTotal <=  0.8) { skor = 12; masalah = 'Curah hujan normal. Kondisi air ideal untuk pertumbuhan anakan produktif.'; }
+            else if (wsTotal <=  1.5) { skor = 38; masalah = 'Curah hujan lebat. Jika tergenang > 7 hari berturut-turut, buka saluran drainase.'; tipeBahaya = 'banjir'; }
+            else                      { skor = 62; masalah = 'Hujan sangat lebat. Risiko genangan panjang, akar busuk dan anakan produktif berkurang.'; tipeBahaya = 'banjir'; }
 
         } else if (fase === 'Generatif') {
-            if      (wsTotal <= -8.0) { skor = 95; tipeBahaya = 'kekeringan'; masalah = 'KRITIS PUSO: El Niño kuat saat bunting. Malai hampa massal, potensi gagal panen total.'; }
-            else if (wsTotal <= -5.0) { skor = 78; tipeBahaya = 'kekeringan'; masalah = 'BAHAYA: El Niño moderat saat bunting. Bulir tidak terisi, hasil anjlok 40–70%.'; }
-            else if (wsTotal <= -2.5) { skor = 55; tipeBahaya = 'kekeringan'; masalah = 'Kekurangan air fase generatif (El Niño lemah). Pastikan tinggi air ≥5 cm saat bunting.'; }
-            else if (wsTotal <= -0.5) { skor = 32; tipeBahaya = 'kekeringan'; masalah = 'Sedikit kering saat generatif. Tinggi air sawah minimal 5 cm wajib dijaga.'; }
-            else if (wsTotal <=  0.5) { skor = 12;                            masalah = 'Kondisi ideal untuk penyerbukan dan pengisian bulir.'; }
-            else if (wsTotal <=  2.5) { skor = 35; tipeBahaya = 'banjir';     masalah = 'Hujan lebat saat berbunga (La Niña lemah). Serbuk sari berpotensi rontok, pantau malai.'; }
-            else if (wsTotal <=  5.0) { skor = 58; tipeBahaya = 'banjir';     masalah = 'La Niña moderat saat berbunga. Risiko Blast melonjak, siapkan fungisida profilaksis.'; }
-            else if (wsTotal <=  8.0) { skor = 75; tipeBahaya = 'banjir';     masalah = 'La Niña kuat. Hujan deras saat berbunga, risiko rebah dan penyerbukan gagal massal.'; }
-            else                      { skor = 90; tipeBahaya = 'banjir';     masalah = 'BAHAYA: La Niña/IOD- ekstrem. Penyerbukan gagal massal, potensi gagal panen dari sisi banjir.'; }
+            if      (wsTotal <= -1.5) { skor = 95; masalah = 'KRITIS PUSO: Kekeringan parah saat bunting. Malai hampa massal, potensi gagal panen total.'; tipeBahaya = 'kekeringan'; }
+            else if (wsTotal <= -0.8) { skor = 75; masalah = 'BAHAYA: Kekurangan air saat pengisian malai. Bulir tidak terisi penuh, hasil anjlok 30–60%.'; tipeBahaya = 'kekeringan'; }
+            else if (wsTotal <= -0.3) { skor = 42; masalah = 'Waspada kekurangan air. Pastikan tinggi air sawah minimal 5 cm saat fase bunting.'; tipeBahaya = 'kekeringan'; }
+            else if (wsTotal <=  0.5) { skor = 12; masalah = 'Kondisi curah hujan sangat ideal untuk penyerbukan dan pengisian bulir.'; }
+            else if (wsTotal <=  1.2) { skor = 40; masalah = 'Hujan lebat saat berbunga. Serbuk sari berpotensi rontok, amati persentase malai kosong.'; tipeBahaya = 'banjir'; }
+            else                      { skor = 72; masalah = 'BAHAYA: Hujan deras dan angin kencang saat berbunga. Risiko rebah dan penyerbukan gagal massal.'; tipeBahaya = 'banjir'; }
 
         } else if (fase === 'Panen') {
-            if      (wsTotal <= -5.0) { skor =  5;                            masalah = 'Sangat kering (El Niño). Kondisi sempurna untuk panen dan pengeringan gabah.'; }
-            else if (wsTotal <= -0.5) { skor = 15;                            masalah = 'Cenderung kering. Kondisi baik untuk panen, koordinasikan combine harvester.'; }
-            else if (wsTotal <=  0.5) { skor = 22;                            masalah = 'Kondisi normal. Panen aman, siapkan pengering cadangan (terpal/dryer).'; }
-            else if (wsTotal <=  2.5) { skor = 45; tipeBahaya = 'banjir';     masalah = 'Hujan lebat (La Niña lemah). Lahan berpotensi becek, sulit diakses Combine Harvester.'; }
-            else if (wsTotal <=  5.0) { skor = 65; tipeBahaya = 'banjir';     masalah = 'BAHAYA: La Niña moderat. Gabah berisiko tumbuh di malai. Percepat panen, siapkan dryer.'; }
-            else if (wsTotal <=  8.0) { skor = 80; tipeBahaya = 'banjir';     masalah = 'La Niña kuat. Hujan ekstrem saat panen. Panen manual segera jika bisa.'; }
-            else                      { skor = 92; tipeBahaya = 'banjir';     masalah = 'KRITIS: La Niña ekstrem. Banjir saat panen, lahan tidak bisa diakses mesin. Panen manual!'; }
+            if      (wsTotal <= -0.8) { skor =  8; masalah = 'Kondisi terik dan kering. Sangat ideal untuk panen dan pengeringan gabah.'; }
+            else if (wsTotal <=  0.3) { skor = 18; masalah = 'Kondisi curah hujan normal. Panen aman, siapkan pengering cadangan (terpal/dryer).'; }
+            else if (wsTotal <=  0.8) { skor = 48; masalah = 'Curah hujan di atas normal. Lahan berpotensi becek, sulit diakses Combine Harvester.'; tipeBahaya = 'banjir'; }
+            else if (wsTotal <=  1.5) { skor = 75; masalah = 'BAHAYA: Hujan lebat saat panen. Gabah berisiko tumbuh di malai. Percepat panen atau siapkan dryer.'; tipeBahaya = 'banjir'; }
+            else                      { skor = 92; masalah = 'KRITIS: Banjir saat panen. Lahan tidak bisa diakses mesin. Percepat panen manual segera!'; tipeBahaya = 'banjir'; }
         }
 
         // ── 5. Tambah keterangan faktor SST/MJO/Bulan ke pesan ──
@@ -778,28 +765,31 @@ if (typeof window.hitungWetnessScore === 'function') {
         var _asliKalender = window.prosesAnalisisKalender;
         if (typeof _asliKalender === 'function') {
             window.prosesAnalisisKalender = async function () {
-                // Prefetch MJO sebelum analisis kalender berjalan
-                if (!window.mjoData && typeof window.getMJOData === 'function') {
-                    try { await window.getMJOData(); } catch (e) {}
-                }
-                // Prefetch ENSO/IOD ke cache agar getAnomaliSSTLokal punya data
-                if (!window._ensoDataTerkini && typeof window.getENSOAnomaly === 'function') {
-                    try {
-                        window._ensoDataTerkini = await window.getENSOAnomaly();
-                    } catch (e) {}
-                }
-                if (!window._iodDataTerkini && typeof window.getIODAnomaly === 'function') {
-                    try {
-                        window._iodDataTerkini = await window.getIODAnomaly();
-                    } catch (e) {}
-                }
-                var hasil = await _asliKalender.apply(this, arguments);
-                // Perbarui panel 6 faktor setelah analisis selesai
-                try {
-                    window.perbarui6FaktorPanel(window._ensoDataTerkini, window._iodDataTerkini);
-                } catch (e) {}
-                return hasil;
-            };
+            // Fetch API secara paralel agar tidak memblokir antrean (jauh lebih cepat)
+            var fetchTasks = [];
+            
+            if (!window.mjoData && typeof window.getMJOData === 'function') {
+                fetchTasks.push(window.getMJOData().catch(function(){}));
+            }
+            if (!window._ensoDataTerkini && typeof window.getENSOAnomaly === 'function') {
+                fetchTasks.push(window.getENSOAnomaly().then(function(d) { window._ensoDataTerkini = d; }).catch(function(){}));
+            }
+            if (!window._iodDataTerkini && typeof window.getIODAnomaly === 'function') {
+                fetchTasks.push(window.getIODAnomaly().then(function(d) { window._iodDataTerkini = d; }).catch(function(){}));
+            }
+            
+            // Tunggu semua request selesai bersamaan
+            await Promise.all(fetchTasks);
+
+            var hasil = await _asliKalender.apply(this, arguments);
+            
+            // Perbarui panel 6 faktor setelah analisis selesai
+            try {
+                window.perbarui6FaktorPanel(window._ensoDataTerkini, window._iodDataTerkini);
+            } catch (e) {}
+            
+            return hasil;
+        };
         }
 
         console.log('%c✅ [6F] prosesJadwalOtomatis & prosesAnalisisKalender ter-hook untuk 6 faktor', 'color:#d946ef;font-weight:bold;');
