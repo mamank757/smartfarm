@@ -665,7 +665,9 @@ if (typeof window.hitungWetnessScore === 'function') {
             var persen    = Math.round(bobot * 100);
             var arah      = nilai > 0 ? '+' : '';
             var warna     = nilai > 0.1 ? '#10b981' : (nilai < -0.1 ? '#ef4444' : '#64748b');
-            var lebar     = Math.min(100, Math.abs(nilai) * 100);
+            
+// Kita kali dengan bobot agar barnya proporsional dengan dampak aslinya
+var lebar = Math.min(100, Math.abs(nilai * bobot) * 500);
             var satuanStr = satuan || '';
             return (
                 '<div style="margin-bottom:6px;">' +
