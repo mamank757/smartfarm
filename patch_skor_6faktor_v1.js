@@ -337,6 +337,22 @@
     //  Tetap kompatibel: signature sama, hasil lebih presisi
     // ============================================================
 
+    // ============================================================
+    //  BAGIAN 5 — AUGMENTASI hitungRisikoDinamis()
+    //
+    //  STRATEGI: JANGAN ganti logika ENSO/IOD asli — itu sudah
+    //  sensitif (AMPLIFIKASI_IKLIM = 5, bobot per zona per bulan).
+    //
+    //  Yang kita lakukan:
+    //    1. Panggil fungsi ASLI → dapatkan ws (wetness score)
+    //    2. Hitung koreksi kecil dari SST + MJO + FaseBulan
+    //    3. Tambahkan koreksi ke ws sebelum lookup tabel skor
+    //    4. Pesan masalah ditambah konteks faktor tambahan
+    //
+    //  Koreksi SST/MJO/Bulan dibuat kecil (~10–20% dari ws)
+    //  agar ENSO & IOD tetap mendominasi seperti semula.
+    // ============================================================
+
     if (typeof window.hitungRisikoDinamis === 'function') {
         window._hitungRisikoAsli6F = window.hitungRisikoDinamis;
     }
@@ -345,95 +361,115 @@
         var lat = (window._lokasiKalender && window._lokasiKalender.lat) || -5.0;
         var lon = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
 
-        // ── Ambil data ZOM baseline ──
+        // ── 1. Hitung ws asli via fungsi asli (ENSO+IOD+ZOM sensitif penuh) ──
+        var hasilAsli = window._hitungRisikoAsli6F
+            ? window._hitungRisikoAsli6F(bulanIndex, fase, ensoVal, iodVal, baselineData)
+            : { skor: 15, statusCuaca: 'Normal', masalah: '', tipeBahaya: 'aman', ws: 0 };
+
+        // ws asli: dihitung ulang untuk keperluan koreksi
         var baselineBulanIni = parseFloat(baselineData[bulanIndex]);
         if (typeof window.normalisasiCurahHujan === 'function' && baselineBulanIni > 10) {
             baselineBulanIni = window.normalisasiCurahHujan(baselineBulanIni, bulanIndex);
         }
-        // ZOM sudah ternormalisasi ke -1..+1 relatif terhadap baseline
-        var zomNorm = Math.max(-1, Math.min(1, baselineBulanIni / 2.0));
+        var ws = (hasilAsli.ws !== undefined)
+            ? hasilAsli.ws
+            : baselineBulanIni;   // fallback jika ws tidak ada di return asli
 
-        // ── SST Lokal ──
+        // ── 2. Hitung koreksi SST + MJO + FaseBulan ──
         var sstAnom = getAnomaliSSTLokal(lat, lon, bulanIndex);
+        var mjoVal  = getDampakMJO(lat, lon, bulanIndex, ensoVal);
 
-        // ── MJO ──
-        var mjoVal = getDampakMJO(lat, lon, bulanIndex, ensoVal);
+        var tglRef = new Date();
+        tglRef.setMonth(bulanIndex);
+        tglRef.setDate(15);
+        var bulanVal = getDampakFaseBulan(tglRef);
 
-        // ── Fase Bulan ──
-        var tglBulanTengah = new Date();
-        tglBulanTengah.setMonth(bulanIndex);
-        tglBulanTengah.setDate(15);
-        var bulanVal = getDampakFaseBulan(tglBulanTengah);
+        // Koreksi: setiap faktor dikontribusikan kecil ke ws
+        // SST  : ±1°C anomali → ±0.15 ws  (skala referensi ws ~2–4)
+        // MJO  : ±1 → ±0.12 ws
+        // Bulan: ±0.3 → ±0.06 ws
+        var koreksiSST   = sstAnom * 0.15;
+        var koreksiMJO   = mjoVal  * 0.12;
+        var koreksiBulan = bulanVal * 0.2;  // bulanVal sudah kecil (max ±0.3)
 
-        // ── Skor Terpadu 6 Faktor ──
-        var skor6F = hitungSkor6Faktor(ensoVal, iodVal, zomNorm, sstAnom, mjoVal, bulanVal);
+        var wsAugmented = ws + koreksiSST + koreksiMJO + koreksiBulan;
 
-        // ── Terjemahkan skor ke wetness score (skala yang kompatibel) ──
-        // skor6F: -1 (sangat kering) s/d +1 (sangat basah)
-        // ws patch_risiko_iklim:      -2 s/d +2 (approx.)
-        var ws = skor6F * 2.0;
-
-        // ── Status cuaca ──
+        // ── 3. Tentukan status cuaca dari wsAugmented ──
         var statusCuaca;
-        if      (ws <= -1.5) statusCuaca = 'Sangat Kering Ekstrem';
-        else if (ws <= -0.8) statusCuaca = 'Kering';
-        else if (ws <= -0.3) statusCuaca = 'Cenderung Kering';
-        else if (ws <=  0.3) statusCuaca = 'Normal';
-        else if (ws <=  0.8) statusCuaca = 'Cenderung Basah';
-        else if (ws <=  1.5) statusCuaca = 'Basah';
-        else                 statusCuaca = 'Sangat Basah Ekstrem';
+        if      (wsAugmented <= -1.0) statusCuaca = 'Sangat Kering Ekstrem';
+        else if (wsAugmented <= -0.5) statusCuaca = 'Kering';
+        else if (wsAugmented <= -0.2) statusCuaca = 'Cenderung Kering';
+        else if (wsAugmented <=  0.2) statusCuaca = 'Normal';
+        else if (wsAugmented <=  0.5) statusCuaca = 'Cenderung Basah';
+        else if (wsAugmented <=  1.0) statusCuaca = 'Basah';
+        else                          statusCuaca = 'Sangat Basah Ekstrem';
 
         var tipeBahaya = 'aman';
-        if (ws < -0.2) tipeBahaya = 'kekeringan';
-        else if (ws > 0.2) tipeBahaya = 'banjir';
+        if (wsAugmented < -0.2) tipeBahaya = 'kekeringan';
+        else if (wsAugmented > 0.2) tipeBahaya = 'banjir';
 
-        // ── Skor numerik per fase tanam ──
+        // ── 4. Lookup tabel skor — identik dengan patch_risiko_iklim.js asli ──
         var skor    = 15;
-        var masalah = 'Kondisi air optimal (semua 6 faktor dalam batas normal).';
+        var masalah = hasilAsli.masalah || 'Kondisi air optimal.';
 
         if (fase === 'Tanam') {
-            if      (ws <= -1.5) { skor = 90; masalah = 'KRITIS: 6 faktor (termasuk SST+MJO) menunjukkan kekeringan ekstrem. Tunda tanam atau pompanisasi penuh.'; tipeBahaya = 'kekeringan'; }
-            else if (ws <= -0.8) { skor = 65; masalah = 'Sinyal gabungan 6 faktor: curah hujan kurang. Pompanisasi diperlukan agar lahan bisa dibajak.'; tipeBahaya = 'kekeringan'; }
-            else if (ws <= -0.3) { skor = 35; masalah = 'Iklim cenderung kering (ENSO/IOD/ZOM/SST). Pantau ketersediaan air irigasi.'; tipeBahaya = 'kekeringan'; }
-            else if (ws <=  0.8) { skor = 15; masalah = 'Semua 6 faktor dalam kondisi favorable. Kondisi air ideal untuk olah lahan dan tanam.'; }
-            else if (ws <=  1.5) { skor = 45; masalah = 'Sinyal 6 faktor menunjukkan CH di atas normal. Waspada genangan di lahan drainase buruk.'; tipeBahaya = 'banjir'; }
-            else                 { skor = 70; masalah = 'Hujan sangat lebat diprediksi (La Niña+IOD-+SST hangat). Pertimbangkan tapin atau tunda sebar benih.'; tipeBahaya = 'banjir'; }
+            if      (wsAugmented <= -1.5) { skor = 90; masalah = 'KRITIS: Tanah retak parah, tidak bisa olah lahan. Tunda tanam atau pompanisasi penuh.'; tipeBahaya = 'kekeringan'; }
+            else if (wsAugmented <= -0.8) { skor = 65; masalah = 'Hujan kurang. Perlu pompanisasi tambahan agar lahan bisa dibajak.'; tipeBahaya = 'kekeringan'; }
+            else if (wsAugmented <= -0.3) { skor = 35; masalah = 'Curah hujan sedikit di bawah normal. Pantau ketersediaan air irigasi.'; tipeBahaya = 'kekeringan'; }
+            else if (wsAugmented <=  0.8) { skor = 15; masalah = 'Curah hujan cukup. Kondisi air ideal untuk olah lahan dan tanam.'; }
+            else if (wsAugmented <=  1.5) { skor = 45; masalah = 'Curah hujan di atas normal. Waspada genangan di lahan yang drainase-nya buruk.'; tipeBahaya = 'banjir'; }
+            else                          { skor = 70; masalah = 'Hujan sangat lebat. Risiko pesemaian terendam. Pertimbangkan tapin atau tunda sebar benih.'; tipeBahaya = 'banjir'; }
         } else if (fase === 'Vegetatif') {
-            if      (ws <= -1.5) { skor = 80; masalah = 'KRITIS: Kekeringan multi-faktor. Anakan padi tidak tumbuh, anakan produktif sangat sedikit.'; tipeBahaya = 'kekeringan'; }
-            else if (ws <= -0.8) { skor = 55; masalah = 'Kekeringan diperkuat SST & MJO kering. Segera cek debit saluran irigasi.'; tipeBahaya = 'kekeringan'; }
-            else if (ws <= -0.3) { skor = 28; masalah = 'Sedikit kekurangan air. Pertahankan tinggi air 3–5 cm.'; tipeBahaya = 'kekeringan'; }
-            else if (ws <=  0.8) { skor = 12; masalah = 'Kondisi 6 faktor optimal. Pertumbuhan anakan produktif didukung penuh.'; }
-            else if (ws <=  1.5) { skor = 38; masalah = 'CH lebat (La Niña/IOD-). Jika tergenang >7 hari, buka saluran drainase.'; tipeBahaya = 'banjir'; }
-            else                 { skor = 62; masalah = 'CH sangat lebat. Risiko genangan panjang, akar busuk, anakan berkurang.'; tipeBahaya = 'banjir'; }
+            if      (wsAugmented <= -1.5) { skor = 80; masalah = 'KRITIS: Kekeringan parah. Anakan padi tidak tumbuh, jumlah malai sangat sedikit.'; tipeBahaya = 'kekeringan'; }
+            else if (wsAugmented <= -0.8) { skor = 55; masalah = 'Kekeringan. Pertumbuhan anakan terhambat. Segera cek debit saluran irigasi.'; tipeBahaya = 'kekeringan'; }
+            else if (wsAugmented <= -0.3) { skor = 28; masalah = 'Sedikit kekurangan air. Pantau tinggi air di petak sawah, pertahankan 3–5 cm.'; tipeBahaya = 'kekeringan'; }
+            else if (wsAugmented <=  0.8) { skor = 12; masalah = 'Curah hujan normal. Kondisi air ideal untuk pertumbuhan anakan produktif.'; }
+            else if (wsAugmented <=  1.5) { skor = 38; masalah = 'Curah hujan lebat. Jika tergenang > 7 hari berturut-turut, segera buka saluran drainase.'; tipeBahaya = 'banjir'; }
+            else                          { skor = 62; masalah = 'Hujan sangat lebat. Risiko genangan panjang, akar busuk dan anakan produktif berkurang.'; tipeBahaya = 'banjir'; }
         } else if (fase === 'Generatif') {
-            if      (ws <= -1.5) { skor = 95; masalah = 'KRITIS PUSO: Kekeringan parah saat bunting (multi-faktor). Malai hampa massal.'; tipeBahaya = 'kekeringan'; }
-            else if (ws <= -0.8) { skor = 75; masalah = 'BAHAYA: Kekurangan air pengisian malai. Hasil turun 30–60%. SST lokal dingin memperburuk.'; tipeBahaya = 'kekeringan'; }
-            else if (ws <= -0.3) { skor = 42; masalah = 'Waspada kekurangan air. Pastikan tinggi air sawah ≥5 cm saat bunting.'; tipeBahaya = 'kekeringan'; }
-            else if (ws <=  0.5) { skor = 12; masalah = 'Kondisi 6 faktor ideal untuk penyerbukan dan pengisian bulir.'; }
-            else if (ws <=  1.2) { skor = 40; masalah = 'CH di atas normal. Waspada Blast dan Sheath Blight (MJO+La Niña).'; tipeBahaya = 'banjir'; }
-            else                 { skor = 65; masalah = 'BAHAYA BLAST: CH sangat lebat diprediksi. Siapkan fungisida profilaksis.'; tipeBahaya = 'banjir'; }
-        } else {
-            // Fase Panen
-            if      (ws <= -0.8) { skor = 20; masalah = 'Kondisi kering — panen gabah bisa langsung dijemur. Fase bulan mendukung.'; }
-            else if (ws <=  0.3) { skor = 30; masalah = 'Kondisi normal — koordinasikan jadwal combine.'; }
-            else if (ws <=  0.8) { skor = 50; masalah = 'CH di atas normal — siapkan terpal atau dryer portable.'; tipeBahaya = 'banjir'; }
-            else                 { skor = 70; masalah = 'CH sangat tinggi — panen tetap bisa dilakukan, tapi butuh dryer. Pilih varietas singkat.'; tipeBahaya = 'banjir'; }
+            if      (wsAugmented <= -1.5) { skor = 95; masalah = 'KRITIS PUSO: Kekeringan parah saat bunting. Malai hampa massal, potensi gagal panen total.'; tipeBahaya = 'kekeringan'; }
+            else if (wsAugmented <= -0.8) { skor = 75; masalah = 'BAHAYA: Kekurangan air saat pengisian malai. Bulir tidak terisi penuh, hasil anjlok 30–60%.'; tipeBahaya = 'kekeringan'; }
+            else if (wsAugmented <= -0.3) { skor = 42; masalah = 'Waspada kekurangan air. Pastikan tinggi air sawah minimal 5 cm saat fase bunting.'; tipeBahaya = 'kekeringan'; }
+            else if (wsAugmented <=  0.5) { skor = 12; masalah = 'Kondisi curah hujan sangat ideal untuk penyerbukan dan pengisian bulir.'; }
+            else if (wsAugmented <=  1.2) { skor = 40; masalah = 'Hujan lebat saat berbunga. Serbuk sari berpotensi rontok, amati persentase malai kosong.'; tipeBahaya = 'banjir'; }
+            else                          { skor = 72; masalah = 'BAHAYA: Hujan deras dan angin kencang saat berbunga. Risiko rebah dan penyerbukan gagal massal.'; tipeBahaya = 'banjir'; }
+        } else if (fase === 'Panen') {
+            if      (wsAugmented <= -0.8) { skor = 8;  masalah = 'Kondisi terik dan kering. Sangat ideal untuk panen dan pengeringan gabah.'; }
+            else if (wsAugmented <=  0.3) { skor = 18; masalah = 'Kondisi curah hujan normal. Panen aman, siapkan pengering cadangan (terpal/dryer).'; }
+            else if (wsAugmented <=  0.8) { skor = 48; masalah = 'Curah hujan di atas normal. Lahan berpotensi becek, sulit diakses Combine Harvester.'; tipeBahaya = 'banjir'; }
+            else if (wsAugmented <=  1.5) { skor = 75; masalah = 'BAHAYA: Hujan lebat saat panen. Gabah berisiko tumbuh di malai. Percepat panen atau siapkan dryer.'; tipeBahaya = 'banjir'; }
+            else                          { skor = 92; masalah = 'KRITIS: Banjir saat panen. Lahan tidak bisa diakses mesin. Percepat panen manual segera!'; tipeBahaya = 'banjir'; }
         }
+
+        // ── 5. Tambahkan keterangan faktor tambahan ke pesan ──
+        var infoTambahan = [];
+        if (Math.abs(sstAnom) > 0.3) {
+            infoTambahan.push('SST lokal ' + (sstAnom > 0 ? 'hangat (+' + sstAnom.toFixed(1) + '°C)' : 'dingin (' + sstAnom.toFixed(1) + '°C)'));
+        }
+        if (window.mjoData && window.mjoData.aktif && Math.abs(mjoVal) > 0.15) {
+            infoTambahan.push('MJO Fase ' + window.mjoData.fase + (mjoVal > 0 ? ' aktif basah' : ' aktif kering'));
+        }
+        if (Math.abs(bulanVal) > 0.1) {
+            infoTambahan.push(bulanVal > 0 ? 'Bulan Mati (↑CH)' : 'Bulan Penuh (↓CH sedikit)');
+        }
+        if (infoTambahan.length > 0) {
+            masalah = masalah + ' [+' + infoTambahan.join(', ') + ']';
+        }
+
+        skor = Math.round(Math.max(0, Math.min(100, skor)));
 
         return {
             skor:        skor,
+            statusCuaca: statusCuaca,
             masalah:     masalah,
             tipeBahaya:  tipeBahaya,
-            statusCuaca: statusCuaca,
-            ws:          ws,
-            detail6F: {
-                enso:  ensoVal,
-                iod:   iodVal,
-                zom:   zomNorm.toFixed(3),
-                sst:   sstAnom.toFixed(3),
-                mjo:   mjoVal.toFixed(3),
-                bulan: bulanVal.toFixed(3),
-                skor6F: skor6F.toFixed(4)
+            ws:          wsAugmented,
+            _wsAsli:     ws,
+            _koreksi6F: {
+                sst:   parseFloat(koreksiSST.toFixed(3)),
+                mjo:   parseFloat(koreksiMJO.toFixed(3)),
+                bulan: parseFloat(koreksiBulan.toFixed(3)),
+                total: parseFloat((koreksiSST + koreksiMJO + koreksiBulan).toFixed(3))
             }
         };
     };
