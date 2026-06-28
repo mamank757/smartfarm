@@ -739,40 +739,30 @@ if (typeof window.hitungWetnessScore === 'function') {
         }
 
         window.prosesJadwalOtomatis = async function () {
-            // Jalankan proses asli dulu
-            var hasilAsli = await _asliProses.apply(this, arguments);
+    // Jalankan proses asli
+    var hasilAsli = await _asliProses.apply(this, arguments);
 
-            // Setelah selesai, pastikan cache ENSO/IOD terisi
-            // (prosesJadwalOtomatis memanggil getENSOAnomaly/getIODAnomaly sendiri —
-            //  kita ambil hasilnya dari window atau fetch ulang jika belum ada)
-            try {
-                var enso = window._ensoDataTerkini;
-                var iod  = window._iodDataTerkini;
+    try {
+        // --- UBAH BAGIAN INI ---
+        // Ganti _ensoDataTerkini dengan variabel yang dipakai Dashboard (misal: window.oniData atau window.dmiData)
+        // Kita paksa mengambil apa yang dipakai Dashboard agar angkanya SAMA PERSIS
+        
+        var enso = window.ensoData; // Ganti 'ensoData' dengan nama variabel yang ditemukan di Console
+        var iod = window.iodData;   // Ganti 'iodData' dengan nama variabel yang ditemukan di Console
 
-                if (!enso && typeof window.getENSOAnomaly === 'function') {
-                    enso = await window.getENSOAnomaly();
-                    window._ensoDataTerkini = enso;
-                }
-                if (!iod && typeof window.getIODAnomaly === 'function') {
-                    iod = await window.getIODAnomaly();
-                    window._iodDataTerkini = iod;
-                }
+        // Jika variabel di atas tidak ada, gunakan yang lama sebagai cadangan
+        enso = enso || window._ensoDataTerkini;
+        iod = iod || window._iodDataTerkini;
 
-                // Pastikan MJO juga sudah ter-fetch
-                if (!window.mjoData && typeof window.getMJOData === 'function') {
-                    await window.getMJOData();
-                }
-
-                if (enso || iod) {
-                    window.perbarui6FaktorPanel(enso, iod);
-                }
-            } catch (e) {
-                console.warn('[6F] Gagal memperbarui panel 6 faktor:', e.message);
-            }
-
-            return hasilAsli;
-        };
-
+        if (enso || iod) {
+            window.perbarui6FaktorPanel(enso, iod);
+        }
+        // -----------------------
+    } catch (e) {
+        console.warn('[6F] Gagal sinkronisasi:', e.message);
+    }
+    return hasilAsli;
+};
         // Juga hook prosesAnalisisKalender (RISIKO IKLIM tab)
         // agar cache ENSO/IOD terisi sebelum hitungRisikoDinamis dipanggil
         var _asliKalender = window.prosesAnalisisKalender;
