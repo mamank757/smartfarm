@@ -664,10 +664,20 @@ if (typeof window.hitungWetnessScore === 'function') {
         function barFaktor(label, nilai, bobot, satuan) {
             var persen    = Math.round(bobot * 100);
             var arah      = nilai > 0 ? '+' : '';
-            var warna     = nilai > 0.1 ? '#10b981' : (nilai < -0.1 ? '#ef4444' : '#64748b');
             
-// Kita kali dengan bobot agar barnya proporsional dengan dampak aslinya
-var lebar = Math.min(100, Math.abs(nilai * bobot) * 500);
+            // --- BAGIAN YANG DIGANTI ---
+            // 1. Hitung dampak nyata (Weighted Impact)
+            var dampak = nilai * bobot; 
+            
+            // 2. Tentukan threshold (kepekaan warna)
+            // Nilai 0.02 artinya dampak di bawah 2% dianggap netral (abu-abu)
+            var threshold = 0.02; 
+            
+            // 3. Warna dan lebar sekarang mengacu pada variabel 'dampak', bukan 'nilai' mentah
+            var warna = dampak > threshold ? '#10b981' : (dampak < -threshold ? '#ef4444' : '#64748b');
+            var lebar = Math.min(100, Math.abs(dampak) * 500); 
+            // ---------------------------
+
             var satuanStr = satuan || '';
             return (
                 '<div style="margin-bottom:6px;">' +
@@ -680,7 +690,6 @@ var lebar = Math.min(100, Math.abs(nilai * bobot) * 500);
                 '</div>'
             );
         }
-
         var labelSkor = skor6F > 0.3 ? '🌧️ Cenderung BASAH'
                       : skor6F < -0.3 ? '☀️ Cenderung KERING'
                       : '⚖️ NETRAL';
