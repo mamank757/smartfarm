@@ -170,26 +170,28 @@
      * [FIX-4] Prioritas 1 → BOM real-time, 2 → cache, 3 → netral (0)
      */
     function getDampakMJO(lat, lon, bulan, enso) {
-        // Prioritas 1: Fungsi BOM real-time dari patch_mjo_bom_v1
-        if (typeof window.hitungDampakMJOLokal === 'function' &&
-            window.mjoData && window.mjoData.fase) {
-            return window.hitungDampakMJOLokal(
-                lat, lon,
-                window.mjoData.fase,
-                window.mjoData.amplitudo || 0
-            );
-        }
+    // ✅ FIX 3: Gunakan cek eksplisit bukan truthy check (fase=0 adalah falsy!)
+    var faseMJO = window.mjoData && typeof window.mjoData.fase === 'number'
+        ? window.mjoData.fase : -1;
+    var ampMJO  = window.mjoData && typeof window.mjoData.amplitudo === 'number'
+        ? window.mjoData.amplitudo : 0;
 
-        // Prioritas 2: Cache mjoData saja (tanpa fungsi BOM)
-        if (window.mjoData && window.mjoData.fase) {
-            window.mjoFase      = window.mjoData.fase;
-            window.mjoAmplitudo = window.mjoData.amplitudo || 0;
-            return estimasiDampakMJO(lat, lon, bulan, enso);
-        }
-
-        // Prioritas 3: Netral — tidak ada data MJO
-        return 0;
+    // Prioritas 1: Fungsi BOM real-time
+    if (typeof window.hitungDampakMJOLokal === 'function' &&
+        faseMJO >= 1 && faseMJO <= 8) {
+        return window.hitungDampakMJOLokal(lat, lon, faseMJO, ampMJO);
     }
+
+    // Prioritas 2: Hitung manual dari cache
+    if (faseMJO >= 1 && faseMJO <= 8) {
+        window.mjoFase      = faseMJO;
+        window.mjoAmplitudo = ampMJO;
+        return estimasiDampakMJO(lat, lon, bulan, enso);
+    }
+
+    // Prioritas 3: Netral — tidak ada data MJO valid
+    return 0;
+}
 
     // ============================================================
     //  BAGIAN 2 — FASE BULAN
