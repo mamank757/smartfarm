@@ -625,6 +625,10 @@
         var sstAnom  = getAnomaliSSTLokal(lat, lon, bulanNow);
         var mjoVal   = getDampakMJO(lat, lon, bulanNow, ensoVal);
         var bulanVal = getDampakFaseBulan(new Date());
+        var labelMJO = '🌀 MJO';
+if (window.mjoData && window.mjoData.fase) {
+    labelMJO = '🌀 MJO (Fase ' + window.mjoData.fase + ')';
+}
         var zomNorm  = 0; // ZOM tidak tersedia di sini → netral
 
         var skor6F = hitungSkor6Faktor(ensoVal, iodVal, zomNorm, sstAnom, mjoVal, bulanVal);
@@ -679,11 +683,11 @@
         // [FIX-5] Argumen ke-5 (terbalik=true) untuk ENSO dan IOD
         isi.innerHTML =
             barFaktor('🌏 ENSO',      ensoVal,  BOBOT_6F.enso,  '°C (ONI)', true)  +
-            barFaktor('🌊 SST Lokal', sstAnom,  BOBOT_6F.sst,   '°C (anom)', false) +
-            barFaktor('🌤️ IOD',      iodVal,   BOBOT_6F.iod,   '°C (DMI)', true)  +
-            barFaktor('🗺️ ZOM',       zomNorm,  BOBOT_6F.zom,   ' (normed)', false) +
-            barFaktor('🌀 MJO',       mjoVal,   BOBOT_6F.mjo,   ' (fase)',   false) +
-            barFaktor('🌙 Fase Bulan',bulanVal, BOBOT_6F.bulan, '',          false) +
+    barFaktor('🌊 SST Lokal', sstAnom,  BOBOT_6F.sst,   '°C (anom)', false) +
+    barFaktor('🌤️ IOD',      iodVal,   BOBOT_6F.iod,   '°C (DMI)', true)  +
+    barFaktor('🗺️ ZOM',       zomNorm,  BOBOT_6F.zom,   ' (normed)', false) +
+    barFaktor(labelMJO,       mjoVal,   BOBOT_6F.mjo,   '',          false) + // ✅ Gunakan labelMJO baru
+    barFaktor('🌙 Fase Bulan',bulanVal, BOBOT_6F.bulan, '',          false) +
             '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);">' +
                 '<span style="font-weight:700;color:' + warnaSkor + ';">' +
                     'Skor Terpadu: ' + (skor6F > 0 ? '+' : '') + skor6F.toFixed(3) +
