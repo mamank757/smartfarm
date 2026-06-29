@@ -12,24 +12,35 @@
             
             const data = await response.json();
             
-            // Simpan ke variabel global yang dibaca oleh dashboard
-            window.mjoData = data;
+            // ✅ FIX 1: Tambah _cacheTime agar patch_mjo_bom_v1.js TIDAK overwrite
+            window.mjoData = { ...data, _cacheTime: Date.now() };
             window.mjoFase = data.fase;
             window.mjoAmplitudo = data.amplitudo;
             
             console.log("[MJO] Data berhasil dimuat:", data);
-            return data;
+            
+            // ✅ FIX 4: Trigger panel refresh setelah MJO load selesai
+            setTimeout(function() {
+                if (typeof window.perbarui6FaktorPanel === 'function' &&
+                    (window._ensoDataTerkini || window._iodDataTerkini)) {
+                    console.log('[MJO] Memperbarui panel 6 faktor dengan data MJO terbaru...');
+                    window.perbarui6FaktorPanel(
+                        window._ensoDataTerkini || null,
+                        window._iodDataTerkini  || null
+                    );
+                }
+            }, 500);
+            
+            return window.mjoData;
             
         } catch (error) {
             console.error("[MJO] Gagal mengambil data:", error);
-            // Fallback jika gagal (Netral)
-            window.mjoData = { fase: 0, amplitudo: 0 };
+            window.mjoData = { fase: 0, amplitudo: 0, _cacheTime: Date.now() };
             window.mjoFase = 0;
             window.mjoAmplitudo = 0;
             return window.mjoData;
         }
     };
 
-    // Jalankan otomatis saat halaman dimuat
     window.getMJOData();
 })();
