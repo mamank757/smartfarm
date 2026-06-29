@@ -19,17 +19,16 @@
             
             console.log("[MJO] Data berhasil dimuat:", data);
             
-            // ✅ FIX 4: Trigger panel refresh setelah MJO load selesai
-            setTimeout(function() {
-                if (typeof window.perbarui6FaktorPanel === 'function' &&
-                    (window._ensoDataTerkini || window._iodDataTerkini)) {
-                    console.log('[MJO] Memperbarui panel 6 faktor dengan data MJO terbaru...');
-                    window.perbarui6FaktorPanel(
-                        window._ensoDataTerkini || null,
-                        window._iodDataTerkini  || null
-                    );
-                }
-            }, 500);
+            // ✅ FIX: Hapus kewajiban menunggu ENSO/IOD
+setTimeout(function() {
+    if (typeof window.perbarui6FaktorPanel === 'function') {
+        console.log('[MJO] Memperbarui panel 6 faktor dengan data MJO terbaru...');
+        window.perbarui6FaktorPanel(
+            window._ensoDataTerkini || null,
+            window._iodDataTerkini  || null
+        );
+    }
+}, 500);
             
             return window.mjoData;
             
