@@ -19,12 +19,12 @@
             
             console.log("[MJO] Data berhasil dimuat:", data);
             
-            // ✅ FIX: Hapus kewajiban menunggu ENSO/IOD
+            // ✅ FIX: Hapus kewajiban menunggu ENSO/IOD agar panel tetap ter-render
 setTimeout(function() {
     if (typeof window.perbarui6FaktorPanel === 'function') {
-        console.log('[MJO] Memperbarui panel 6 faktor dengan data MJO terbaru...');
+        console.log('[MJO] Memaksa update panel 6 faktor...');
         window.perbarui6FaktorPanel(
-            window._ensoDataTerkini || null,
+            window._ensoDataTerkini || null, 
             window._iodDataTerkini  || null
         );
     }
