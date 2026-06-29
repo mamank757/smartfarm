@@ -741,43 +741,33 @@
             if (elTeks.dataset.obs6F) return; // sudah terpasang
 
             var obs = new MutationObserver(function () {
-                // Pastikan konten bukan loading/kosong
-                if (!elTeks.innerHTML || elTeks.innerHTML.trim().length < 30) return;
+    if (!elTeks.innerHTML || elTeks.innerHTML.trim().length < 30) return;
 
-                // Ambil data ENSO/IOD dari cache window
-                var enso6F = window._ensoDataTerkini;
-                var iod6F  = window._iodDataTerkini;
+    var enso6F = window._ensoDataTerkini;
+    var iod6F  = window._iodDataTerkini;
 
-                if (!enso6F && !iod6F) {
-                    // Coba ambil langsung jika belum ada
-                    if (typeof window.getENSOAnomaly === 'function') {
-                        window.getENSOAnomaly()
-                            .then(function (d) {
-                                window._ensoDataTerkini = d;
-                                return window.getIODAnomaly ? window.getIODAnomaly() : null;
-                            })
-                            .then(function (d) {
-                                if (d) window._iodDataTerkini = d;
-                                window.perbarui6FaktorPanel(
-                                    window._ensoDataTerkini,
-                                    window._iodDataTerkini
-                                );
-                            })
-                            .catch(function () {
-                                // Render panel dengan data kosong daripada tidak tampil
-                                window.perbarui6FaktorPanel(null, null);
-                            });
-                        return;
-                    }
-                }
+    // ✅ FIX 2: Pastikan MJO sudah load sebelum render panel
+    var renderPanel = function() {
+        try {
+            window.perbarui6FaktorPanel(enso6F || null, iod6F || null);
+        } catch (e) {
+            console.warn('[6F] Panel update gagal:', e.message);
+        }
+    };
 
-                try {
-                    window.perbarui6FaktorPanel(enso6F || null, iod6F || null);
-                } catch (e) {
-                    console.warn('[6F] Panel update gagal:', e.message);
-                }
-            });
+    // Jika MJO belum ada data valid, tunggu sebentar lalu coba lagi
+    var faseMJO = window.mjoData && typeof window.mjoData.fase === 'number'
+        ? window.mjoData.fase : -1;
 
+    if (faseMJO < 1 && typeof window.getMJOData === 'function') {
+        // MJO belum siap, fetch dulu
+        window.getMJOData()
+            .then(function() { renderPanel(); })
+            .catch(function() { renderPanel(); }); // Tetap render walau gagal
+    } else {
+        renderPanel();
+    }
+});
             obs.observe(elTeks, { childList: true, subtree: true, characterData: true });
             elTeks.dataset.obs6F = '1';
             console.log('%c✅ [6F] MutationObserver #teksAnalisisFase terpasang', 'color:#d946ef;font-weight:bold;');
