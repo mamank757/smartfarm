@@ -735,119 +735,32 @@
      * dia selalu mengisi #teksAnalisisFase. Observer mendeteksi ini
      * → update panel 6 faktor otomatis tanpa perlu hook ke fungsi manapun.
      */
-    function hookProsesJadwal() {
-        // ── 1. Observer pada #teksAnalisisFase ──────────────────────────
-        // Dipanggil setiap kali grafik kalender selesai dirender
-        function pasangObserverKalender() {
-            var elTeks = document.getElementById('teksAnalisisFase');
-            if (!elTeks) {
-                setTimeout(pasangObserverKalender, 500);
-                return;
-            }
-            if (elTeks.dataset.obs6F) return; // sudah terpasang
+    // Ganti bagian hookProsesJadwal dan init6Faktor dengan ini:
 
-            var obs = new MutationObserver(function () {
-    if (!elTeks.innerHTML || elTeks.innerHTML.trim().length < 30) return;
+function hookProsesJadwal() {
+    // Sistem "Loop Cek" (Polling): Cek setiap 2 detik apakah data sudah lengkap
+    setInterval(function() {
+        var enso = window._ensoDataTerkini;
+        var iod = window._iodDataTerkini;
+        var mjo = window.mjoData;
 
-    var enso6F = window._ensoDataTerkini;
-    var iod6F  = window._iodDataTerkini;
-
-    // ✅ FIX 2: Pastikan MJO sudah load sebelum render panel
-    var renderPanel = function() {
-        try {
-            window.perbarui6FaktorPanel(enso6F || null, iod6F || null);
-        } catch (e) {
-            console.warn('[6F] Panel update gagal:', e.message);
+        // Jika data ENSO/IOD/MJO sudah ada, perbarui panel
+        if ((enso || iod) && mjo) {
+            window.perbarui6FaktorPanel(enso, iod);
         }
-    };
+    }, 2000); 
+}
 
-    // Jika MJO belum ada data valid, tunggu sebentar lalu coba lagi
-    var faseMJO = window.mjoData && typeof window.mjoData.fase === 'number'
-        ? window.mjoData.fase : -1;
+function init6Faktor() {
+    injeksiKalenderTanam();
+    injeksiPanelDebug6F();
+    hookProsesJadwal();
 
-    if (faseMJO < 1 && typeof window.getMJOData === 'function') {
-        // MJO belum siap, fetch dulu
-        window.getMJOData()
-            .then(function() { renderPanel(); })
-            .catch(function() { renderPanel(); }); // Tetap render walau gagal
-    } else {
-        renderPanel();
-    }
-});
-            obs.observe(elTeks, { childList: true, subtree: true, characterData: true });
-            elTeks.dataset.obs6F = '1';
-            console.log('%c✅ [6F] MutationObserver #teksAnalisisFase terpasang', 'color:#d946ef;font-weight:bold;');
-        }
-
-        pasangObserverKalender();
-
-        // ── 2. Hook prosesJadwalOtomatis jika ada (opsional) ────────────
-        // Tidak menghentikan eksekusi jika tidak ada
-        var _asliProses = window.prosesJadwalOtomatis;
-        if (typeof _asliProses === 'function' && !_asliProses.__6FHooked) {
-            window.prosesJadwalOtomatis = async function () {
-                var hasilAsli = await _asliProses.apply(this, arguments);
-                try {
-                    var enso = window._ensoDataTerkini;
-                    var iod  = window._iodDataTerkini;
-                    if (enso || iod) window.perbarui6FaktorPanel(enso || null, iod || null);
-                } catch (e) {}
-                return hasilAsli;
-            };
-            window.prosesJadwalOtomatis.__6FHooked = true;
-        }
-    }
-
-    // ============================================================
-    //  BAGIAN 9 — INISIALISASI
-    // ============================================================
-
-    function init6Faktor() {
-        injeksiKalenderTanam();
-        injeksiPanelDebug6F();
-        hookProsesJadwal();
-
-        window.__skor6FaktorV1Aktif = true;
-
-        // Ekspor untuk akses debug/patch lain
-        window._6F = {
-            bobot:               BOBOT_6F,
-            hitungSkor6Faktor:   hitungSkor6Faktor,
-            getDampakMJO:        getDampakMJO,
-            getDampakFaseBulan:  getDampakFaseBulan,
-            getAnomaliSSTLokal:  getAnomaliSSTLokal,
-            hariFaseBulan:       hariFaseBulan6F,
-            hitungWSMandiri:     _hitungWSMandiri
-        };
-
-        console.log(
-            '%c✅ patch_skor_6faktor_v1.js (PERBAIKAN) AKTIF\n' +
-            '\n  ╔══ PERBAIKAN AKTIF ═══════════════════════════════╗\n' +
-            '  ║ [FIX-1]  Bobot ENSO 30% / SST 18% / IOD 17%\n' +
-            '  ║          ZOM 18% / MJO 10% / Bulan 7% ✅\n' +
-            '  ║ [FIX-2]  hitungWetnessScore mandiri (tidak\n' +
-            '  ║          bergantung window.hitungWetnessScore) ✅\n' +
-            '  ║ [FIX-3]  getAnomaliSSTLokal: hapus _sstLokalTerkini\n' +
-            '  ║          yang tidak pernah diset ✅\n' +
-            '  ║ [FIX-4]  getDampakMJO: fallback eksplisit = 0 ✅\n' +
-            '  ║ [FIX-5]  barFaktor: ENSO+/IOD+ = merah (kering) ✅\n' +
-            '  ║ [FIX-6]  Lebar bar dikunci 0–100% ✅\n' +
-            '  ║ [FIX-7]  hookProsesJadwal: hapus window.ensoData\n' +
-            '  ║          yang tidak pernah ada ✅\n' +
-            '  ║ [FIX-8]  rekomendasiWindowTanam: teruskan 5 argumen ✅\n' +
-            '  ║ [FIX-9]  prosesAnalisisKalender: null-check panel ✅\n' +
-            '  ║ [FIX-10] Guard double-load di awal IIFE ✅\n' +
-            '  ╠══ INTEGRASI 6 FAKTOR IKLIM ══════════════════════╣\n' +
-            '  ║ 🌏 ENSO         ' + Math.round(BOBOT_6F.enso  * 100) + '%  Tren makro tahunan\n' +
-            '  ║ 🌊 SST Lokal    ' + Math.round(BOBOT_6F.sst   * 100) + '%  Moisture supply lokal\n' +
-            '  ║ 🌤️ IOD           ' + Math.round(BOBOT_6F.iod   * 100) + '%  Tren aliran timur-barat\n' +
-            '  ║ 🗺️ ZOM           ' + Math.round(BOBOT_6F.zom   * 100) + '%  Karakteristik ZOM lokal\n' +
-            '  ║ 🌀 MJO          ' + Math.round(BOBOT_6F.mjo   * 100) + '%  Pemicu intramusiman\n' +
-            '  ║ 🌙 Fase Bulan    ' + Math.round(BOBOT_6F.bulan * 100) + '%  Pasang surut mikroklimat\n' +
-            '  ╚═══════════════════════════════════════════════════╝',
-            'color:#d946ef; font-weight:bold;'
-        );
-    }
+    window.__skor6FaktorV1Aktif = true;
+    
+    // Inisialisasi awal
+    console.log("[6F] Sistem pemantau data aktif.");
+}
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
