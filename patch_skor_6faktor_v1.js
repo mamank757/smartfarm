@@ -140,7 +140,7 @@
             var fase = Math.round(window.mjoFase);
             var amp  = window.mjoAmplitudo || 0;
 
-            if (amp < 1.0 || fase < 1 || fase > 8) return 0;
+            if (amp < 0.1 || fase < 1 || fase > 8) return 0;
 
             var dampakPerFase = {
                 sumatera:  [ 0.2,  0.5,  0.8,  0.6, -0.3, -0.6, -0.8, -0.4],
