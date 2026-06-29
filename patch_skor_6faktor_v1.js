@@ -579,7 +579,7 @@
         ].join('');
         panel.innerHTML =
             '<strong style="color:#d946ef;display:block;margin-bottom:8px;font-size:0.8rem;">' +
-                '📊 KONTRIBUSI 6 FAKTOR IKLIM' +
+                '📊 FAKTOR IKLIM MAKRO' +
             '</strong>' +
             '<div id="isi6FaktorDebug">Memuat data faktor...</div>';
 
