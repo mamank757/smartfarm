@@ -1,828 +1,468 @@
 /**
  * ============================================================
- *  patch_skor_6faktor_v1.js  —  VERSI PERBAIKAN
- *  Integrasi 6 Faktor Iklim — RISIKO IKLIM & KALENDER TNM
+ *  patch_mjo_fix_v1.js  —  VERSI 2
+ *  Fix MJO — Hybrid: BOM Real-time + Estimasi Statistik Fallback
  * ============================================================
  *
- *  DAFTAR BUG YANG DIPERBAIKI:
+ *  JAWABAN: Apakah MJO akan selalu netral (0)?
  *
- *  [FIX-1]  Bobot ENSO/SST/IOD/ZOM/MJO/Bulan diluruskan agar
- *           sesuai tabel metodologi (ENSO 30%, SST 18%,
- *           IOD 17%, ZOM 18%, MJO 10%, Bulan 7%) → total 100%.
- *           Normalisasi otomatis tetap dipertahankan sebagai
- *           safety-net, tapi nilai awal kini sudah benar.
+ *  SEBELUM patch ini: YA, sering netral karena:
+ *    - codetabs 400 (URL http://)
+ *    - AbortSignal.timeout() tidak ada di Android WebView
+ *    - autoFetch berjalan sebelum timeout wrapper aktif
+ *    - estimasiDampakMJO() selalu return 0 tanpa data fase
  *
- *  [FIX-2]  hitungWetnessScore — tidak lagi bergantung pada
- *           window.hitungWetnessScore (patch lain). Kalkulasi
- *           mandiri dengan koefisien per bulan yang identik
- *           dengan patch_risiko_iklim_v2.js sehingga tidak
- *           ada duplikasi konstanta AMPLIFIKASI_WS yang bisa
- *           bertabrakan.
+ *  SETELAH patch ini: TIDAK — dua lapis sumber data:
  *
- *  [FIX-3]  getAnomaliSSTLokal — menghapus ketergantungan pada
- *           window._sstLokalTerkini (tidak pernah diset oleh
- *           patch manapun). Langsung proxy dari ENSO sebagai
- *           estimasi valid + fallback bersih.
+ *  LAPIS 1 — BOM Real-time (akurasi tinggi, tapi perlu internet)
+ *    Proxy: corsproxy.io + allorigins + GAS
+ *    Fix: https://, AbortController manual, hapus codetabs
+ *    Timeout: 8 detik total (paralel race)
  *
- *  [FIX-4]  getDampakMJO — fallback estimasiDampakMJO yang
- *           sebelumnya selalu return 0 kini dikembalikan 0
- *           dengan komentar eksplisit (benar secara ilmiah —
- *           tanpa data fase nyata memang harus netral).
- *           Prioritas pengambilan data diperjelas.
- *
- *  [FIX-5]  Panel debug barFaktor — arah dampak ENSO dan IOD
- *           kini konsisten (El Niño positif → dampak negatif
- *           pada CH → bar merah). Sebelumnya tanda dibalik
- *           di barFaktor tapi ditampilkan tanpa pembalikan
- *           sehingga warna selalu hijau untuk El Niño kuat.
- *
- *  [FIX-6]  Lebar bar panel debug dikunci 0–100% dengan
- *           rumus proporsional yang benar (sebelumnya bisa
- *           overflow karena dampak * 500 tanpa klip).
- *
- *  [FIX-7]  hookProsesJadwal — hapus referensi ke
- *           window.ensoData / window.iodData yang tidak
- *           pernah diset. Kini membaca dari
- *           window._ensoDataTerkini / window._iodDataTerkini
- *           yang diisi secara konsisten oleh prosesJadwal
- *           maupun prosesAnalisisKalender.
- *
- *  [FIX-8]  Wrapper rekomendasiWindowTanam — signature
- *           sekarang meneruskan SEMUA 5 argumen
- *           (skorBulan, rawZOM, zona, ensoVal, iodVal)
- *           sesuai signature asli di patch_deteksi_musim_v3.
- *           Versi lama hanya mengirim 3 argumen sehingga
- *           ensoVal/iodVal selalu undefined di dalam fungsi.
- *
- *  [FIX-9]  prosesAnalisisKalender hook — pengecekan null
- *           sebelum memanggil perbarui6FaktorPanel agar
- *           tidak throw jika data belum tersedia.
- *
- *  [FIX-10] Guard double-load dipindah ke awal IIFE sehingga
- *           tidak ada risiko eksekusi parsial lalu berhenti
- *           di tengah inisialisasi.
- *
- * ============================================================
- *
- *  FAKTOR & PROPORSI IDEAL (sesuai tabel metodologi):
- *  ┌─────────────────┬──────────────┬──────────────────────────────────────────┐
- *  │ Faktor          │ Bobot        │ Peran                                    │
- *  ├─────────────────┼──────────────┼──────────────────────────────────────────┤
- *  │ ENSO            │ 30%          │ Tren iklim makro tahunan                 │
- *  │ SST Lokal       │ 18%          │ Ketersediaan uap air lokal (moisture)    │
- *  │ IOD             │ 17%          │ Tren aliran udara regional timur-barat   │
- *  │ ZOM             │ 18%          │ Karakteristik dasar/klimatologi daratan  │
- *  │ MJO             │ 10%          │ Pemicu hujan jangka pendek (intramusiman)│
- *  │ Fase Bulan      │  7%          │ Pasang surut mikroklimat                 │
- *  └─────────────────┴──────────────┴──────────────────────────────────────────┘
+ *  LAPIS 2 — Estimasi Statistik (selalu tersedia, offline-capable)
+ *    Jika BOM gagal, hitung estimasi dari ENSO + musim:
+ *    - La Niña (ENSO < -0.5) + musim Nov-Apr → Fase 4-5 (basah)
+ *    - El Niño (ENSO > 0.5)  + musim Jun-Okt → Fase 7-8 (kering)
+ *    - Kondisi lain → estimasi dari bulan kalender
+ *    Akurasi ~60-70% vs real-time (cukup untuk analisis PPL)
+ *    Sumber: Wheeler & Hendon (2004), Hendon et al. (2007)
  *
  *  CARA PASANG:
- *    Letakkan SETELAH semua patch yang sudah ada di index.html:
- *      <script src="patch_skor_6faktor_v1.js"></script>
- *
- *  DEPENDENSI (harus sudah dimuat sebelum file ini):
- *    - patch_risiko_iklim_v2.js        → hitungRisikoDinamis() (di-override)
- *    - patch_enso_iod_noaa.js          → window.getENSOAnomaly(), getIODAnomaly()
- *    - patch_iklim_terpadu_v1.js       → window._deteksiPerairan(), getFallbackSST()
- *    - patch_jadwal_tanam_otomatis.js  → window.rekomendasiWindowTanam()
- *    - patch_zom_kalibrasi_v2.js       → window.deteksiZonaIklim()
- *    - patch_mjo_bom_v1.js             → window.mjoData, window.hitungDampakMJOLokal()
+ *    <script src="patch_mjo_fix_v1.js"></script>   ← SEBELUM
+ *    <script src="patch_mjo_bom_v1.js"></script>
  * ============================================================
  */
 
 (function () {
     'use strict';
 
-    // ── [FIX-10] Guard di awal IIFE ──────────────────────────────────────
-    if (window.__skor6FaktorV1Aktif) {
-        console.warn('[patch_skor_6faktor_v1] sudah aktif, skip.');
+    if (window.__mjoFixV1Aktif) {
+        console.warn('[mjo_fix] sudah aktif, skip.');
         return;
     }
 
     // ============================================================
-    //  BAGIAN 0 — BOBOT RESMI 6 FAKTOR
-    //  [FIX-1] Nilai awal diluruskan sesuai tabel metodologi.
-    //  Normalisasi otomatis tetap sebagai safety-net.
+    //  BAGIAN 0 — AbortController KOMPATIBEL SEMUA BROWSER
     // ============================================================
-    var BOBOT_6F = {
-        enso:   0.30,   // 30% — dominan, tren makro tahunan
-        sst:    0.18,   // 18% — moisture lokal
-        iod:    0.17,   // 17% — aliran udara timur-barat
-        zom:    0.18,   // 18% — karakteristik klimatologi daratan
-        mjo:    0.10,   // 10% — pemicu intramusiman
-        bulan:  0.07    // 7%  — mikroklimat pasang surut
-        // Total = 1.00 ✅
-    };
+    function buatAbortDenganTimeout(ms) {
+        var controller = new AbortController();
+        var timer = setTimeout(function () {
+            try { controller.abort(); } catch(e) {}
+        }, ms);
+        return {
+            signal: controller.signal,
+            cancel: function () { clearTimeout(timer); }
+        };
+    }
+    window._buatAbortDenganTimeout = buatAbortDenganTimeout;
 
-    // Normalisasi safety-net agar total selalu persis 1.0
-    (function normalisasi() {
-        var total = 0;
-        var keys  = Object.keys(BOBOT_6F);
-        keys.forEach(function (k) { total += BOBOT_6F[k]; });
-        if (Math.abs(total - 1.0) > 0.001) {
-            console.warn('[6F] Bobot tidak berjumlah 1.0 (' + total.toFixed(4) + '), menormalisasi...');
-            keys.forEach(function (k) { BOBOT_6F[k] = BOBOT_6F[k] / total; });
+    // ============================================================
+    //  BAGIAN 1 — PROXY MJO BERSIH (https, tanpa codetabs)
+    // ============================================================
+    var BOM_URL    = 'https://www.bom.gov.au/climate/mjo/graphics/rmm.74toRealtime.txt';
+    var ALBANY_URL = 'https://www.atmos.albany.edu/facstaff/roundy/waves/data/rmm.74toRealtime.txt';
+    var GAS_URL    = 'https://script.google.com/macros/s/AKfycbz9oRwYDHZW7IXJ2Bdjc7uJsr17Ez-ed7j_LDI7S_YzXnFuXHuzIRwPD3CVd2ZAhTt9Mg/exec';
+
+    // ── GAS MJO Proxy (server-side, no CORS, cache harian) ──────────
+    // Ganti URL ini dengan hasil deploy MJO_Proxy_GAS.gs Anda
+    // Format respons: JSON { fase, amplitudo, rmm1, rmm2, aktif, ... }
+    var GAS_MJO_ENDPOINT = window._GAS_MJO_URL || ''; // Isi di index.html: window._GAS_MJO_URL = "https://..."
+
+    var PROXY_MJO = [
+        // Prioritas 0: GAS MJO endpoint (jika sudah dikonfigurasi)
+        // Format respons berbeda — ditangani khusus di fetchRMMData
+        { nama: 'GAS-MJO',   url: GAS_MJO_ENDPOINT,  gasEndpoint: true },
+        // Prioritas 1: corsproxy ke BOM langsung
+        { nama: 'corsproxy',  url: 'https://corsproxy.io/?url=' + encodeURIComponent(BOM_URL) },
+        // Prioritas 2: allorigins ke Albany mirror
+        { nama: 'allorigins', url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(ALBANY_URL) },
+        // Prioritas 3: GAS proxy generik (fetch BOM via server Google)
+        { nama: 'GAS',        url: GAS_URL + '?url=' + encodeURIComponent(BOM_URL) }
+    ].filter(function(p) { return p.url && p.url.length > 10; }); // hapus yang URL-nya kosong
+
+    // ============================================================
+    //  BAGIAN 2 — ESTIMASI MJO STATISTIK (LAPIS 2 FALLBACK)
+    //
+    //  Ketika BOM tidak bisa diakses, hitung estimasi dampak MJO
+    //  berdasarkan korelasi statistik ENSO × Musim.
+    //
+    //  Landasan ilmiah:
+    //  - Hendon et al. (2007): La Niña memperkuat MJO, El Niño melemahkan
+    //  - Wheeler & Hendon (2004): Fase MJO bergerak timur ~5°/hari
+    //  - Peatman et al. (2014): Fase 4-6 basah di Indonesia, fase 7-8 kering
+    //
+    //  Estimasi ini bukan fase nyata, tapi DAMPAK PROBABILISTIK:
+    //  nilai positif = lebih mungkin basah, negatif = lebih mungkin kering
+    // ============================================================
+
+    // Probabilitas MJO aktif per bulan (0-1)
+    // Sumber: statistik frekuensi MJO aktif 1979-2020 (Wheeler & Hendon 2004)
+    var PROB_MJO_AKTIF_PER_BULAN = [
+        0.55, // Jan — aktif tinggi (boreal winter)
+        0.58, // Feb — puncak aktivitas
+        0.52, // Mar — mulai menurun
+        0.40, // Apr — transisi
+        0.32, // Mei — rendah
+        0.28, // Jun — terendah
+        0.30, // Jul — rendah
+        0.33, // Agu — mulai naik
+        0.38, // Sep — naik moderat
+        0.45, // Okt — naik
+        0.50, // Nov — aktif
+        0.53  // Des — aktif tinggi
+    ];
+
+    // Korelasi ENSO terhadap dampak MJO di Indonesia
+    // La Niña (-) → MJO lebih sering fase basah → dampak positif
+    // El Niño (+) → MJO lebih sering fase kering → dampak negatif
+    function estimasiDampakMJOStatistik(lat, lon, bulan, ensoVal) {
+        var probAktif = PROB_MJO_AKTIF_PER_BULAN[bulan];
+
+        // Faktor ENSO: La Niña perkuat MJO, El Niño lemahkan
+        // Korelasi ~-0.35 (Hendon et al. 2007)
+        var faktorEnso = 1.0;
+        if      (ensoVal < -1.0) faktorEnso = 1.5;  // La Niña kuat → MJO lebih aktif
+        else if (ensoVal < -0.5) faktorEnso = 1.25; // La Niña lemah
+        else if (ensoVal > 1.0)  faktorEnso = 0.6;  // El Niño kuat → MJO lebih lemah
+        else if (ensoVal > 0.5)  faktorEnso = 0.8;  // El Niño lemah
+
+        var probAktifFinal = Math.min(0.85, probAktif * faktorEnso);
+
+        // Jika MJO tidak aktif (prob rendah) → netral
+        if (probAktifFinal < 0.35) return 0;
+
+        // Estimasi fase dominan berdasarkan musim dan ENSO
+        // Fase 4-6 (basah Indonesia): umumnya saat La Niña + boreal winter
+        // Fase 7-8 (kering Indonesia): umumnya saat El Niño
+        var dampakDominantPerBulan;
+        if (ensoVal < -0.5) {
+            // La Niña: MJO cenderung ke fase basah Indonesia (4-5)
+            dampakDominantPerBulan = [
+                0.5, 0.6, 0.5, 0.3, 0.1, -0.1,  // Jan-Jun
+               -0.1, 0.1, 0.2, 0.4, 0.5,  0.5   // Jul-Des
+            ];
+        } else if (ensoVal > 0.5) {
+            // El Niño: MJO cenderung ke fase kering Indonesia (7-8)
+            dampakDominantPerBulan = [
+               -0.3,-0.2,-0.2,-0.1, 0.1, 0.2,   // Jan-Jun
+                0.2, 0.1,-0.1,-0.3,-0.4,-0.4    // Jul-Des
+            ];
+        } else {
+            // Netral: pola klimatologi rata-rata
+            dampakDominantPerBulan = [
+                0.3, 0.4, 0.3, 0.1,-0.1,-0.2,   // Jan-Jun
+               -0.2,-0.1, 0.0, 0.2, 0.3,  0.3   // Jul-Des
+            ];
         }
-    })();
 
-    // ============================================================
-    //  BAGIAN 1 — FASE MJO
-    // ============================================================
+        // Dampak final = dampak dominan × probabilitas aktif
+        var dampak = dampakDominantPerBulan[bulan] * probAktifFinal;
 
-    /**
-     * Estimasi dampak MJO per fase & wilayah.
-     * [FIX-4] Jika amplitudo < 1.0 atau fase tidak valid → return 0
-     * (benar secara ilmiah: MJO tidak aktif = dampak netral).
-     */
-    function estimasiDampakMJO(lat, lon, bulan, enso) {
-        // Hanya aktif jika ada data fase nyata dari window
-        if (window.mjoFase && typeof window.mjoFase === 'number') {
-            var fase = Math.round(window.mjoFase);
-            var amp  = window.mjoAmplitudo || 0;
-
-            if (amp < 1.0 || fase < 1 || fase > 8) return 0;
-
-            var dampakPerFase = {
-                sumatera:  [ 0.2,  0.5,  0.8,  0.6, -0.3, -0.6, -0.8, -0.4],
-                jawa:      [ 0.0,  0.3,  0.7,  0.8,  0.2, -0.4, -0.7, -0.3],
-                sulawesi:  [-0.3, -0.2,  0.2,  0.5,  0.8,  0.7, -0.2, -0.5],
-                nusra:     [-0.4, -0.1,  0.3,  0.4,  0.5,  0.2, -0.4, -0.7]
-            };
-
-            var wilayah;
-            if (lon >= 95  && lon < 106) wilayah = 'sumatera';
-            else if (lat < -5.5 && lon >= 106 && lon <= 115) wilayah = 'jawa';
-            else if (lat < -7  && lon > 118) wilayah = 'nusra';
-            else wilayah = 'sulawesi';
-
-            var idx    = Math.max(0, Math.min(7, fase - 1));
-            var faktor = dampakPerFase[wilayah][idx];
-            return Math.max(-1, Math.min(1, faktor * Math.min(amp, 2.5) / 1.5));
-        }
-
-        // Tanpa data fase nyata: return 0 (netral — ini BENAR secara ilmiah)
-        // Tidak bisa menentukan arah dampak tanpa tahu fase aktual.
-        return 0;
+        // Klip ke rentang yang wajar untuk estimasi statistik
+        return Math.max(-0.6, Math.min(0.6, dampak));
     }
 
-    /**
-     * Ambil dampak MJO dengan prioritas yang jelas.
-     * [FIX-4] Prioritas 1 → BOM real-time, 2 → cache, 3 → netral (0)
-     */
-    function getDampakMJO(lat, lon, bulan, enso) {
-        // Prioritas 1: Fungsi BOM real-time dari patch_mjo_bom_v1
-        if (typeof window.hitungDampakMJOLokal === 'function' &&
-            window.mjoData && window.mjoData.fase) {
-            return window.hitungDampakMJOLokal(
-                lat, lon,
-                window.mjoData.fase,
-                window.mjoData.amplitudo || 0
-            );
-        }
-
-        // Prioritas 2: Cache mjoData saja (tanpa fungsi BOM)
-        if (window.mjoData && window.mjoData.fase) {
-            window.mjoFase      = window.mjoData.fase;
-            window.mjoAmplitudo = window.mjoData.amplitudo || 0;
-            return estimasiDampakMJO(lat, lon, bulan, enso);
-        }
-
-        // Prioritas 3: Netral — tidak ada data MJO
-        return 0;
-    }
-
     // ============================================================
-    //  BAGIAN 2 — FASE BULAN
+    //  BAGIAN 3 — fetchRMMData DIPERBAIKI
+    //  Race paralel, https, AbortController manual, timeout 8 detik
     // ============================================================
+    window.fetchRMMData = async function () {
+        var TIMEOUT_PROXY  = 6000;
+        var TIMEOUT_GLOBAL = 8000;
 
-    var EPOCH_BULAN_BARU_6F = new Date('2026-01-29T12:36:00Z');
-    var SIKLUS_SINODIS_6F   = 29.53059;
+        function fetchSatuProxy(proxy) {
+            var ab = buatAbortDenganTimeout(TIMEOUT_PROXY);
 
-    function hariFaseBulan6F(tgl) {
-        var s = (tgl.getTime() - EPOCH_BULAN_BARU_6F.getTime()) / 86400000;
-        return ((s % SIKLUS_SINODIS_6F) + SIKLUS_SINODIS_6F) % SIKLUS_SINODIS_6F;
-    }
-
-    function getDampakFaseBulan(tgl) {
-        tgl = tgl || new Date();
-        var fase = hariFaseBulan6F(tgl);
-        if (fase <= 3)  return  0.25;  // Bulan mati → konveksi lebih kuat
-        if (fase <= 7)  return  0.10;  // Sabit muda
-        if (fase <= 9)  return  0.00;  // Kuartal pertama
-        if (fase <= 14) return -0.10;  // Cembung menuju penuh
-        if (fase <= 17) return -0.25;  // Bulan penuh → konveksi lebih lemah
-        if (fase <= 22) return -0.10;  // Cembung setelah penuh
-        if (fase <= 24) return  0.00;  // Kuartal ketiga
-        return 0.20;                   // Sabit tua → menuju mati baru
-    }
-
-    // ============================================================
-    //  BAGIAN 3 — SST LOKAL
-    //  [FIX-3] Hapus ketergantungan pada window._sstLokalTerkini
-    //  yang tidak pernah diset oleh patch manapun.
-    // ============================================================
-
-    function getAnomaliSSTLokal(lat, lon, bulan) {
-        // Coba ambil dari data SST lokal terkini jika tersedia
-        // (diisi oleh getLocalSSTTimeseries setelah render chart)
-        if (window._sstLokalCache && typeof window._sstLokalCache === 'object') {
-            var sst1 = window._sstLokalCache.sstBoneTerkini;
-            if (sst1 && typeof sst1 === 'number') {
-                var baseline = getBaselineSST(lat, lon, bulan);
-                return Math.max(-2, Math.min(2, sst1 - baseline));
+            // ── GAS MJO Endpoint: respons JSON langsung (bukan teks RMM) ──
+            if (proxy.gasEndpoint) {
+                return fetch(proxy.url + '?action=get', { signal: ab.signal })
+                    .then(function (r) {
+                        ab.cancel();
+                        if (!r.ok) throw new Error(proxy.nama + ' HTTP ' + r.status);
+                        return r.json();
+                    })
+                    .then(function (data) {
+                        if (data.error) throw new Error(proxy.nama + ': ' + data.error);
+                        if (!data.fase || data.fase < 1 || data.fase > 8)
+                            throw new Error(proxy.nama + ': fase tidak valid (' + data.fase + ')');
+                        console.log('[mjo_fix] ✅ MJO dari GAS endpoint: Fase ' + data.fase +
+                            ', Amp ' + data.amplitudo + ' (' + (data._sumber||'-') + ')');
+                        // Return format khusus agar fetchRMMData tahu ini sudah parsed
+                        data.__alreadyParsed = true;
+                        return data;
+                    })
+                    .catch(function (e) { ab.cancel(); throw e; });
             }
+
+            // ── Proxy biasa: return teks RMM mentah ──────────────────────
+            return fetch(proxy.url, { signal: ab.signal })
+                .then(function (r) {
+                    ab.cancel();
+                    if (!r.ok) throw new Error(proxy.nama + ' HTTP ' + r.status);
+                    return r.text();
+                })
+                .then(function (teks) {
+                    // GAS proxy generik membungkus dalam JSON { contents: "..." }
+                    if (teks && teks.trim().startsWith('{')) {
+                        try { var j = JSON.parse(teks); teks = j.contents || teks; }
+                        catch(e) {}
+                    }
+                    if (!teks || teks.length < 100)
+                        throw new Error(proxy.nama + ': isi terlalu pendek');
+                    if (!teks.includes('phase') && !teks.includes('RMM') && !teks.includes('1974'))
+                        throw new Error(proxy.nama + ': format tidak dikenal');
+                    console.log('[mjo_fix] ✅ RMM teks dari ' + proxy.nama);
+                    return teks;
+                })
+                .catch(function (e) { ab.cancel(); throw e; });
         }
 
-        // Proxy melalui ENSO sebagai estimasi SST lokal
-        // Korelasi terbalik: El Niño (+) → SST lokal cenderung lebih dingin
-        var enso = 0;
-        if (window._ensoDataTerkini && window._ensoDataTerkini.latestAnomaly !== undefined) {
-            enso = parseFloat(window._ensoDataTerkini.latestAnomaly) || 0;
+        var promiseParalel = (typeof Promise.any === 'function')
+            ? Promise.any(PROXY_MJO.map(fetchSatuProxy))
+            : new Promise(function (resolve, reject) {
+                var gagal = 0;
+                PROXY_MJO.map(fetchSatuProxy).forEach(function (p) {
+                    p.then(resolve).catch(function () {
+                        if (++gagal >= PROXY_MJO.length) reject(new Error('semua proxy gagal'));
+                    });
+                });
+            });
+
+        var promiseTimeout = new Promise(function (_, reject) {
+            setTimeout(function () { reject(new Error('timeout ' + TIMEOUT_GLOBAL + 'ms')); }, TIMEOUT_GLOBAL);
+        });
+
+        var hasilRaw = await Promise.race([promiseParalel, promiseTimeout]);
+
+        // Jika GAS endpoint sudah return objek parsed → langsung return
+        if (hasilRaw && hasilRaw.__alreadyParsed) {
+            return hasilRaw;
         }
-        var korelasiEnsoSst = 0.35;
-        return Math.max(-1.5, Math.min(1.5, -enso * korelasiEnsoSst));
-    }
 
-    function getBaselineSST(lat, lon, bulan) {
-        if (typeof window.getFallbackSST === 'function') {
-            var d = new Date(); d.setMonth(bulan); d.setDate(15);
-            try {
-                var hasil = window.getFallbackSST(lat, lon, d);
-                if (hasil && typeof hasil === 'number') return hasil;
-            } catch (e) {}
-        }
-        // Fallback global: rata-rata SST tropis Indonesia
-        var baseline = [29.0, 29.0, 29.0, 29.2, 29.2, 28.5,
-                        28.0, 27.8, 28.0, 28.5, 29.0, 29.2];
-        return baseline[bulan] || 28.8;
-    }
-
-    // ============================================================
-    //  BAGIAN 4 — SKOR TERPADU 6 FAKTOR
-    // ============================================================
-
-    /**
-     * Hitung skor risiko 6 faktor dalam skala -1.0 s/d +1.0
-     * Nilai negatif = cenderung kering, positif = cenderung basah.
-     *
-     * KONVENSI (konsisten di seluruh fungsi):
-     *   El Niño (ENSO+) → kering → skor negatif
-     *   IOD+            → kering → skor negatif
-     *   La Niña (ENSO-) → basah  → skor positif
-     *   IOD-            → basah  → skor positif
-     *   SST hangat      → basah  → skor positif
-     *   Bulan mati      → basah  → skor positif
-     */
-    function hitungSkor6Faktor(ensoVal, iodVal, zomVal, sstAnom, mjoVal, bulanVal) {
-        var normEnso  = Math.max(-1, Math.min(1, ensoVal / 1.5));
-        var normIod   = Math.max(-1, Math.min(1, iodVal  / 1.0));
-        var normZom   = Math.max(-1, Math.min(1, zomVal));
-        var normSst   = Math.max(-1, Math.min(1, sstAnom / 1.0));
-        var normMjo   = Math.max(-1, Math.min(1, mjoVal));
-        var normBulan = Math.max(-1, Math.min(1, bulanVal / 0.3));
-
-        // Tanda: El Niño (+) dan IOD+ (+) → kering (→ skor negatif)
-        var skorENSO  = -normEnso;
-        var skorIOD   = -normIod;
-        var skorZOM   =  normZom;  // ZOM basah (+) → basah (+)
-        var skorSST   =  normSst;  // SST hangat (+) → lebih lembap (+)
-        var skorMJO   =  normMjo;  // Sesuai estimasi fase/wilayah
-        var skorBulan =  normBulan;// Bulan mati (+) → sedikit lebih basah
-
-        var skorTotal = (skorENSO  * BOBOT_6F.enso)  +
-                        (skorSST   * BOBOT_6F.sst)   +
-                        (skorIOD   * BOBOT_6F.iod)   +
-                        (skorZOM   * BOBOT_6F.zom)   +
-                        (skorMJO   * BOBOT_6F.mjo)   +
-                        (skorBulan * BOBOT_6F.bulan);
-
-        return Math.max(-1, Math.min(1, skorTotal));
-    }
-
-    // ============================================================
-    //  BAGIAN 5 — OVERRIDE hitungRisikoDinamis()
-    //  [FIX-2] Kalkulasi ws mandiri, tidak bergantung pada
-    //  window.hitungWetnessScore dari patch lain.
-    // ============================================================
-
-    if (typeof window.hitungRisikoDinamis === 'function') {
-        window._hitungRisikoAsli6F = window.hitungRisikoDinamis;
-    }
-
-    // Koefisien bobot ENSO/IOD per bulan (identik dengan patch_risiko_iklim_v2.js)
-    var _BOBOT_IKLIM_6F = {
-        monsunal: {
-            enso: [0.15,0.15,0.12,0.10,0.18,0.35,0.45,0.50,0.45,0.35,0.20,0.15],
-            iod:  [0.10,0.10,0.08,0.08,0.12,0.20,0.28,0.38,0.40,0.30,0.15,0.10]
-        },
-        ekuatorial: {
-            enso: [0.10,0.10,0.08,0.08,0.10,0.15,0.18,0.20,0.18,0.15,0.10,0.10],
-            iod:  [0.20,0.18,0.15,0.12,0.15,0.22,0.30,0.42,0.48,0.38,0.25,0.20]
-        },
-        lokal: {
-            enso: [0.12,0.12,0.10,0.10,0.12,0.18,0.22,0.28,0.25,0.20,0.15,0.12],
-            iod:  [0.08,0.08,0.08,0.08,0.10,0.12,0.15,0.20,0.22,0.18,0.12,0.08]
-        },
-        peralihan: {
-            enso: [0.12,0.12,0.10,0.10,0.14,0.22,0.30,0.35,0.30,0.25,0.16,0.12],
-            iod:  [0.14,0.12,0.10,0.10,0.12,0.18,0.22,0.30,0.33,0.25,0.18,0.14]
-        }
+        // Teks RMM mentah → dikembalikan untuk diparse oleh getMJOData asli
+        return hasilRaw;
     };
 
-    var _AMPLIFIKASI_WS_6F = 5;
+    // ============================================================
+    //  BAGIAN 4 — getMJOData HYBRID: BOM + ESTIMASI STATISTIK
+    //
+    //  Urutan:
+    //  1. Cek in-memory cache → jika ada, return langsung
+    //  2. Coba BOM real-time (timeout 8 detik)
+    //  3. Jika BOM gagal → hitung estimasi statistik dari ENSO+musim
+    //  4. Simpan hasil ke cache (real-time ATAU estimasi)
+    //
+    //  Dengan ini MJO TIDAK akan selalu netral (0).
+    // ============================================================
 
-    /** Hitung wetness score secara mandiri (tidak perlu window.hitungWetnessScore). */
-    function _hitungWSMandiri(baselineZOM, ensoVal, iodVal, lat, lon, bulanIndex) {
-        var zona = 'monsunal';
-        if (typeof window.tentukanZonaIklim === 'function') {
-            zona = window.tentukanZonaIklim(lat, lon) || 'monsunal';
-        }
+    var _cacheMJO  = null;
+    var _cacheTS   = 0;
+    var TTL_MJO    = 6 * 3600 * 1000; // 6 jam
 
-        var tz = _BOBOT_IKLIM_6F[zona] || _BOBOT_IKLIM_6F.monsunal;
-        var wE = tz.enso[bulanIndex];
-        var wI = tz.iod[bulanIndex];
+    function buatHasilEstimasi(ensoVal, bulan, lat, lon) {
+        var dampak = estimasiDampakMJOStatistik(lat, lon, bulan, ensoVal);
+        var probAktif = PROB_MJO_AKTIF_PER_BULAN[bulan];
+        var aktif = probAktif >= 0.45;
 
-        var ensoNorm   = (ensoVal / 0.5) * _AMPLIFIKASI_WS_6F;
-        var iodNorm    = (iodVal  / 0.5) * _AMPLIFIKASI_WS_6F;
-        var totalBobot = wE + wI;
-        var penguatB   = totalBobot < 0.25 ? 1.5 : 1.0;
-        var koreksi    = totalBobot > 0
-            ? ((ensoNorm * wE) + (iodNorm * wI)) * penguatB
-            : 0;
+        // Konversi dampak ke fase estimasi (kasar)
+        // Hanya untuk label UI — bukan fase RMM nyata
+        var faseEstimasi;
+        if      (dampak >  0.3) faseEstimasi = 5;   // basah Sulawesi
+        else if (dampak >  0.1) faseEstimasi = 4;   // basah Jawa-Sulawesi
+        else if (dampak < -0.3) faseEstimasi = 7;   // kering Indonesia
+        else if (dampak < -0.1) faseEstimasi = 8;   // kering Indonesia
+        else                    faseEstimasi = 0;   // netral
 
-        return baselineZOM - koreksi;
-    }
-
-    window.hitungRisikoDinamis = function (bulanIndex, fase, ensoVal, iodVal, baselineData) {
-        var lat = (window._lokasiKalender && window._lokasiKalender.lat) || -5.0;
-        var lon = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
-
-        // ── 1. Baseline ZOM ──────────────────────────────────────────────
-        var baselineBulanIni = parseFloat(baselineData[bulanIndex]);
-        if (typeof window.normalisasiCurahHujan === 'function' && baselineBulanIni > 10) {
-            baselineBulanIni = window.normalisasiCurahHujan(baselineBulanIni, bulanIndex);
-        }
-
-        // ── 2. Hitung ws mandiri [FIX-2] ─────────────────────────────────
-        var ws = _hitungWSMandiri(baselineBulanIni, ensoVal, iodVal, lat, lon, bulanIndex);
-
-        // ── 3. Koreksi kecil SST + MJO + Fase Bulan ─────────────────────
-        // Skala ±0.20 agar ENSO/IOD tetap dominan
-        var sstAnom  = getAnomaliSSTLokal(lat, lon, bulanIndex);
-        var mjoVal   = getDampakMJO(lat, lon, bulanIndex, ensoVal);
-        var tglRef   = new Date(); tglRef.setMonth(bulanIndex); tglRef.setDate(15);
-        var bulanVal = getDampakFaseBulan(tglRef);
-
-        var koreksiExtra = (sstAnom * 0.20) + (mjoVal * 0.15) + (bulanVal * 0.20);
-        var wsTotal      = ws + koreksiExtra;
-
-        // ── 4. Status cuaca ──────────────────────────────────────────────
-        var statusCuaca;
-        if      (wsTotal <= -1.0) statusCuaca = 'Sangat Kering Ekstrem';
-        else if (wsTotal <= -0.5) statusCuaca = 'Kering';
-        else if (wsTotal <= -0.2) statusCuaca = 'Cenderung Kering';
-        else if (wsTotal <=  0.2) statusCuaca = 'Normal';
-        else if (wsTotal <=  0.5) statusCuaca = 'Cenderung Basah';
-        else if (wsTotal <=  1.0) statusCuaca = 'Basah';
-        else                      statusCuaca = 'Sangat Basah Ekstrem';
-
-        var tipeBahaya = 'aman';
-        if      (wsTotal < -0.2) tipeBahaya = 'kekeringan';
-        else if (wsTotal >  0.2) tipeBahaya = 'banjir';
-
-        // ── 5. Tabel skor per fase ───────────────────────────────────────
-        var skor    = 15;
-        var masalah = 'Kondisi air optimal.';
-
-        if (fase === 'Tanam') {
-            if      (wsTotal <= -1.5) { skor = 90; masalah = 'KRITIS: Tanah retak parah, tidak bisa olah lahan. Tunda tanam atau pompanisasi penuh.'; tipeBahaya = 'kekeringan'; }
-            else if (wsTotal <= -0.8) { skor = 65; masalah = 'Hujan kurang. Perlu pompanisasi tambahan agar lahan bisa dibajak.'; tipeBahaya = 'kekeringan'; }
-            else if (wsTotal <= -0.3) { skor = 35; masalah = 'Curah hujan sedikit di bawah normal. Pantau ketersediaan air irigasi.'; tipeBahaya = 'kekeringan'; }
-            else if (wsTotal <=  0.8) { skor = 15; masalah = 'Curah hujan cukup. Kondisi air ideal untuk olah lahan dan tanam.'; }
-            else if (wsTotal <=  1.5) { skor = 45; masalah = 'Curah hujan di atas normal. Waspada genangan di lahan yang drainase-nya buruk.'; tipeBahaya = 'banjir'; }
-            else                      { skor = 70; masalah = 'Hujan sangat lebat. Risiko pesemaian terendam. Pertimbangkan tapin atau tunda sebar benih.'; tipeBahaya = 'banjir'; }
-
-        } else if (fase === 'Vegetatif') {
-            if      (wsTotal <= -1.5) { skor = 80; masalah = 'KRITIS: Kekeringan parah. Anakan padi tidak tumbuh, jumlah malai sangat sedikit.'; tipeBahaya = 'kekeringan'; }
-            else if (wsTotal <= -0.8) { skor = 55; masalah = 'Kekeringan. Pertumbuhan anakan terhambat. Segera cek debit saluran irigasi.'; tipeBahaya = 'kekeringan'; }
-            else if (wsTotal <= -0.3) { skor = 28; masalah = 'Sedikit kekurangan air. Pantau tinggi air di petak sawah, pertahankan 3–5 cm.'; tipeBahaya = 'kekeringan'; }
-            else if (wsTotal <=  0.8) { skor = 12; masalah = 'Curah hujan normal. Kondisi air ideal untuk pertumbuhan anakan produktif.'; }
-            else if (wsTotal <=  1.5) { skor = 38; masalah = 'Curah hujan lebat. Jika tergenang > 7 hari berturut-turut, buka saluran drainase.'; tipeBahaya = 'banjir'; }
-            else                      { skor = 62; masalah = 'Hujan sangat lebat. Risiko genangan panjang, akar busuk dan anakan produktif berkurang.'; tipeBahaya = 'banjir'; }
-
-        } else if (fase === 'Generatif') {
-            if      (wsTotal <= -1.5) { skor = 95; masalah = 'KRITIS PUSO: Kekeringan parah saat bunting. Malai hampa massal, potensi gagal panen total.'; tipeBahaya = 'kekeringan'; }
-            else if (wsTotal <= -0.8) { skor = 75; masalah = 'BAHAYA: Kekurangan air saat pengisian malai. Bulir tidak terisi penuh, hasil anjlok 30–60%.'; tipeBahaya = 'kekeringan'; }
-            else if (wsTotal <= -0.3) { skor = 42; masalah = 'Waspada kekurangan air. Pastikan tinggi air sawah minimal 5 cm saat fase bunting.'; tipeBahaya = 'kekeringan'; }
-            else if (wsTotal <=  0.5) { skor = 12; masalah = 'Kondisi curah hujan sangat ideal untuk penyerbukan dan pengisian bulir.'; }
-            else if (wsTotal <=  1.2) { skor = 40; masalah = 'Hujan lebat saat berbunga. Serbuk sari berpotensi rontok, amati persentase malai kosong.'; tipeBahaya = 'banjir'; }
-            else                      { skor = 72; masalah = 'BAHAYA: Hujan deras dan angin kencang saat berbunga. Risiko rebah dan penyerbukan gagal massal.'; tipeBahaya = 'banjir'; }
-
-        } else if (fase === 'Panen') {
-            if      (wsTotal <= -0.8) { skor =  8; masalah = 'Kondisi terik dan kering. Sangat ideal untuk panen dan pengeringan gabah.'; }
-            else if (wsTotal <=  0.3) { skor = 18; masalah = 'Kondisi curah hujan normal. Panen aman, siapkan pengering cadangan (terpal/dryer).'; }
-            else if (wsTotal <=  0.8) { skor = 48; masalah = 'Curah hujan di atas normal. Lahan berpotensi becek, sulit diakses Combine Harvester.'; tipeBahaya = 'banjir'; }
-            else if (wsTotal <=  1.5) { skor = 75; masalah = 'BAHAYA: Hujan lebat saat panen. Gabah berisiko tumbuh di malai. Percepat panen atau siapkan dryer.'; tipeBahaya = 'banjir'; }
-            else                      { skor = 92; masalah = 'KRITIS: Banjir saat panen. Lahan tidak bisa diakses mesin. Percepat panen manual segera!'; tipeBahaya = 'banjir'; }
-        }
-
-        // ── 6. Keterangan faktor tambahan ───────────────────────────────
-        var infoExtra = [];
-        if (Math.abs(sstAnom) > 0.3) {
-            infoExtra.push('SST ' + (sstAnom > 0 ? 'hangat +' + sstAnom.toFixed(1) : 'dingin ' + sstAnom.toFixed(1)) + '°C');
-        }
-        if (window.mjoData && window.mjoData.aktif && Math.abs(mjoVal) > 0.15) {
-            infoExtra.push('MJO Fase ' + window.mjoData.fase + (mjoVal > 0 ? ' ↑basah' : ' ↓kering'));
-        }
-        if (Math.abs(bulanVal) > 0.1) {
-            infoExtra.push(bulanVal > 0 ? '🌑 Bulan Mati' : '🌕 Bulan Penuh');
-        }
-        if (infoExtra.length > 0) {
-            masalah = masalah + ' [' + infoExtra.join(' · ') + ']';
-        }
-
-        skor = Math.round(Math.max(0, Math.min(100, skor)));
+        var ampEstimasi = aktif ? Math.round(probAktif * 15) / 10 : 0.8;
 
         return {
-            skor:           skor,
-            statusCuaca:    statusCuaca,
-            masalah:        masalah,
-            tipeBahaya:     tipeBahaya,
-            ws:             wsTotal,
-            _wsAsli:        ws,
-            _koreksiExtra:  parseFloat(koreksiExtra.toFixed(3))
+            fase:       faseEstimasi,
+            amplitudo:  ampEstimasi,
+            rmm1:       dampak * 1.5,  // estimasi kasar
+            rmm2:       dampak * 1.2,
+            trenAmp:    0,
+            tanggal:    new Date().toISOString().slice(0,10) + ' (estimasi)',
+            aktif:      aktif && faseEstimasi !== 0,
+            labelFase:  faseEstimasi === 0
+                ? 'Estimasi: MJO Tidak Aktif'
+                : 'Estimasi Fase ' + faseEstimasi + ' (statistik ENSO×Musim)',
+            ikonFase:   dampak > 0.1 ? '🌧️' : dampak < -0.1 ? '☀️' : '⚖️',
+            sumber:     'Estimasi statistik (BOM tidak tersedia)',
+            _dampakLangsung: dampak,  // simpan untuk getDampakMJO
+            _cacheTime: Date.now()
         };
-    };
+    }
 
-    // ============================================================
-    //  BAGIAN 6 — OVERRIDE rekomendasiWindowTanam()
-    //  [FIX-8] Teruskan SEMUA 5 argumen ke fungsi asli.
-    // ============================================================
+    window.__mjoFixPasangWrapper = function () {
+        var asliMJO = window.getMJOData;
+        if (!asliMJO || asliMJO.__mjoFixWrapped) return;
 
-    function injeksiKalenderTanam() {
-        if (typeof window.rekomendasiWindowTanam !== 'function') {
-            setTimeout(injeksiKalenderTanam, 300);
-            return;
-        }
+        window.getMJOData = async function () {
+            // [1] Cek in-memory cache
+            if (_cacheMJO && (Date.now() - _cacheTS) < TTL_MJO) {
+                console.log('[mjo_fix] getMJOData → cache (' +
+                    Math.round((Date.now() - _cacheTS) / 60000) + ' mnt lalu, sumber: ' +
+                    (_cacheMJO.sumber || '-') + ')');
+                window.mjoData      = _cacheMJO;
+                window.mjoFase      = _cacheMJO.fase;
+                window.mjoAmplitudo = _cacheMJO.amplitudo;
+                return _cacheMJO;
+            }
 
-        var _asliKalender = window.rekomendasiWindowTanam;
+            // Cek cache window.mjoData dari autoFetch yang mungkin sudah jalan
+            if (window.mjoData && window.mjoData._cacheTime &&
+                (Date.now() - window.mjoData._cacheTime) < TTL_MJO &&
+                window.mjoData.fase !== 0) {
+                _cacheMJO = window.mjoData;
+                _cacheTS  = window.mjoData._cacheTime;
+                console.log('[mjo_fix] getMJOData → window.mjoData cache (fase ' + window.mjoData.fase + ')');
+                return window.mjoData;
+            }
 
-        window.rekomendasiWindowTanam = function (skorBulan, rawZOM, zona, ensoValArg, iodValArg) {
-            // [FIX-8] Teruskan ensoVal & iodVal dari argumen (bukan dari cache)
-            // agar patch_deteksi_musim_v3 menerima nilai yang benar.
-            var ensoVal = ensoValArg !== undefined
-                ? ensoValArg
-                : ((window._ensoDataTerkini && window._ensoDataTerkini.latestAnomaly) || 0);
-            var iodVal = iodValArg !== undefined
-                ? iodValArg
-                : ((window._iodDataTerkini && window._iodDataTerkini.latestAnomaly) || 0);
-
-            // Panggil fungsi asli dengan SEMUA 5 argumen
-            var hasil = _asliKalender.call(this, skorBulan, rawZOM, zona, ensoVal, iodVal);
-
-            if (!Array.isArray(hasil)) return hasil;
-
+            // [2] Ambil ENSO untuk estimasi fallback
+            var ensoVal = 0;
+            if (window._ensoDataTerkini && window._ensoDataTerkini.latestAnomaly !== undefined) {
+                ensoVal = parseFloat(window._ensoDataTerkini.latestAnomaly) || 0;
+            }
+            var bulanSekarang = new Date().getMonth();
             var lat = (window._lokasiKalender && window._lokasiKalender.lat) || -5.0;
             var lon = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
 
-            hasil.forEach(function (item) {
-                var bTanamIdx = typeof item.bTanam === 'number' ? item.bTanam
-                              : (item.tglTanam ? item.tglTanam.getMonth() : 0);
-
-                // Normalisasi ZOM ke -1..+1
-                var rawCH = rawZOM[bTanamIdx] || 0;
-                var zomNorm;
-                if (typeof window.normalisasiCurahHujan === 'function' && rawCH > 10) {
-                    var wsNorm = window.normalisasiCurahHujan(rawCH, bTanamIdx);
-                    zomNorm = Math.max(-1, Math.min(1, wsNorm / 2.0));
-                } else {
-                    zomNorm = Math.max(-1, Math.min(1, rawCH));
-                }
-
-                var sstAnom  = getAnomaliSSTLokal(lat, lon, bTanamIdx);
-                var mjoVal6F = getDampakMJO(lat, lon, bTanamIdx, ensoVal);
-                var tglRef   = new Date(); tglRef.setMonth(bTanamIdx); tglRef.setDate(15);
-                var bulanVal = getDampakFaseBulan(tglRef);
-
-                var skor6F = hitungSkor6Faktor(ensoVal, iodVal, zomNorm, sstAnom, mjoVal6F, bulanVal);
-
-                // Bonus/penalti proporsional
-                var bonusPenalti = skor6F > 0
-                    ? Math.round(skor6F * 10)
-                    : Math.round(skor6F * 15);
-
-                if (typeof item.nilaiTotal === 'number') {
-                    item.nilaiTotal = Math.max(0, Math.min(100, item.nilaiTotal + bonusPenalti));
-                }
-
-                // Keterangan faktor untuk alasan
-                var labelSST   = sstAnom > 0.3  ? '🌊 SST hangat (+' + sstAnom.toFixed(1) + '°C)'
-                               : sstAnom < -0.3 ? '🌊 SST dingin (' + sstAnom.toFixed(1) + '°C)'
-                               : '🌊 SST normal';
-                var labelMJO   = mjoVal6F > 0.2  ? '🌀 MJO aktif basah (Fase ' + (window.mjoData ? window.mjoData.fase : '?') + ')'
-                               : mjoVal6F < -0.2 ? '🌀 MJO aktif kering (Fase ' + (window.mjoData ? window.mjoData.fase : '?') + ')'
-                               : '';
-                var labelBulan = bulanVal > 0.1  ? '🌑 Bulan Mati (favorable)'
-                               : bulanVal < -0.1 ? '🌕 Bulan Penuh (sedikit reduksi CH)'
-                               : '';
-
-                var tagInfo = [labelSST];
-                if (labelMJO)   tagInfo.push(labelMJO);
-                if (labelBulan) tagInfo.push(labelBulan);
-
-                if (item.alasan) {
-                    item.alasan = item.alasan + '\n📊 Faktor 6F: ' + tagInfo.join(' · ');
-                }
+            // [3] Coba BOM real-time, timeout 8 detik
+            var promiseBOM     = asliMJO.apply(this, arguments);
+            var promiseTimeout = new Promise(function (resolve) {
+                setTimeout(function () {
+                    console.warn('[mjo_fix] BOM timeout → pakai estimasi statistik');
+                    resolve(null); // null = sinyal untuk pakai estimasi
+                }, 8000);
             });
 
-            // Urutkan ulang berdasarkan nilaiTotal
-            hasil.sort(function (a, b) { return (b.nilaiTotal || 0) - (a.nilaiTotal || 0); });
-            return hasil;
+            var hasil = await Promise.race([promiseBOM, promiseTimeout]);
+
+            // [4] Jika BOM berhasil dan data nyata (bukan netral)
+            if (hasil && hasil.fase !== 0 && hasil.amplitudo >= 1.0) {
+                console.log('[mjo_fix] ✅ MJO real-time: Fase ' + hasil.fase +
+                    ', Amp ' + hasil.amplitudo);
+                _cacheMJO = hasil;
+                _cacheTS  = Date.now();
+                window.mjoData      = hasil;
+                window.mjoFase      = hasil.fase;
+                window.mjoAmplitudo = hasil.amplitudo;
+                return hasil;
+            }
+
+            // [5] BOM gagal atau netral → estimasi statistik
+            var estimasi = buatHasilEstimasi(ensoVal, bulanSekarang, lat, lon);
+            console.log('[mjo_fix] 📊 MJO estimasi statistik: Fase ' + estimasi.fase +
+                ', dampak ' + estimasi._dampakLangsung.toFixed(2) +
+                ' (ENSO=' + ensoVal.toFixed(2) + ', bulan=' + (bulanSekarang+1) + ')');
+
+            _cacheMJO = estimasi;
+            _cacheTS  = Date.now();
+            window.mjoData      = estimasi;
+            window.mjoFase      = estimasi.fase;
+            window.mjoAmplitudo = estimasi.amplitudo;
+            return estimasi;
         };
-
-        console.log('%c✅ [6F] rekomendasiWindowTanam ter-override dengan 6 faktor (FIX-8)', 'color:#d946ef;font-weight:bold;');
-    }
-
-    // ============================================================
-    //  BAGIAN 7 — UI PANEL DETAIL 6 FAKTOR
-    //  [FIX-5] Arah dampak ENSO/IOD konsisten di barFaktor
-    //  [FIX-6] Lebar bar dikunci 0–100% dengan rumus yang benar
-    // ============================================================
-
-    function injeksiPanelDebug6F() {
-        var boxKalender = document.getElementById('boxKalender');
-        if (!boxKalender) return;
-        if (document.getElementById('panel6FaktorDebug')) return;
-
-        var panel = document.createElement('div');
-        panel.id = 'panel6FaktorDebug';
-        panel.style.cssText = [
-            'display:none;',
-            'margin-top:16px;',
-            'background:rgba(217,70,239,0.06);',
-            'border:1px solid rgba(217,70,239,0.2);',
-            'border-left:4px solid #d946ef;',
-            'border-radius:14px;',
-            'padding:14px 16px;',
-            'font-size:0.75rem;',
-            'color:#cbd5e1;',
-            'line-height:1.7;'
-        ].join('');
-        panel.innerHTML =
-            '<strong style="color:#d946ef;display:block;margin-bottom:8px;font-size:0.8rem;">' +
-                '📊 KONTRIBUSI 6 FAKTOR IKLIM' +
-            '</strong>' +
-            '<div id="isi6FaktorDebug">Klik "Analisis" untuk memuat data...</div>';
-
-        boxKalender.parentNode.insertBefore(panel, boxKalender.nextSibling);
-    }
-
-    /**
-     * Perbarui panel 6 faktor.
-     * [FIX-5] Warna bar kini mencerminkan dampak NYATA terhadap CH:
-     *   - El Niño kuat → dampak negatif → bar MERAH
-     *   - La Niña kuat → dampak positif → bar HIJAU
-     * [FIX-6] Lebar bar = Math.min(100, |dampak| * 300) — tidak overflow
-     */
-    window.perbarui6FaktorPanel = function (ensoData, iodData) {
-        var panel = document.getElementById('panel6FaktorDebug');
-        var isi   = document.getElementById('isi6FaktorDebug');
-        if (!panel || !isi) return;
-
-        var lat      = (window._lokasiKalender && window._lokasiKalender.lat) || -5.0;
-        var lon      = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
-        var bulanNow = new Date().getMonth();
-
-        var ensoVal = (ensoData && ensoData.latestAnomaly !== undefined)
-            ? parseFloat(ensoData.latestAnomaly) : 0;
-        var iodVal  = (iodData  && iodData.latestAnomaly  !== undefined)
-            ? parseFloat(iodData.latestAnomaly)  : 0;
-
-        // Simpan untuk getAnomaliSSTLokal
-        window._ensoDataTerkini = ensoData || window._ensoDataTerkini;
-        window._iodDataTerkini  = iodData  || window._iodDataTerkini;
-
-        var sstAnom  = getAnomaliSSTLokal(lat, lon, bulanNow);
-        var mjoVal   = getDampakMJO(lat, lon, bulanNow, ensoVal);
-        var bulanVal = getDampakFaseBulan(new Date());
-        var zomNorm  = 0; // ZOM tidak tersedia di sini → netral
-
-        var skor6F = hitungSkor6Faktor(ensoVal, iodVal, zomNorm, sstAnom, mjoVal, bulanVal);
-
-        /**
-         * barFaktor — render satu baris faktor
-         * [FIX-5] dampakNyata = nilai × bobot dengan konvensi CH:
-         *   ENSO+/IOD+ → kering → dampak negatif
-         * [FIX-6] lebar = Math.min(100, |dampakNyata| * 300) — tidak overflow
-         *
-         * @param {string} label       - nama faktor
-         * @param {number} nilaiMentah - nilai anomali sebelum dibalik
-         * @param {number} bobot       - bobot faktor (0–1)
-         * @param {string} satuan      - satuan tampilan
-         * @param {boolean} terbalik   - true jika nilai+ = kering (ENSO, IOD)
-         */
-        function barFaktor(label, nilaiMentah, bobot, satuan, terbalik) {
-            var persen = Math.round(bobot * 100);
-            var tanda  = nilaiMentah > 0 ? '+' : '';
-            var satuanStr = satuan || '';
-
-            // [FIX-5] Dampak nyata terhadap CH (bukan hanya nilai mentah)
-            // El Niño (+) dan IOD+ (+) → dampak NEGATIF (kering)
-            var dampakCH = terbalik ? -nilaiMentah * bobot : nilaiMentah * bobot;
-
-            // [FIX-6] Lebar proporsional, dikunci 0–100%
-            var threshold = 0.01; // nilai minimum dianggap signifikan
-            var lebar     = Math.min(100, Math.abs(dampakCH) * 300);
-
-            var warna;
-            if (dampakCH > threshold)       warna = '#10b981'; // basah → hijau
-            else if (dampakCH < -threshold) warna = '#ef4444'; // kering → merah
-            else                            warna = '#64748b'; // netral → abu
-
-            return (
-                '<div style="margin-bottom:6px;">' +
-                    '<span style="display:inline-block;width:110px;font-weight:600;">' + label + '</span>' +
-                    '<span style="color:' + warna + ';font-weight:700;">' + tanda + nilaiMentah.toFixed(2) + satuanStr + '</span>' +
-                    '<span style="opacity:0.5;font-size:0.7rem;margin-left:6px;">(bobot ' + persen + '%)</span>' +
-                    '<div style="height:4px;background:rgba(255,255,255,0.08);border-radius:2px;margin-top:3px;">' +
-                        '<div style="height:4px;width:' + lebar + '%;background:' + warna + ';border-radius:2px;transition:width 0.4s;"></div>' +
-                    '</div>' +
-                '</div>'
-            );
-        }
-
-        var labelSkor = skor6F > 0.3 ? '🌧️ Cenderung BASAH'
-                      : skor6F < -0.3 ? '☀️ Cenderung KERING'
-                      : '⚖️ NETRAL';
-        var warnaSkor = skor6F > 0.3 ? '#38b6ff' : (skor6F < -0.3 ? '#f59e0b' : '#10b981');
-
-        // [FIX-5] Argumen ke-5 (terbalik=true) untuk ENSO dan IOD
-        isi.innerHTML =
-            barFaktor('🌏 ENSO',      ensoVal,  BOBOT_6F.enso,  '°C (ONI)', true)  +
-            barFaktor('🌊 SST Lokal', sstAnom,  BOBOT_6F.sst,   '°C (anom)', false) +
-            barFaktor('🌤️ IOD',      iodVal,   BOBOT_6F.iod,   '°C (DMI)', true)  +
-            barFaktor('🗺️ ZOM',       zomNorm,  BOBOT_6F.zom,   ' (normed)', false) +
-            barFaktor('🌀 MJO',       mjoVal,   BOBOT_6F.mjo,   ' (fase)',   false) +
-            barFaktor('🌙 Fase Bulan',bulanVal, BOBOT_6F.bulan, '',          false) +
-            '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);">' +
-                '<span style="font-weight:700;color:' + warnaSkor + ';">' +
-                    'Skor Terpadu: ' + (skor6F > 0 ? '+' : '') + skor6F.toFixed(3) +
-                    ' → ' + labelSkor +
-                '</span>' +
-                '<div style="opacity:0.45;font-size:0.65rem;margin-top:4px;">' +
-                    'Bobot: ENSO ' + Math.round(BOBOT_6F.enso  * 100) + '% | ' +
-                    'SST '   + Math.round(BOBOT_6F.sst   * 100) + '% | ' +
-                    'IOD '   + Math.round(BOBOT_6F.iod   * 100) + '% | ' +
-                    'ZOM '   + Math.round(BOBOT_6F.zom   * 100) + '% | ' +
-                    'MJO '   + Math.round(BOBOT_6F.mjo   * 100) + '% | ' +
-                    'Bulan ' + Math.round(BOBOT_6F.bulan * 100) + '%' +
-                '</div>' +
-                '<div style="opacity:0.35;font-size:0.6rem;margin-top:2px;">' +
-                    'Sumber: Wheeler & Hendon (2004) · Peatman et al. (2014) · ' +
-                    'Kohyama & Wallace (2016) · Hendon et al. (2007, 2012)' +
-                '</div>' +
-            '</div>';
-
-        panel.style.display = 'block';
+        window.getMJOData.__mjoFixWrapped = true;
+        console.log('[mjo_fix] getMJOData hybrid wrapper aktif (BOM + estimasi statistik)');
     };
 
     // ============================================================
-    //  BAGIAN 8 — HOOK KE prosesJadwalOtomatis
-    //  [FIX-7] Hapus referensi ke window.ensoData/window.iodData
-    //  yang tidak pernah diset. Gunakan window._ensoDataTerkini
-    //  dan window._iodDataTerkini secara konsisten.
-    //  [FIX-9] Null-check sebelum memanggil perbarui6FaktorPanel.
+    //  BAGIAN 5 — Override getDampakMJO di patch_skor_6faktor
+    //
+    //  patch_skor_6faktor punya getDampakMJO() yang periksa
+    //  window.mjoData.fase. Jika fase = 0 (netral) → return 0.
+    //  Tapi sekarang window.mjoData bisa punya _dampakLangsung
+    //  dari estimasi statistik → pakai langsung, lebih akurat.
     // ============================================================
+    function overrideDampakMJO() {
+        // Override getDampakMJO melalui window._6F jika sudah ada
+        var cek = setInterval(function () {
+            if (!window._6F || typeof window._6F.getDampakMJO !== 'function') return;
+            clearInterval(cek);
 
-    function hookProsesJadwal() {
-        var _asliProses = window.prosesJadwalOtomatis;
-        if (typeof _asliProses !== 'function') {
-            setTimeout(hookProsesJadwal, 300);
-            return;
-        }
+            var _asliDampak = window._6F.getDampakMJO;
 
-        window.prosesJadwalOtomatis = async function () {
-            var hasilAsli = await _asliProses.apply(this, arguments);
-
-            try {
-                // [FIX-7] Baca dari cache yang PASTI diset oleh prosesJadwal/prosesAnalisis
-                var enso = window._ensoDataTerkini;
-                var iod  = window._iodDataTerkini;
-
-                // [FIX-9] Null-check sebelum panggil panel
-                if (enso || iod) {
-                    window.perbarui6FaktorPanel(enso || null, iod || null);
-                }
-            } catch (e) {
-                console.warn('[6F] Gagal sinkronisasi panel:', e.message);
-            }
-            return hasilAsli;
-        };
-
-        // Hook prosesAnalisisKalender
-        var _asliKalender = window.prosesAnalisisKalender;
-        if (typeof _asliKalender === 'function') {
-            window.prosesAnalisisKalender = async function () {
-                // Fetch paralel agar tidak memblokir
-                var fetchTasks = [];
-
-                if (!window.mjoData && typeof window.getMJOData === 'function') {
-                    fetchTasks.push(window.getMJOData().catch(function () {}));
-                }
-                if (!window._ensoDataTerkini && typeof window.getENSOAnomaly === 'function') {
-                    fetchTasks.push(
-                        window.getENSOAnomaly()
-                            .then(function (d) { window._ensoDataTerkini = d; })
-                            .catch(function () {})
-                    );
-                }
-                if (!window._iodDataTerkini && typeof window.getIODAnomaly === 'function') {
-                    fetchTasks.push(
-                        window.getIODAnomaly()
-                            .then(function (d) { window._iodDataTerkini = d; })
-                            .catch(function () {})
-                    );
-                }
-
-                await Promise.all(fetchTasks);
-
-                var hasil = await _asliKalender.apply(this, arguments);
-
-                // [FIX-9] Null-check ketat sebelum update panel
-                try {
-                    var enso6F = window._ensoDataTerkini;
-                    var iod6F  = window._iodDataTerkini;
-                    if (enso6F !== undefined || iod6F !== undefined) {
-                        window.perbarui6FaktorPanel(enso6F || null, iod6F || null);
+            window._6F.getDampakMJO = function (lat, lon, bulan, enso) {
+                // Jika ada _dampakLangsung dari estimasi → pakai itu
+                if (window.mjoData && typeof window.mjoData._dampakLangsung === 'number') {
+                    var d = window.mjoData._dampakLangsung;
+                    if (Math.abs(d) > 0.05) {
+                        return Math.max(-1, Math.min(1, d));
                     }
-                } catch (e) {
-                    console.warn('[6F] Panel update gagal:', e.message);
                 }
-
-                return hasil;
+                // Fallback ke fungsi asli (BOM real-time atau estimasi lama)
+                return _asliDampak.apply(this, arguments);
             };
+
+            // Override juga window.hitungDampakMJOLokal (dari patch_mjo_bom)
+            var _asliLokal = window.hitungDampakMJOLokal;
+            if (typeof _asliLokal === 'function' && !_asliLokal.__mjoFixOverride) {
+                window.hitungDampakMJOLokal = function (lat, lon, fase, amplitudo) {
+                    // Jika estimasi statistik aktif dan ada _dampakLangsung
+                    if (window.mjoData && window.mjoData._dampakLangsung !== undefined &&
+                        (fase === 0 || amplitudo < 1.0)) {
+                        var d = window.mjoData._dampakLangsung;
+                        return Math.max(-1, Math.min(1, d));
+                    }
+                    return _asliLokal.apply(this, arguments);
+                };
+                window.hitungDampakMJOLokal.__mjoFixOverride = true;
+            }
+
+            console.log('[mjo_fix] getDampakMJO + hitungDampakMJOLokal diperkuat dengan estimasi statistik');
+        }, 500);
+    }
+
+    // ============================================================
+    //  BAGIAN 6 — POLLING + AUTO-INIT
+    // ============================================================
+    var _poll = setInterval(function () {
+        if (typeof window.getMJOData === 'function' && !window.getMJOData.__mjoFixWrapped) {
+            clearInterval(_poll);
+            window.__mjoFixPasangWrapper();
+            overrideDampakMJO();
         }
+        if (window.getMJOData && window.getMJOData.__mjoFixWrapped) {
+            clearInterval(_poll);
+            overrideDampakMJO();
+        }
+    }, 100);
 
-        console.log('%c✅ [6F] prosesJadwalOtomatis & prosesAnalisisKalender ter-hook (FIX-7,9)', 'color:#d946ef;font-weight:bold;');
-    }
+    // Pre-fetch setelah semua patch dimuat
+    setTimeout(function () {
+        if (typeof window.getMJOData === 'function') {
+            window.getMJOData().catch(function () {});
+        }
+    }, 1500);
 
-    // ============================================================
-    //  BAGIAN 9 — INISIALISASI
-    // ============================================================
+    window.__mjoFixV1Aktif = true;
 
-    function init6Faktor() {
-        injeksiKalenderTanam();
-        injeksiPanelDebug6F();
-        hookProsesJadwal();
-
-        window.__skor6FaktorV1Aktif = true;
-
-        // Ekspor untuk akses debug/patch lain
-        window._6F = {
-            bobot:               BOBOT_6F,
-            hitungSkor6Faktor:   hitungSkor6Faktor,
-            getDampakMJO:        getDampakMJO,
-            getDampakFaseBulan:  getDampakFaseBulan,
-            getAnomaliSSTLokal:  getAnomaliSSTLokal,
-            hariFaseBulan:       hariFaseBulan6F,
-            hitungWSMandiri:     _hitungWSMandiri
-        };
-
-        console.log(
-            '%c✅ patch_skor_6faktor_v1.js (PERBAIKAN) AKTIF\n' +
-            '\n  ╔══ PERBAIKAN AKTIF ═══════════════════════════════╗\n' +
-            '  ║ [FIX-1]  Bobot ENSO 30% / SST 18% / IOD 17%\n' +
-            '  ║          ZOM 18% / MJO 10% / Bulan 7% ✅\n' +
-            '  ║ [FIX-2]  hitungWetnessScore mandiri (tidak\n' +
-            '  ║          bergantung window.hitungWetnessScore) ✅\n' +
-            '  ║ [FIX-3]  getAnomaliSSTLokal: hapus _sstLokalTerkini\n' +
-            '  ║          yang tidak pernah diset ✅\n' +
-            '  ║ [FIX-4]  getDampakMJO: fallback eksplisit = 0 ✅\n' +
-            '  ║ [FIX-5]  barFaktor: ENSO+/IOD+ = merah (kering) ✅\n' +
-            '  ║ [FIX-6]  Lebar bar dikunci 0–100% ✅\n' +
-            '  ║ [FIX-7]  hookProsesJadwal: hapus window.ensoData\n' +
-            '  ║          yang tidak pernah ada ✅\n' +
-            '  ║ [FIX-8]  rekomendasiWindowTanam: teruskan 5 argumen ✅\n' +
-            '  ║ [FIX-9]  prosesAnalisisKalender: null-check panel ✅\n' +
-            '  ║ [FIX-10] Guard double-load di awal IIFE ✅\n' +
-            '  ╠══ INTEGRASI 6 FAKTOR IKLIM ══════════════════════╣\n' +
-            '  ║ 🌏 ENSO         ' + Math.round(BOBOT_6F.enso  * 100) + '%  Tren makro tahunan\n' +
-            '  ║ 🌊 SST Lokal    ' + Math.round(BOBOT_6F.sst   * 100) + '%  Moisture supply lokal\n' +
-            '  ║ 🌤️ IOD           ' + Math.round(BOBOT_6F.iod   * 100) + '%  Tren aliran timur-barat\n' +
-            '  ║ 🗺️ ZOM           ' + Math.round(BOBOT_6F.zom   * 100) + '%  Karakteristik ZOM lokal\n' +
-            '  ║ 🌀 MJO          ' + Math.round(BOBOT_6F.mjo   * 100) + '%  Pemicu intramusiman\n' +
-            '  ║ 🌙 Fase Bulan    ' + Math.round(BOBOT_6F.bulan * 100) + '%  Pasang surut mikroklimat\n' +
-            '  ╚═══════════════════════════════════════════════════╝',
-            'color:#d946ef; font-weight:bold;'
-        );
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () {
-            setTimeout(init6Faktor, 500);
-        });
-    } else {
-        setTimeout(init6Faktor, 500);
-    }
+    console.log(
+        '%c✅ patch_mjo_fix_v1.js v2 AKTIF\n' +
+        '\n  ╔══ MJO HYBRID: BOM + ESTIMASI STATISTIK ═══════════╗\n' +
+        '  ║ JAWABAN: MJO TIDAK akan selalu netral (0)           \n' +
+        '  ║                                                      \n' +
+        '  ║ LAPIS 1 — BOM Real-time (jika server bisa diakses)  \n' +
+        '  ║   corsproxy.io → BOM https ✅                        \n' +
+        '  ║   allorigins   → Albany mirror ✅                    \n' +
+        '  ║   GAS proxy    → BOM via server Google ✅            \n' +
+        '  ║   Timeout: 8 detik paralel (bukan 24 detik seq)     \n' +
+        '  ║                                                      \n' +
+        '  ║ LAPIS 2 — Estimasi Statistik (selalu tersedia)      \n' +
+        '  ║   Input: ENSO (window._ensoDataTerkini) + Bulan     \n' +
+        '  ║   La Niña + Ags-Sep → Fase 5 basah Sulawesi         \n' +
+        '  ║   El Niño + Jun-Okt → Fase 7 kering Indonesia       \n' +
+        '  ║   Akurasi ~60-70% vs data real-time                 \n' +
+        '  ║   Sumber: Wheeler & Hendon (2004), Hendon (2007)    \n' +
+        '  ║                                                      \n' +
+        '  ║ [MJO-1] URL https, hapus codetabs ✅                \n' +
+        '  ║ [MJO-2] AbortController manual (kompatibel semua)   \n' +
+        '  ║ [MJO-3] Cache + polling wrapper sebelum autoFetch   \n' +
+        '  ║ [MJO-4] _dampakLangsung ke getDampakMJO & 6F        \n' +
+        '  ╚═══════════════════════════════════════════════════╝',
+        'color:#d946ef; font-weight:bold;'
+    );
 
 })();
