@@ -604,21 +604,27 @@
      * [FIX-6] Lebar bar = Math.min(100, |dampak| * 300) — tidak overflow
      */
     window.perbarui6FaktorPanel = function (ensoData, iodData) {
-        // [BUG-4 FIX] Buat panel on-demand jika belum ada di DOM
-        var panel = pastikanPanelAda();
-        if (!panel) return; // boxKalender belum ada di DOM
+    // 1. Logika Resilien: Jika data tidak diberikan, ambil dari variabel global
+    var enso = ensoData || window._ensoDataTerkini || null;
+    var iod = iodData || window._iodDataTerkini || null;
 
-        var isi = document.getElementById('isi6FaktorDebug');
-        if (!isi) return;
+    // 2. Jika data masih belum ada sama sekali, kita "bisu"kan dulu (jangan tampilkan 0)
+    // atau biarkan nilainya 0 jika memang tidak ada data, tapi panel tetap siap.
+    if (!enso && !iod) {
+        console.warn("[6F] Data belum siap, menunggu sinkronisasi...");
+        return; 
+    }
 
-        var lat      = (window._lokasiKalender && window._lokasiKalender.lat) || -5.0;
-        var lon      = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
-        var bulanNow = new Date().getMonth();
+    // 3. Pastikan panel sudah ada
+    var panel = pastikanPanelAda();
+    if (!panel) return;
 
-        var ensoVal = (ensoData && ensoData.latestAnomaly !== undefined)
-            ? parseFloat(ensoData.latestAnomaly) : 0;
-        var iodVal  = (iodData  && iodData.latestAnomaly  !== undefined)
-            ? parseFloat(iodData.latestAnomaly)  : 0;
+    var isi = document.getElementById('isi6FaktorDebug');
+    if (!isi) return;
+
+    // 4. Hitung nilai (gunakan 0 jika data tetap tidak ada)
+    var ensoVal = (enso && typeof enso.latestAnomaly === 'number') ? enso.latestAnomaly : 0;
+    var iodVal = (iod && typeof iod.latestAnomaly === 'number') ? iod.latestAnomaly : 0;
 
         // Simpan untuk getAnomaliSSTLokal
         window._ensoDataTerkini = ensoData || window._ensoDataTerkini;
