@@ -95,11 +95,7 @@
     window.hitungDampakMJOLokal = hitungDampakMJOLokal;
     window.tentukanWilayahMJO = tentukanWilayah;
 
-    (async function autoFetch() {
-        var data = await getMJOData();
-        tampilkanStatusMJO(data);
-    })();
-
+    
     window.__mjoBomV1Aktif = true;
     console.log('%c✅ MJO Backend Terhubung!', 'color:#10b981; font-weight:bold;');
 })();
