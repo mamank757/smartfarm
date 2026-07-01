@@ -662,18 +662,311 @@ async function muatPetaSSTReal(enso, iod) {
     }
 }
 
+// ============================================================
+//  OVERRIDE renderMacroChart — tampil seperti Dashboard
+//
+//  Masalah asal: index.html memanggil
+//    renderMacroChart(enso.labels, enso.anomalies, iod.anomalies)
+//  yang hanya berisi 4 titik proyeksi → garis datar.
+//
+//  Solusi: simpan hasil getENSO/getIOD ke cache, lalu override
+//  renderMacroChart agar memakai data historis + proyeksi penuh,
+//  persis seperti tsChart & iodChart di Dashboard.
+// ============================================================
+
+/** Resample data mingguan ENSO → bulanan (rata-rata per bulan) */
+function resampleKeBulanan(values, dates) {
+    const monthMap = {};
+    dates.forEach((d, i) => {
+        // Format tanggal bisa YYYYMMDD atau DDMMMYYYY — ambil 6 karakter pertama
+        const key = String(d).slice(0, 6); // YYYYMM
+        if (!monthMap[key]) monthMap[key] = { sum: 0, count: 0 };
+        monthMap[key].sum   += values[i];
+        monthMap[key].count += 1;
+    });
+    return Object.entries(monthMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, { sum, count }]) => ({
+            label: `${key.slice(0, 4)}-${key.slice(4, 6)}`,
+            value: parseFloat((sum / count).toFixed(2))
+        }));
+}
+
+/** Label bulan berikutnya dari label YYYY-MM terakhir */
+function labelBulanBerikutnya(lastLabel, n) {
+    const labels = [];
+    let [y, m] = lastLabel.split('-').map(Number);
+    for (let i = 0; i < n; i++) {
+        m++;
+        if (m > 12) { m = 1; y++; }
+        labels.push(`${y}-${String(m).padStart(2, '0')}`);
+    }
+    return labels;
+}
+
+/**
+ * Versi baru renderMacroChart — menampilkan:
+ *   - Garis solid: data historis bulanan (ENSO & IOD)
+ *   - Garis putus abu-abu: proyeksi Holt's Damped Trend
+ *   - Zona warna: El Niño / La Niña / IOD+/-
+ */
+function renderMacroChartLengkap(enso, iod) {
+    const ctxEl = document.getElementById('macroClimateChart');
+    if (!ctxEl || typeof Chart === 'undefined') return;
+
+    // ── Siapkan data ENSO bulanan dari historis mingguan ─────
+    const ensoMonthly = (enso.dates && enso.historis)
+        ? resampleKeBulanan(enso.historis, enso.dates || [])
+        : [];
+
+    // Ambil 18 bulan terakhir agar sebanding dengan IOD
+    const ensoSlice = ensoMonthly.slice(-18);
+    const ensoLabels = ensoSlice.map(d => d.label);
+    const ensoValues = ensoSlice.map(d => d.value);
+
+    // Proyeksi ENSO: rata-rata tiap 4 minggu dari forecastFull (13 minggu → 3 bulan)
+    const fw = enso.forecastFull || [];
+    const ensoForecastBulanan = [
+        fw.slice(0, 4).length  ? fw.slice(0, 4).reduce((a, b) => a + b, 0) / fw.slice(0, 4).length  : null,
+        fw.slice(4, 8).length  ? fw.slice(4, 8).reduce((a, b) => a + b, 0) / fw.slice(4, 8).length  : null,
+        fw.slice(8, 12).length ? fw.slice(8, 12).reduce((a, b) => a + b, 0) / fw.slice(8, 12).length : null,
+    ].map(v => v !== null ? parseFloat(v.toFixed(2)) : null).filter(v => v !== null);
+
+    // ── Siapkan data IOD bulanan ──────────────────────────────
+    const iodSlice  = (iod.slice18  || iod.historis || []).slice(-18);
+    const iodLabels = (iod.dmiLabels || []).slice(-18);
+    const iodForecast = iod.forecastFull || [];
+
+    // ── Label gabungan (pakai IOD sebagai sumbu waktu utama) ─
+    const baseLabels = iodLabels.length >= ensoLabels.length ? iodLabels : ensoLabels;
+    const lastLabel  = baseLabels[baseLabels.length - 1] || '2026-07';
+    const STEPS      = Math.max(ensoForecastBulanan.length, iodForecast.length, 3);
+    const forecastLabels = labelBulanBerikutnya(lastLabel, STEPS);
+    const allLabels  = baseLabels.concat(forecastLabels);
+    const N = allLabels.length;
+
+    // Helper: pad / align array ke panjang N
+    function align(arr, totalLen, fillFront = false) {
+        const out = new Array(totalLen).fill(null);
+        if (fillFront) {
+            const start = totalLen - arr.length;
+            arr.forEach((v, i) => { out[start + i] = v; });
+        } else {
+            arr.forEach((v, i) => { if (i < totalLen) out[i] = v; });
+        }
+        return out;
+    }
+
+    // Dataset aktual (solid)
+    const ensoActual = align(ensoValues, N, true);
+    const iodActual  = align(iodSlice,   N, true);
+
+    // Dataset proyeksi (dashed) — mulai dari titik terakhir aktual
+    const ensoLastIdx = ensoActual.map((v, i) => v !== null ? i : -1).reduce((a, b) => Math.max(a, b), -1);
+    const iodLastIdx  = iodActual.map((v, i) => v !== null ? i : -1).reduce((a, b) => Math.max(a, b), -1);
+
+    const ensoProj = new Array(N).fill(null);
+    if (ensoLastIdx >= 0) {
+        ensoProj[ensoLastIdx] = ensoActual[ensoLastIdx]; // sambung dari titik terakhir
+        ensoForecastBulanan.forEach((v, i) => {
+            if (ensoLastIdx + 1 + i < N) ensoProj[ensoLastIdx + 1 + i] = v;
+        });
+    }
+
+    const iodProj = new Array(N).fill(null);
+    if (iodLastIdx >= 0) {
+        iodProj[iodLastIdx] = iodActual[iodLastIdx];
+        iodForecast.forEach((v, i) => {
+            if (iodLastIdx + 1 + i < N) iodProj[iodLastIdx + 1 + i] = v;
+        });
+    }
+
+    // ── Render chart ─────────────────────────────────────────
+    if (typeof macroChartInstance !== 'undefined' && macroChartInstance) {
+        macroChartInstance.destroy();
+    }
+
+    const ctx = ctxEl.getContext('2d');
+    const newChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: allLabels,
+            datasets: [
+                // ENSO aktual
+                {
+                    label: 'ENSO (Pasifik)',
+                    data: ensoActual,
+                    borderColor: '#ff4a5a',
+                    backgroundColor: 'rgba(255,74,90,0.08)',
+                    borderWidth: 2.5,
+                    pointRadius: 2,
+                    tension: 0.3,
+                    fill: false,
+                    spanGaps: false
+                },
+                // ENSO proyeksi
+                {
+                    label: 'Proyeksi ENSO',
+                    data: ensoProj,
+                    borderColor: '#ff4a5a',
+                    borderWidth: 2,
+                    borderDash: [6, 4],
+                    pointRadius: 0,
+                    tension: 0.3,
+                    fill: false,
+                    spanGaps: false
+                },
+                // IOD aktual
+                {
+                    label: 'IOD (Hindia)',
+                    data: iodActual,
+                    borderColor: '#ffcc00',
+                    backgroundColor: 'rgba(255,204,0,0.08)',
+                    borderWidth: 2.5,
+                    pointRadius: 2,
+                    tension: 0.3,
+                    fill: false,
+                    spanGaps: false
+                },
+                // IOD proyeksi
+                {
+                    label: 'Proyeksi IOD',
+                    data: iodProj,
+                    borderColor: '#ffcc00',
+                    borderWidth: 2,
+                    borderDash: [6, 4],
+                    pointRadius: 0,
+                    tension: 0.3,
+                    fill: false,
+                    spanGaps: false
+                },
+                // Ambang El Niño
+                {
+                    data: new Array(N).fill(0.5),
+                    borderColor: 'rgba(255,74,90,0.35)',
+                    borderWidth: 1,
+                    borderDash: [4, 4],
+                    pointRadius: 0,
+                    fill: false
+                },
+                // Ambang La Niña
+                {
+                    data: new Array(N).fill(-0.5),
+                    borderColor: 'rgba(56,182,255,0.35)',
+                    borderWidth: 1,
+                    borderDash: [4, 4],
+                    pointRadius: 0,
+                    fill: false
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { right: 8 } },
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: {
+                        filter: item => !item.text.startsWith('Proyeksi') && item.datasetIndex < 4,
+                        color: '#94a3b8',
+                        font: { size: 11 },
+                        boxWidth: 12
+                    }
+                },
+                tooltip: {
+                    filter: item => item.datasetIndex < 4,
+                    callbacks: {
+                        label: ctx => {
+                            if (ctx.raw === null) return null;
+                            const lbl  = ctx.dataset.label || '';
+                            const sign = ctx.raw > 0 ? '+' : '';
+                            const proj = lbl.includes('Proyeksi') ? ' (proyeksi)' : '';
+                            return `${lbl.replace('Proyeksi ','')}${proj}: ${sign}${ctx.raw.toFixed(2)}°C`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { font: { size: 9 }, color: '#94a3b8', maxRotation: 45, maxTicksLimit: 10 },
+                    grid: { display: false }
+                },
+                y: {
+                    ticks: { font: { size: 10 }, color: '#94a3b8' },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                }
+            }
+        }
+    });
+
+    // Simpan ke variabel global macroChartInstance jika ada
+    try { macroChartInstance = newChart; } catch(e) {}
+    // Simpan juga di window agar patch lain bisa akses
+    window._macroChartInstance = newChart;
+
+    console.log('✅ macroClimateChart dirender ulang — historis + proyeksi (like Dashboard)');
+}
+
+// ── Wrap getENSOAnomaly & getIODAnomaly untuk simpan cache ──
+const _origGetENSO = getENSOAnomaly;
+const _origGetIOD  = getIODAnomaly;
+
+async function getENSOAnomalyWithCache() {
+    const result = await _origGetENSO();
+    window._ensoCache = result;
+    return result;
+}
+
+async function getIODAnomalyWithCache() {
+    const result = await _origGetIOD();
+    window._iodCache = result;
+    return result;
+}
+
+// Override renderMacroChart — tangkap panggilan lama dari index.html
+window.renderMacroChart = function(labels, ensoData, iodData) {
+    const enso = window._ensoCache;
+    const iod  = window._iodCache;
+
+    if (enso && iod && (enso.historis || enso.slice20) && (iod.historis || iod.slice18)) {
+        // Data cache lengkap → render seperti Dashboard
+        renderMacroChartLengkap(enso, iod);
+    } else {
+        // Fallback: data cache belum ada, render sederhana dengan data yang dikirim
+        console.warn('⚠️ Cache ENSO/IOD belum siap, render fallback 4-titik.');
+        if (typeof macroChartInstance !== 'undefined' && macroChartInstance) {
+            macroChartInstance.destroy();
+        }
+        const ctxEl = document.getElementById('macroClimateChart');
+        if (!ctxEl) return;
+        const newChart = new Chart(ctxEl.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    { label: 'ENSO', data: ensoData, borderColor: '#ff4a5a', borderWidth: 2, tension: 0.3, pointRadius: 3, fill: false },
+                    { label: 'IOD',  data: iodData,  borderColor: '#ffcc00', borderWidth: 2, tension: 0.3, pointRadius: 3, fill: false }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color:'#94a3b8', font:{size:9} }, grid:{display:false} }, y: { ticks: { color:'#94a3b8' }, grid:{color:'rgba(255,255,255,0.05)'} } } }
+        });
+        try { macroChartInstance = newChart; } catch(e) {}
+        window._macroChartInstance = newChart;
+    }
+};
+
 // ── Ekspos ke window ──────────────────────────────────────
-window.getENSOAnomaly       = getENSOAnomaly;
-window.getIODAnomaly        = getIODAnomaly;
-window.updateENSOIODStatus  = updateENSOIODStatus;
-window.holtDampedForecast   = holtDampedForecast;
-window.muatPetaSSTReal      = muatPetaSSTReal;
-window.fetchSSTAnomalyGrid  = fetchSSTAnomalyGrid;
-window.tambahkanIndikatorPeta = tambahkanIndikatorPeta;
+window.getENSOAnomaly         = getENSOAnomalyWithCache;
+window.getIODAnomaly          = getIODAnomalyWithCache;
+window.updateENSOIODStatus    = updateENSOIODStatus;
+window.holtDampedForecast     = holtDampedForecast;
+window.muatPetaSSTReal        = muatPetaSSTReal;
+window.fetchSSTAnomalyGrid    = fetchSSTAnomalyGrid;
+window.tambahkanIndikatorPeta  = tambahkanIndikatorPeta;
+window.renderMacroChartLengkap = renderMacroChartLengkap;
 
 console.log(
-    '%c✅ patch_enso_iod_noaa.js v4.2 aktif — GAS identical, Holt Damped, Peta SST Real (IDW)',
+    '%c✅ patch_enso_iod_noaa.js v4.3 aktif — renderMacroChart override: historis+proyeksi (like Dashboard)',
     'color:#38b6ff; font-weight:bold;'
 );
-
-})();
