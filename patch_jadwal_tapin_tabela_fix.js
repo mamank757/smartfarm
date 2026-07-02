@@ -373,43 +373,53 @@
     }
 
     /* ============================================================
-       OVERRIDE prosesJadwalOtomatis
-       Setelah fungsi asli jalan (mengisi window._jtoData),
-       hitung ulang semua kegiatan dengan bangunKegiatanFix().
-    ============================================================ */
+   OVERRIDE prosesJadwalOtomatis
+============================================================ */
+function pasangOverrideTapinTabela(tick) {
+    tick = tick || 0;
     var _prosesAsli = window.prosesJadwalOtomatis;
 
-    if (typeof _prosesAsli === 'function') {
-        window.prosesJadwalOtomatis = async function () {
-            // Jalankan fungsi asli — menghasilkan window._jtoData & render HTML
-            await _prosesAsli.apply(this, arguments);
-
-            var multiJadwal = window._jtoData;
-            var metodeTanam = window._jtoMetodeTanam || 'tapin';
-            var teksEl      = document.getElementById('jtoTeks');
-
-            if (!multiJadwal || !multiJadwal.length || !teksEl) return;
-
-            // Hitung ulang kegiatan dengan logika yang benar
-            multiJadwal.forEach(function (jadwal) {
-                var skor = jadwal._skorBulan || new Array(12).fill(50);
-                jadwal.kegiatan = bangunKegiatanFix(jadwal.rekomendasi, skor, metodeTanam);
-            });
-
-            window._jtoData = multiJadwal;
-
-            // Re-render seluruh teksEl dengan HTML yang diperbarui
-            rerenderJTO(multiJadwal, teksEl);
-
-            console.log(
-                '%c✅ [TapinTabelaFix v2.0] Jadwal dihitung ulang\n' +
-                '   Tapin masuk lahan: ' + fmtP(multiJadwal[0] && multiJadwal[0].rekomendasi.tglTanam || new Date()) + '\n' +
-                '   Tabela sebar     : ' + OFFSET_STAGNASI_HARI + ' hari kemudian\n' +
-                '   Panen            : serentak ✅',
-                'color:#10b981; font-weight:bold;'
-            );
-        };
+    if (typeof _prosesAsli !== 'function') {
+        if (tick >= 50) {
+            console.error('[TapinTabelaFix] window.prosesJadwalOtomatis tidak pernah tersedia setelah 5 detik — override GAGAL dipasang.');
+            return;
+        }
+        setTimeout(function () { pasangOverrideTapinTabela(tick + 1); }, 100);
+        return;
     }
+    if (_prosesAsli.__tapinTabelaFixed) return;
+
+    window.prosesJadwalOtomatis = async function () {
+        await _prosesAsli.apply(this, arguments);
+
+        var multiJadwal = window._jtoData;
+        var metodeTanam = window._jtoMetodeTanam || 'tapin';
+        var teksEl      = document.getElementById('jtoTeks');
+
+        if (!multiJadwal || !multiJadwal.length || !teksEl) return;
+
+        multiJadwal.forEach(function (jadwal) {
+            var skor = jadwal._skorBulan || new Array(12).fill(50);
+            jadwal.kegiatan = bangunKegiatanFix(jadwal.rekomendasi, skor, metodeTanam);
+        });
+
+        window._jtoData = multiJadwal;
+        rerenderJTO(multiJadwal, teksEl);
+
+        console.log(
+            '%c✅ [TapinTabelaFix v2.1] Jadwal dihitung ulang',
+            'color:#10b981; font-weight:bold;'
+        );
+    };
+    window.prosesJadwalOtomatis.__tapinTabelaFixed = true;
+    console.log('%c✅ [TapinTabelaFix v2.1] Override berhasil dipasang', 'color:#10b981;font-weight:bold;');
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(pasangOverrideTapinTabela, 1200); });
+} else {
+    setTimeout(pasangOverrideTapinTabela, 1200);
+}
 
     /* ============================================================
        RENDER ULANG HTML
