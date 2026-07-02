@@ -366,7 +366,7 @@
     // ── 6. INJEKSI ───────────────────────────────────────────────
     function injeksi() {
         // Override window.rekomendasiWindowTanam dengan versi fixed
-        window.rekomendasiWindowTanam = rekomendasiWindowTanamFixed;
+        
 
         // Expose tabel offset agar bisa dipakai patch lain
         window.OFFSET_GEN_PER_VARIETAS = OFFSET_GEN_PER_VARIETAS;
