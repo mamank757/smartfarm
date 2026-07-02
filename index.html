@@ -2872,7 +2872,22 @@ if (!document.getElementById('appMessageStyle')) {
     document.head.appendChild(style);
 }
 
+function resizeTo640(img) {
+    const TARGET = 640;
+    const canvas = document.createElement('canvas');
+    canvas.width = TARGET;
+    canvas.height = TARGET;
+    const ctx = canvas.getContext('2d');
 
+    // Center-crop persegi dari gambar asli
+    const srcSize = Math.min(img.width, img.height);
+    const srcX = (img.width - srcSize) / 2;
+    const srcY = (img.height - srcSize) / 2;
+
+    ctx.filter = 'brightness(1.05) contrast(1.1)';
+    ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, TARGET, TARGET);
+    return canvas;
+}
 
         function handleFile(event) {
     const file = event.target.files[0];
