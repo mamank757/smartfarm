@@ -148,7 +148,7 @@
         for (var i = 0; i < maxCoba; i++) {
             try {
                 var ctrl = new AbortController();
-                var t = setTimeout(function () { ctrl.abort(); }, 12000);
+                var t = setTimeout(function () { ctrl.abort(); }, 20000);
                 var res = await fetch(url, { signal: ctrl.signal });
                 clearTimeout(t);
                 if (!res.ok) throw new Error('HTTP ' + res.status);
