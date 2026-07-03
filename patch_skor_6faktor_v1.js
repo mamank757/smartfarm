@@ -506,7 +506,14 @@
 
                 var skor6F = hitungSkor6Faktor(ensoVal, iodVal, zomNorm, sstAnom, mjoVal6F, bulanVal);
 
-               
+                // Bonus/penalti proporsional
+                var bonusPenalti = skor6F > 0
+                    ? Math.round(skor6F * 10)
+                    : Math.round(skor6F * 15);
+
+                if (typeof item.nilaiTotal === 'number') {
+                    item.nilaiTotal = Math.max(0, Math.min(100, item.nilaiTotal + bonusPenalti));
+                }
 
                 // Keterangan faktor untuk alasan
                 var labelSST   = sstAnom > 0.3  ? '🌊 SST hangat (+' + sstAnom.toFixed(1) + '°C)'
