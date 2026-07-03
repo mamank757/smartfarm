@@ -854,7 +854,6 @@ if (window.mjoData && window.mjoData.fase) {
             'color:#d946ef; font-weight:bold;'
         );
     }
-
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
             setTimeout(init6Faktor, 500);
