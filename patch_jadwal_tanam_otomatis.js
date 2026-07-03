@@ -1141,6 +1141,8 @@
         //       bisa meng-override-nya. Sebelumnya fungsi ini private (IIFE closure)
         //       sehingga override dari luar tidak pernah berjalan (dead code).
         window.prosesJadwalOtomatis = prosesJadwalOtomatis;
+        window._jtoGetDataZOM   = getDataZOM;
+    window._jtoRenderOutput = renderOutput;
         console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.13 aktif — transparansi sumber data ENSO/IOD ditambahkan', 'color:' + WARNA + ';font-weight:bold;');
     }
 
