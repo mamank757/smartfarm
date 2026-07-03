@@ -138,13 +138,8 @@
         var asli = window.rekomendasiWindowTanam;
 
         var dibungkus = function (skorBulan, rawZOM, zona, ensoVal, iodVal) {
-    var elJTO = document.getElementById('selectJenisSawahJTO');
-    if (elJTO && elJTO.value === 'rawa') {
-        return asli(skorBulan, rawZOM, zona, ensoVal, iodVal);
-    }
-
-    var lat = (window._lokasiKalender && window._lokasiKalender.lat) || -5.0;
-                var lon = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
+            var lat = (window._lokasiKalender && window._lokasiKalender.lat) || -5.0;
+            var lon = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
 
             var adaptasi      = buatRawZOMTeradaptasi(rawZOM, lat, lon, ensoVal);
             var rawZOMBaru    = adaptasi.rawZOMBaru;
