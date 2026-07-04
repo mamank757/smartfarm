@@ -5,7 +5,6 @@
  * (tanpa retry). File ini memasang ulang override tsb dengan retry,
  * memakai window._bangunKegiatanFix yang SUDAH diekspor oleh
  * patch_jadwal_tapin_tabela_fix.js.
- *
  * PASANG: paling akhir, setelah patch_jadwal_tapin_tabela_fix.js
  */
 (function () {
