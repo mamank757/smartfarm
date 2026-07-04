@@ -6,7 +6,6 @@
  *     secara bersamaan, cukup 1 fetch nyata, sisanya pakai promise
  *     yang sama (window._fetchCuacaSharedPromise)
  *  3. AbortController.abort() diberi reason yang jelas
- *
  * PASANG: paling akhir, setelah patch_lokasi_cuaca_terpadu.js
  */
 (function () {
