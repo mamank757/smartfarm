@@ -4,7 +4,6 @@
  *  PPL Milenial Wajo — Smart Farming
  *  Versi: 3.0
  * ============================================================
- *
  *  FITUR:
  *  1. AUTO-DETECT lokasi via BTS/WiFi/IP saat tab Risiko Cuaca dibuka
  *  2. SINKRON GPS AKURAT — tombol untuk tingkatkan presisi ke GPS satelit

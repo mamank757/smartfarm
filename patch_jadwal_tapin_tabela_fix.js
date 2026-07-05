@@ -2,10 +2,8 @@
  * ============================================================
  *  patch_jadwal_tapin_tabela_fix.js
  *  Versi: 2.0 — Koreksi Agronomis Tapin vs Tabela
- * ------------------------------------------------------------
- *
+ * -----------------------------------------------------------
  *  LOGIKA YANG BENAR:
- *
  *  Tabela tidak mengalami stagnasi transplanting, sehingga
  *  tumbuh lebih efisien dari hari pertama. Tapin mengalami
  *  stagnasi 7–10 hari setelah dicabut & dipindah, sehingga

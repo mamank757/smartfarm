@@ -10,7 +10,6 @@
  * - renderMacroChart tetap dipakai (canvas #macroClimateChart),
  *   tapi tiap seri (ENSO & IOD) kini punya garis solid (aktual)
  *   + garis putus-putus (proyeksi 3 bulan) seperti dashboard baru.
- *
  * ISI URL GAS ANDA DI SINI:
  */
 window.URL_GAS_ENSO_RAW = 'https://script.google.com/macros/s/AKfycbzMth4qWgEi0DuPSMEPbjQa1jcQTWE2UiaR8gRJ-8zZTBA-4joPHgA_-7gE2_butMk/exec';

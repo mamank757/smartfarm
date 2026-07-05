@@ -5,7 +5,7 @@
  *         + Cari Lokasi by Nama (Geocoding Nominatim)
  *  PPL Milenial Wajo — Smart Farming
  *  Versi: 2.1 (Modal dikunci — hanya tombol TUTUP yg menutup)
- * ------------------------------------------------------------
+ * -----------------------------------------------------------
  *  Perubahan v2.1:
  *  - Modal HANYA bisa ditutup via tombol "✕ TUTUP"
  *  - Klik overlay, swipe bawah, back button Android = tidak menutup
@@ -680,7 +680,6 @@
     window.addEventListener('popstate', function () {
         // Modal dikunci — back button tidak menutup peta
     });
-
     // =========================================================================
     //  SWIPE KE BAWAH — DIKUNCI (tidak menutup modal)
     // =========================================================================

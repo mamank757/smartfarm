@@ -3,9 +3,7 @@
  * patch_sawah_rawa_v1.3.js
  * Diferensiasi Jenis Sawah — PPL Milenial Wajo
  * ============================================================
- *
  * PERBAIKAN UTAMA v1.3 — LOGIKA JADWAL RAWA DIBALIK SEPENUHNYA:
- *
  *   [FIX-CORE-v1.3] rekomendasiRawa() sebelumnya masih salah:
  *           - Masih mencari "bulan aman dari banjir" dengan cara
  *             menghilangkan 3 bulan terbasah, tapi tidak menjamin

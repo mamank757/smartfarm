@@ -3,7 +3,6 @@
  *  patch_nasional_v4.js  —  VERSI FINAL (menggantikan v1 + v4)
  *  Perbaikan Deployment Skala Nasional — PPL Milenial Wajo
  * ============================================================
- *
  *  FILE INI MENGGANTIKAN patch_nasional_v1.js + patch_nasional_v4.js
  *  Pasang file ini saja, hapus keduanya dari index.html.
  *

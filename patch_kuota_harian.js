@@ -4,7 +4,6 @@
  * =============================================================================
  * Fungsi: membatasi penggunaan AI deteksi foto maksimal N x PER MENU per hari
  * per perangkat (berbasis localStorage).
- *
  * Kuota per menu:
  *   Penyakit 5x | Hama 5x | Gulma 5x | Tanah 5x | Panen 10x | BWD 5x
  *   Harga Pestisida 5x | Harga Gabah 5x

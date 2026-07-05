@@ -4,7 +4,6 @@
  *  PPL Milenial Wajo — Smart Farming
  *  Versi: 2.0 (FIXED — sinkron penuh, GPS akurat)
  * ============================================================
- *
  *  CARA PASANG (urutan wajib):
  *    <script src="patch_smartfarming.js"></script>
  *    <script src="patch_riwayat_tambahan.js"></script>  ← file ini
@@ -362,7 +361,6 @@
                 if (typeof tambahRiwayat === 'function') {
                     tambahRiwayat('varietas', label, ringkasan);
                 }
-
             }, 800);
         };
 

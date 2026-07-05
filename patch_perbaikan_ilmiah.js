@@ -5,21 +5,18 @@
  * File ini menimpa (override) 5 fungsi yang memiliki masalah ilmiah.
  * Cara pakai: tambahkan <script src="patch_perbaikan_ilmiah.js"></script>
  * di bagian PALING BAWAH <body>, SETELAH semua script lain.
- *
  * Daftar perbaikan:
  *   [1] normalisasiCurahHujan()  — tambahkan faktor musim
  *   [2] hitungRisikoSheathBlight() — perbaiki tumpang tindih fase & threshold
  *   [3] hitungRisikoTungro()     — koreksi threshold suhu untuk Sulsel
  *   [4] persenBernas (inline di tampilkanHasil) — nilai lebih realistis
  *   [5] simpulkanPrediksiIklimTerpadu() — bobot IOD dinamis (bukan tetap 0.6)
- *
  * Referensi ilmiah tercantum di masing-masing fungsi.
  * =============================================================================
  */
 
 (function() {
     'use strict';
-
     /* =========================================================================
      * [1] normalisasiCurahHujan — PERBAIKAN UTAMA
      * =========================================================================
@@ -338,5 +335,4 @@
         '%c✅ patch_perbaikan_ilmiah.js dimuat — 5 perbaikan aktif',
         'color: #10b981; font-weight: bold;'
     );
-
 })();

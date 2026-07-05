@@ -4,7 +4,6 @@
  * Versi: 2.0.2 — Risiko Curah Hujan Murni + Keterangan Label Dinamis
  * ------------------------------------------------------------
  * Menimpa fungsi di patch_risiko_iklim.js (versi sebelumnya)
- *
  * PERUBAHAN UTAMA:
  * ✅ Label grafik sekarang otomatis menambahkan "(AMAN)", 
  * "(WASPADA)", "(BAHAYA)", atau "(KRITIS)" berdasarkan skor.
@@ -14,7 +13,6 @@
 
 (function () {
     'use strict';
-    
     // ============================================================
     //  1. TABEL BOBOT KORELASI PER ZONA PER BULAN
     // ============================================================
@@ -565,7 +563,6 @@ const riskPanen = window.hitungRisikoDinamis(tglPanen.getMonth(),     'Panen',  
         '%c✅ patch_risiko_iklim_v2.js v2.0.2 aktif — Keterangan Level Otomatis',
         'color:#38b6ff; font-weight:bold;'
     );
-    
     // ============================================================
     //  EKSPOR EKSPLISIT
     // ============================================================

@@ -10,7 +10,6 @@
  *      kini di-override via CSS selector spesifik
  *    - Tambahan light-mode override lengkap untuk #jtoTeks
  *      agar teks tidak menghilang di background putih
- *
  *  CARA PASANG — letakkan PALING AKHIR:
  *    <script src="patch_jadwal_manual_trigger.js"></script>
  *    <script src="patch_riwayat_analisis.js"></script>
@@ -331,5 +330,4 @@ body.light-mode #weatherData div[style*="color:#475569"] {
     } else {
         document.addEventListener('DOMContentLoaded', suntikCSS);
     }
-
 })();

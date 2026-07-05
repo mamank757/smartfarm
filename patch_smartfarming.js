@@ -4,7 +4,6 @@
  *  PPL Milenial Wajo — Smart Farming
  *  Versi Patch: 3.0
  * ============================================================
- *
  *  CARA PAKAI:
  *  Simpan file ini di folder yang sama dengan file HTML utama,
  *  lalu pastikan baris ini sudah ada di bagian bawah <body>:

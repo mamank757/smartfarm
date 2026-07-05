@@ -4,7 +4,6 @@
  *  Versi: 3.13 — Transparansi Sumber Data ENSO/IOD
  * ------------------------------------------------------------
  *  PERBAIKAN v3.13 vs v3.12.1:
- *
  *  [BARU] Warning eksplisit di console kalau window.getENSOAnomaly /
  *  window.getIODAnomaly tidak ditemukan saat tombol analisis diklik.
  *  Sebelumnya kegagalan ini diam-diam jatuh ke nilai Netral tanpa
@@ -39,7 +38,6 @@
     var WARNA = '#3b82f6';
     var EPOCH_BULAN_BARU = new Date('2026-01-29T12:36:00Z');
     var SIKLUS_SINODIS   = 29.53059;
-
     var NAMA_HARI  = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
     var NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni',
                       'Juli','Agustus','September','Oktober','November','Desember'];
@@ -1141,6 +1139,8 @@
         //       bisa meng-override-nya. Sebelumnya fungsi ini private (IIFE closure)
         //       sehingga override dari luar tidak pernah berjalan (dead code).
         window.prosesJadwalOtomatis = prosesJadwalOtomatis;
+        window._jtoGetDataZOM   = getDataZOM;
+    window._jtoRenderOutput = renderOutput;
         console.log('%c✅ patch_jadwal_tanam_otomatis.js v3.13 aktif — transparansi sumber data ENSO/IOD ditambahkan', 'color:' + WARNA + ';font-weight:bold;');
     }
 

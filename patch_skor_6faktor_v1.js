@@ -3,9 +3,7 @@
  *  patch_skor_6faktor_v1.js  —  VERSI PERBAIKAN
  *  Integrasi 6 Faktor Iklim — RISIKO IKLIM & KALENDER TNM
  * ============================================================
- *
  *  DAFTAR BUG YANG DIPERBAIKI:
- *
  *  [FIX-1]  Bobot ENSO/SST/IOD/ZOM/MJO/Bulan diluruskan agar
  *           sesuai tabel metodologi (ENSO 30%, SST 18%,
  *           IOD 17%, ZOM 18%, MJO 10%, Bulan 7%) → total 100%.
@@ -354,7 +352,16 @@
     }
 
     window.hitungRisikoDinamis = function (bulanIndex, fase, ensoVal, iodVal, baselineData) {
-        var lat = (window._lokasiKalender && window._lokasiKalender.lat) || -5.0;
+    // 🔧 FIX Bug #3: model ENSO/SST/IOD/ZOM/MJO/Bulan tidak berlaku untuk rawa
+    // (rawa pakai skor banjir langsung dari ZOM lokal, bukan wetness score iklim)
+    var elJTO = document.getElementById('selectJenisSawahRisiko')
+             || document.getElementById('selectJenisSawahJTO');
+    if (elJTO && elJTO.value === 'rawa' && typeof window._hitungRisikoAsli6F === 'function') {
+        return window._hitungRisikoAsli6F(bulanIndex, fase, ensoVal, iodVal, baselineData);
+    }
+
+    var lat = (window._lokasiKalender && window._lokasiKalender.lat) || -5.0;
+    
         var lon = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
 
         // ── 1. Baseline ZOM ──────────────────────────────────────────────
@@ -506,14 +513,7 @@
 
                 var skor6F = hitungSkor6Faktor(ensoVal, iodVal, zomNorm, sstAnom, mjoVal6F, bulanVal);
 
-                // Bonus/penalti proporsional
-                var bonusPenalti = skor6F > 0
-                    ? Math.round(skor6F * 10)
-                    : Math.round(skor6F * 15);
-
-                if (typeof item.nilaiTotal === 'number') {
-                    item.nilaiTotal = Math.max(0, Math.min(100, item.nilaiTotal + bonusPenalti));
-                }
+               
 
                 // Keterangan faktor untuk alasan
                 var labelSST   = sstAnom > 0.3  ? '🌊 SST hangat (+' + sstAnom.toFixed(1) + '°C)'
@@ -854,6 +854,7 @@ if (window.mjoData && window.mjoData.fase) {
             'color:#d946ef; font-weight:bold;'
         );
     }
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
             setTimeout(init6Faktor, 500);

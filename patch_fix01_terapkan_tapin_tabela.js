@@ -103,13 +103,20 @@
         if (asli.__fix01Applied) return;
 
         window.prosesJadwalOtomatis = async function () {
-            await asli.apply(this, arguments);
+    await asli.apply(this, arguments);
 
-            var multiJadwal = window._jtoData;
-            var metodeTanam = window._jtoMetodeTanam || 'tapin';
-            var teksEl      = document.getElementById('jtoTeks');
-            if (!multiJadwal || !multiJadwal.length || !teksEl) return;
+    // 🔧 FIX Bug #2: jangan timpa kegiatan rawa dengan logika Tapin/Tabela irigasi
+    var elJTO = document.getElementById('selectJenisSawahJTO');
+    if (elJTO && elJTO.value === 'rawa') {
+        console.log('%c⏭️ [fix01] Mode Rawa aktif — overwrite Tapin/Tabela dilewati, kegiatan rawa dipertahankan.', 'color:#1D9E75;font-weight:bold;');
+        return;
+    }
 
+    var multiJadwal = window._jtoData;
+    var metodeTanam = window._jtoMetodeTanam || 'tapin';
+    var teksEl      = document.getElementById('jtoTeks');
+    if (!multiJadwal || !multiJadwal.length || !teksEl) return;
+   
             multiJadwal.forEach(function (jadwal) {
                 var skor = jadwal._skorBulan || new Array(12).fill(50);
                 jadwal.kegiatan = window._bangunKegiatanFix(jadwal.rekomendasi, skor, metodeTanam);

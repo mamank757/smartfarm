@@ -4,7 +4,6 @@
  *  PPL Milenial Wajo — Smart Farming
  *  Versi: 2.0
  * ============================================================
- *
  *  Mempertahankan logika dari patch_konsistensi_cuaca_v1.js:
  *  - klasifikasiCuacaGabungan() — ikon & label berdasarkan
  *    kode WMO + intensitas presipitasi aktual di titik sawah
@@ -12,7 +11,6 @@
  *    antara "awan hujan di area" vs "hujan aktif di sawah"
  *  - tambahRingkasanSituasi() — kotak ringkasan cuaca hari ini
  *  - tambahKeteranganPrakiraan() — catatan resolusi kecamatan
- *
  *  CARA PASANG (setelah patch_lokasi_cuaca_terpadu.js):
  *    <script src="patch_konsistensi_cuaca_v2.js"></script>
  * ============================================================

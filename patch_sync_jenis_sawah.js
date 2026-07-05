@@ -7,7 +7,6 @@
 (function () {
     'use strict';
     if (window.__syncJenisSawahAktif) return;
-
     var KEY = 'sf_jenis_sawah_global';
 
     function ambilTersimpan() {
@@ -41,7 +40,6 @@
                 terapkanKeSemuaSelect(elRisiko.value, 'selectJenisSawahRisiko');
             });
         }
-
         if (elJTO && !elJTO._syncAttached) {
             elJTO._syncAttached = true;
             elJTO.value = ambilTersimpan();

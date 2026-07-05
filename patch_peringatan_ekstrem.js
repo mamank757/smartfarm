@@ -4,7 +4,6 @@
  *  PPL Milenial Wajo — Smart Farming
  *  Versi: 1.0
  * ============================================================
- *
  *  FITUR YANG DITAMBAHKAN:
  *  1. Banner peringatan ekstrem otomatis (atas layar)
  *  2. Analisis 7 parameter ekstrem: hujan lebat, angin kencang,
@@ -633,7 +632,6 @@
     if (weatherDataEl) {
         observer.observe(weatherDataEl, { childList: true, subtree: false });
     }
-
     // Fallback: coba setelah DOM fully loaded
     document.addEventListener('DOMContentLoaded', function() {
         var wd = document.getElementById('weatherData');

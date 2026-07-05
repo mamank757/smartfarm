@@ -6,7 +6,6 @@
  * RIWAYAT VERSI:
  * v3.2 — Bugfix ID konflik dengan HTML (tabPestisida/boxPestisida sudah
  *        dipakai fitur lain), ID diganti jadi tabAturPestisida/boxAturPestisida.
- *
  * v4.0 — PENYEMPURNAAN BESAR:
  * 1) Database ditambah 7 bahan aktif FUNGISIDA umum (Propineb/Antracol,
  *    Difenokonazol/Score, Azoksistrobin/Amistar, Trisiklazol/Filia,
@@ -680,7 +679,6 @@
                 try { if (typeof currentMode !== 'undefined') currentMode = mode; } catch (e) {}
                 return;
             }
-
             if (boxEl) boxEl.style.display = 'none';
             if (tabEl) tabEl.classList.remove('active');
 

@@ -2,7 +2,7 @@
  * ============================================================
  *  patch_jadwal_manual_trigger.js
  *  Versi: 1.1 — Fix Reset State BWD/Malai + Hapus Double Override
- * ------------------------------------------------------------
+ * -----------------------------------------------------------
  *  PERBAIKAN v1.1 vs v1.0:
  *  [FIX KRITIS] Versi 1.0 memanggil window._jtoResetState(),
  *    sebuah fungsi yang TIDAK PERNAH dibuat oleh

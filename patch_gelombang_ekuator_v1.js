@@ -358,15 +358,81 @@
     //  INIT
     // ============================================================
 
+    /**
+     * Deteksi apakah loadWeather sudah pernah jalan sebelum patch ini
+     * dimuat — dengan memeriksa apakah elemen hasil cuaca sudah berisi
+     * konten (weatherData sudah terisi) atau GPS sudah terkunci.
+     * Jika ya, langsung fetch tanpa menunggu hook terpicu.
+     */
+    function cekDanFetchLangsung() {
+        // Tanda 1: elemen weatherData sudah ada dan berisi konten
+        var weatherData = document.getElementById('weatherData');
+        var sudahAdaKonten = weatherData && weatherData.children.length > 0;
+
+        // Tanda 2: GPS sudah tersedia (koordinat tersimpan di salah satu variabel umum)
+        var sudahGPS = (window._lokasiCuaca && window._lokasiCuaca.lat) ||
+                       (window._lokasiKalender && window._lokasiKalender.lat) ||
+                       (window.currentLat && window.currentLon);
+
+        if (sudahAdaKonten || sudahGPS) {
+            console.log(
+                '%c[gelombang_ekuator] loadWeather sudah jalan sebelum patch ini — fetch Kelvin+Rossby langsung sekarang...',
+                'color:#d946ef;'
+            );
+            Promise.all([fetchKelvinWave(), fetchRossbyWave()]).then(function (data) {
+                renderKotakGelombang(data[0], data[1]);
+            });
+        } else {
+            console.log('[gelombang_ekuator] GPS belum aktif — menunggu hook loadWeather berjalan...');
+        }
+    }
+
+    /**
+     * Pantau perubahan tab — jika user pindah ke tab Risiko Cuaca dan
+     * data gelombang belum ada, fetch otomatis saat itu juga.
+     * Ini menangani kasus di mana GPS baru aktif setelah patch dimuat.
+     */
+    function pasangObserverTab() {
+        // Deteksi klik tab Cuaca/Risiko Cuaca
+        document.addEventListener('click', function (e) {
+            var target = e.target;
+            var teks = (target.textContent || '').toLowerCase();
+            var adaTabCuaca = teks.includes('cuaca') || teks.includes('risiko cuaca');
+            if (!adaTabCuaca) return;
+            // Tunda sedikit agar konten tab sempat dirender
+            setTimeout(function () {
+                if (!window.kelvinData && !window.rossbyData) {
+                    console.log('[gelombang_ekuator] Tab Cuaca diklik, Kelvin/Rossby belum ada — fetch sekarang...');
+                    Promise.all([fetchKelvinWave(), fetchRossbyWave()]).then(function (data) {
+                        renderKotakGelombang(data[0], data[1]);
+                    });
+                } else {
+                    // Data sudah ada tapi mungkin kotak belum dirender (DOM baru dibuat ulang)
+                    setTimeout(function () {
+                        if (!document.getElementById('kotakGelombangEkuator')) {
+                            renderKotakGelombang(window.kelvinData, window.rossbyData);
+                        }
+                    }, 400);
+                }
+            }, 600);
+        }, true); // capture phase agar menangkap klik sebelum handler lain
+    }
+
     function init() {
         pasangKelvinKeRisikoDinamis();
         hookLoadWeather();
+        pasangObserverTab();
+
+        // Cek langsung apakah cuaca sudah tampil sebelum patch ini dimuat
+        // (race condition yang terjadi di screenshot user)
+        setTimeout(cekDanFetchLangsung, 500);
+
         window.__gelombangEkuatorV1Aktif = true;
         console.log(
             '%c✅ patch_gelombang_ekuator_v1.js AKTIF\n' +
             '   window.cekGelombangEkuator() → cek status tiga gelombang\n' +
             '   window.tampilkanGelombangEkuator() → render manual jika perlu\n' +
-            '   ⚠️  Isi GAS_ENDPOINTS.kelvin dan .rossby di HTML sebelum build!',
+            '   Race condition fix: fetch otomatis jika loadWeather sudah jalan sebelumnya',
             'color:#d946ef;font-weight:bold;'
         );
     }

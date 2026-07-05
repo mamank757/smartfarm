@@ -4,7 +4,6 @@
  * Fix: Prioritas Air Tanam & Vegetatif, Bukan Panen Kering
  * ------------------------------------------------------------
  * MASALAH YANG DIPERBAIKI:
- *
  *   Sebelumnya sistem memberi bobot besar pada PANEN KERING:
  *   - nilaiPanen = 100 - skorPanen  → panen kering = skor 100
  *   - bobot panen = 35% (sama besar dengan generatif)

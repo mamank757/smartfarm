@@ -3,7 +3,6 @@
  * patch_iklim_terpadu_v1.js
  * Konsolidasi Kesimpulan Iklim Terpadu — PPL Milenial Wajo
  * ============================================================
- *
  * FILE INI MENGGANTIKAN logika yang sebelumnya tersebar di:
  *   - HTML utama  (simpulkanPrediksiIklimTerpadu — asli)
  *   - patch_nasional_v1.js (override via inline script)

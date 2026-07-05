@@ -64,6 +64,20 @@
  *   SST & MJO yang dipakai diambil dari window._6F.getAnomaliSSTLokal
  *   dan window._6F.getDampakMJO — fungsi YANG SAMA yang dipakai
  *   RISIKO IKLIM, sehingga tidak ada dua sumber kebenaran berbeda.
+ *
+ * [CATATAN — 2026] Versi sebelumnya pernah disisipi fungsi
+ * isTadahHujan() + skala SST/MJO berbeda untuk "tadah hujan",
+ * dengan teori lompatan tanggal 8 hari disebabkan oleh onset
+ * bergeser tipis lalu "meleset" dari jendela fase bulan di
+ * cariTglFaseBulan. Teori itu TIDAK TERBUKTI dan kodenya tidak
+ * pernah aktif (isTadahHujan() mengecek nilai dropdown yang
+ * salah — dropdown hanya punya value 'irigasi'/'rawa', bukan
+ * 'tadah_hujan'/'tadahhujan'/'tadah hujan'). Akar masalah lompatan
+ * 8 hari yang sebenarnya sudah ditemukan & diperbaiki terpisah:
+ * arah rumus Tapin/Tabela yang terbalik di bangunKegiatanFix
+ * (lihat patch_koreksi_arah_tapin_tabela_v1.js / isi terbaru
+ * patch_fix_label_masuk_tabela_v1.js). File ini dikembalikan ke
+ * versi bersih tanpa kode yang tidak terbukti & tidak aktif itu.
  * ============================================================
  */
 
