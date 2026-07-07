@@ -1,13 +1,25 @@
 /**
  * ============================================================
  * patch_risiko_iklim_v2.js
- * Versi: 2.0.2 — Risiko Curah Hujan Murni + Keterangan Label Dinamis
+ * Versi: 2.1.0 — Perbaikan Deteksi Zona Lokal / Anti-Monsunal
  * ------------------------------------------------------------
  * Menimpa fungsi di patch_risiko_iklim.js (versi sebelumnya)
- * PERUBAHAN UTAMA:
+ * PERUBAHAN UTAMA (2.0.2):
  * ✅ Label grafik sekarang otomatis menambahkan "(AMAN)", 
  * "(WASPADA)", "(BAHAYA)", atau "(KRITIS)" berdasarkan skor.
  * ✅ Seluruh logika IIFE dan pencegahan bentrok tetap aman.
+ * PERUBAHAN BARU (2.1.0):
+ * ✅ tentukanZonaIklim() diperbaiki: sebelumnya wilayah anti-
+ *    monsunal (Tipe C, Aldrian & Susanto 2003) dengan lon < 128
+ *    — mis. Ternate/Bacan/Buru/Seram di Maluku Utara, serta
+ *    Sulawesi Tenggara, Kep. Buton-Muna, dan Luwuk-Banggai di
+ *    Sulawesi — salah terklasifikasi sebagai 'peralihan' atau
+ *    bahkan 'monsunal'. Kini wilayah-wilayah tsb dikenali lebih
+ *    dulu sebagai zona 'lokal' (anti-monsunal).
+ * ✅ Pencocokan pola fallback (dbPola) kini juga menerima nama
+ *    pola "Anti Monsunal" / "Anti-Monsunal", tidak hanya "Lokal".
+ * ✅ Label tampilan zona di UI kini menulis eksplisit
+ *    "LOKAL (ANTI-MONSUNAL)" agar mudah dikenali pengguna.
  * ============================================================
  */
 
@@ -46,11 +58,59 @@
     // ============================================================
     //  2. PENENTUAN ZONA IKLIM BERDASARKAN KOORDINAT GPS
     // ============================================================
+    //  Klasifikasi mengacu pada 3 tipe hujan Aldrian & Susanto (2003)
+    //  + zona 'peralihan' tambahan:
+    //   - Monsunal   : puncak hujan Des-Feb, kemarau Jun-Agu (Jawa, dst)
+    //   - Ekuatorial : dua puncak hujan (Mar-Apr & Okt-Nov)
+    //   - Lokal      : ANTI-MONSUNAL — kebalikan pola Monsunal,
+    //                  puncak hujan pertengahan tahun (Jun-Agu/Sep),
+    //                  kemarau Des-Feb. Wilayah acuan: Ambon, Seram,
+    //                  Buru, Kep. Kei/Aru/Tanimbar, Ternate/Bacan
+    //                  (Maluku & Maluku Utara), Fakfak-Kaimana (Papua
+    //                  Barat), serta Sulawesi Tenggara, Kep. Buton-
+    //                  Muna, dan Luwuk-Banggai (Sulawesi).
+    //   - Peralihan  : campuran/transisi di sekitar Sulawesi tengah
+    //
+    //  CATATAN: sebelumnya hanya lon >= 128 yang dianggap 'lokal',
+    //  sehingga sebagian wilayah anti-monsunal di Sulawesi & Maluku
+    //  Utara (lon < 128) justru salah masuk ke zona 'peralihan'
+    //  ataupun 'monsunal'. Ditambahkan bounding-box eksplisit di
+    //  bawah ini untuk menutup celah tersebut. Bounding-box adalah
+    //  aproksimasi geografis; untuk presisi per-kabupaten gunakan
+    //  data ZOM resmi BMKG (lihat arrayZom / URL_ZOM_LOKAL) yang
+    //  sudah diprioritaskan lebih dulu di prosesAnalisisKalender().
     function tentukanZonaIklim(lat, lon) {
+        // 1) Sulawesi Tenggara, Kep. Buton-Muna, & Luwuk-Banggai
+        //    (Sulawesi Tengah bagian timur) — pola anti-monsunal klasik
+        const antiMonsunalSulawesi =
+            (lat >= -6.2 && lat <= -0.3 && lon >= 121.3 && lon <= 125.8);
+
+        // 2) Maluku & Maluku Utara dengan lon < 128 (mis. Ternate,
+        //    Tidore, Bacan, Buru, Seram bagian barat) — sebelumnya
+        //    lolos dari deteksi 'lokal' karena aturan lon >= 128
+        const antiMonsunalMaluku =
+            (lat >= -8.5 && lat <= 3.0 && lon >= 124.0 && lon < 128);
+
+        if (antiMonsunalSulawesi || antiMonsunalMaluku) return 'lokal';
+
+        // 3) Sisa Maluku (lon >= 128) & Papua — termasuk kantong
+        //    anti-monsunal Fakfak-Kaimana di Papua Barat
         if (lon >= 128) return 'lokal';
+
         if (lat >= -6 && lat <= 6 && lon >= 95 && lon <= 119) return 'ekuatorial';
         if (lat >= -4 && lat <= 2 && lon >= 119 && lon <= 128) return 'peralihan';
         return 'monsunal';
+    }
+
+    // Nama tampilan tiap zona untuk ditampilkan ke pengguna di UI
+    var NAMA_ZONA_TAMPIL = {
+        monsunal  : 'MONSUNAL',
+        ekuatorial: 'EKUATORIAL',
+        lokal     : 'LOKAL (ANTI-MONSUNAL)',
+        peralihan : 'PERALIHAN'
+    };
+    function namaZonaTampil(zona) {
+        return NAMA_ZONA_TAMPIL[zona] || String(zona).toUpperCase();
     }
     
     // ============================================================
@@ -284,7 +344,7 @@
             }
     
             if (kabTerpilih && jarakTerdekat <= 150) {
-                namaZona = `WIL. ${kabTerpilih.kabupaten_kota.toUpperCase()} (${jarakTerdekat.toFixed(1)} km) — Zona: ${tentukanZonaIklim(lokasi.lat, lokasi.lon).toUpperCase()}`;
+                namaZona = `WIL. ${kabTerpilih.kabupaten_kota.toUpperCase()} (${jarakTerdekat.toFixed(1)} km) — Zona: ${namaZonaTampil(tentukanZonaIklim(lokasi.lat, lokasi.lon))}`;
                 baselineData = [
                     parseFloat(kabTerpilih.jan), parseFloat(kabTerpilih.feb), parseFloat(kabTerpilih.mar), parseFloat(kabTerpilih.apr),
                     parseFloat(kabTerpilih.mei), parseFloat(kabTerpilih.jun), parseFloat(kabTerpilih.jul), parseFloat(kabTerpilih.agu),
@@ -292,9 +352,20 @@
                 ];
             } else {
                 const zona = tentukanZonaIklim(lokasi.lat, lokasi.lon);
-                const peta = { monsunal: 'monsunal', ekuatorial: 'ekuatorial', lokal: 'lokal', peralihan: 'peralihan' };
-                const polaTerpilih = dbPola.find(p => p.pola.toLowerCase().includes(peta[zona])) || dbPola.find(p => p.pola.toLowerCase().includes('monsunal'));
-                namaZona     = `[FALLBACK] POLA MAKRO — ZONA: ${zona.toUpperCase()}`;
+                // Kata kunci per zona untuk mencocokkan nama pola di dbPola.
+                // 'lokal' menerima beberapa varian penulisan "anti monsunal"
+                // karena beberapa sumber data ZOM menamainya demikian, bukan "lokal".
+                const petaKataKunci = {
+                    monsunal  : ['monsunal'],
+                    ekuatorial: ['ekuatorial'],
+                    lokal     : ['lokal', 'anti monsunal', 'anti-monsunal', 'antimonsunal'],
+                    peralihan : ['peralihan']
+                };
+                const kataKunciZona = petaKataKunci[zona] || ['monsunal'];
+                const polaTerpilih =
+                    dbPola.find(p => kataKunciZona.some(k => p.pola.toLowerCase().includes(k)))
+                    || dbPola.find(p => p.pola.toLowerCase().includes('monsunal'));
+                namaZona     = `[FALLBACK] POLA MAKRO — ZONA: ${namaZonaTampil(zona)}`;
                 baselineData = polaTerpilih.baseline;
             }
     
@@ -330,7 +401,7 @@ const riskPanen = window.hitungRisikoDinamis(tglPanen.getMonth(),     'Panen',  
             renderKalenderChartV2(labels, dataSkor, dataStatus, dataTipe);
             loadGlobalClimateIndices();
     
-            const zonaLabel = tentukanZonaIklim(lokasi.lat, lokasi.lon).toUpperCase();
+            const zonaLabel = namaZonaTampil(tentukanZonaIklim(lokasi.lat, lokasi.lon));
     
             function ikonTipe(tipe) {
                 if (tipe === 'kekeringan') return '☀️';
@@ -560,13 +631,14 @@ const riskPanen = window.hitungRisikoDinamis(tglPanen.getMonth(),     'Panen',  
     }
     
     console.log(
-        '%c✅ patch_risiko_iklim_v2.js v2.0.2 aktif — Keterangan Level Otomatis',
+        '%c✅ patch_risiko_iklim_v2.js v2.1.0 aktif — Zona Lokal/Anti-Monsunal Sulawesi & Maluku diperbaiki',
         'color:#38b6ff; font-weight:bold;'
     );
     // ============================================================
     //  EKSPOR EKSPLISIT
     // ============================================================
     window.tentukanZonaIklim      = tentukanZonaIklim;
+    window.namaZonaTampil         = namaZonaTampil;
     window.hitungRisikoDinamis    = hitungRisikoDinamis;
     window.getWarnaRisikoAir      = getWarnaRisikoAir;
     window.renderKalenderChartV2  = renderKalenderChartV2;
