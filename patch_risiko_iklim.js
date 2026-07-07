@@ -596,7 +596,7 @@ const riskPanen = window.hitungRisikoDinamis(tglPanen.getMonth(),     'Panen',  
             const zonaLabel  = namaZonaTampil(zonaHasil);
             const acuanData  = cariZonaDariDataReferensi(lokasi.lat, lokasi.lon);
             const ketAcuan   = acuanData
-                ? `📌 Acuan: ${acuanData.nama} (${acuanData.jarak.toFixed(1)} km) — data Gas_ZOM_Lokal_1_.xlsx`
+                ? `📌 Acuan: ${acuanData.nama} (${acuanData.jarak.toFixed(1)} km) — data PEMUTAKHIRAN ZONA MUSIM INDONESIA PERIODE 1991-2020`
                 : `📌 Acuan: estimasi geografis (tidak ada titik ZOM referensi < ${RADIUS_MAKS_ZOM_REFERENSI} km)`;
     
             function ikonTipe(tipe) {
