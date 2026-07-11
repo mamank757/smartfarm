@@ -17,6 +17,23 @@
  *   [ZOM-5] Teks kesimpulan mencantumkan label tipe ZOM
  *   [ZOM-6] Teks rekomendasi disesuaikan per sub-zona
  *
+ * [MERGED v2.2] Menggabungkan patch_fix_konsistensi_zona_sulsel_v1.js
+ *   (dulu file terpisah, sekarang dihapus dari index.html) supaya
+ *   maintenance lebih sederhana — satu sumber untuk satu fungsi
+ *   (deteksiZonaIklimV2), bukan fungsi dasar + wrapper terpisah yang
+ *   saling menunggu lewat polling.
+ *   [SULSEL-FIX] Sebelum jatuh ke 8 kondisi kotak lat/lon umum di
+ *   bawah, deteksiZonaIklimV2() sekarang CEK DULU tabel
+ *   REFERENSI_REGIONAL_SULSEL — disalin 1:1 dari REFERENSI_MUSIM_
+ *   REGIONAL milik mesin penjadwalan (patch_deteksi_musim_v1.js),
+ *   supaya label zona & bobot RISIKO IKLIM/6-faktor SELALU sinkron
+ *   dengan zona yang benar-benar dipakai mesin penjadwalan untuk
+ *   memilih bulan tanam. Ini menutup celah segitiga kecil di sekitar
+ *   lat -4 s.d. -6, lon 119 s.d. 120,8 (Sulsel/Sultra) yang dulu
+ *   jatuh ke default 'monsunal' karena tidak masuk kotak manapun.
+ *   Wilayah di luar cakupan tabel ini (Sumatera, Kalimantan, NTT,
+ *   Papua, dst.) TIDAK terpengaruh — tetap pakai 8 kondisi asli.
+ *
  * SUMBER DATA:
  *   BMKG Buletin PMH 2025/2026 Sulsel (Sep 2025) — 24 ZOM
  *   BMKG Buletin PMH 2025/2026 Sulut (Sep 2025) — 10 ZOM
@@ -137,7 +154,59 @@
     //  • NTT timur → kering_ekstrem
     // ========================================================
 
+    // ========================================================
+    //  [SULSEL-FIX / eks patch_fix_konsistensi_zona_sulsel_v1.js]
+    //  Disalin 1:1 dari REFERENSI_MUSIM_REGIONAL di
+    //  patch_deteksi_musim_v1.js — satu sumber tabel, dua konsumen,
+    //  supaya klasifikasi zona (label & bobot) SELALU sinkron dengan
+    //  zona yang benar-benar dipakai mesin penjadwalan.
+    // ========================================================
+    var REFERENSI_REGIONAL_SULSEL = [
+        { latMin: -6.0,  latMaks: -3.5,  lonMin: 119.0, lonMaks: 119.99, zona: 'monsunal'   }, // barat
+        { latMin: -6.0,  latMaks: -3.5,  lonMin: 120.0, lonMaks: 120.79, zona: 'lokal'       }, // timur (anti-monsun)
+        { latMin: -6.0,  latMaks: -2.5,  lonMin: 120.8, lonMaks: 124.5,  zona: 'peralihan'   }, // peralihan_sultra
+        { latMin: -3.49, latMaks: -0.5,  lonMin: 118.5, lonMaks: 119.79, zona: 'monsunal'   }, // barat
+        { latMin: -3.49, latMaks: 0.0,   lonMin: 119.8, lonMaks: 122.5,  zona: 'ekuatorial'  }  // ekuatorial_dua_puncak
+    ];
+
+    function cariDiReferensiRegionalSulsel(lat, lon) {
+        for (var i = 0; i < REFERENSI_REGIONAL_SULSEL.length; i++) {
+            var r = REFERENSI_REGIONAL_SULSEL[i];
+            if (lat >= r.latMin && lat <= r.latMaks && lon >= r.lonMin && lon <= r.lonMaks) {
+                return r.zona;
+            }
+        }
+        return null;
+    }
+
     function deteksiZonaIklimV2(lat, lon) {
+
+        // [DATA-RIIL-FIX] PRIORITAS TERTINGGI: kalau ada stasiun ZOM asli
+        // BMKG dalam radius wajar (713 titik, lihat DATA_ZOM_REFERENSI di
+        // patch_risiko_iklim.js — sumber: Gas_ZOM_Lokal_1_.xlsx), pakai
+        // klasifikasi stasiun itu APA ADANYA. Ini data pengamatan riil per
+        // titik, jauh lebih akurat daripada kotak lat/lon perkiraan di
+        // bawah (baik REFERENSI_REGIONAL_SULSEL maupun 8 kondisi umum).
+        //
+        // KENAPA PENTING: sebelum fix ini, halaman bisa menampilkan DUA
+        // label zona yang BERBEDA untuk lokasi yang SAMA — satu dari
+        // window.tentukanZonaIklim (fungsi ini, berbasis kotak) dan satu
+        // lagi dari tentukanZonaIklim LOKAL milik patch_risiko_iklim.js
+        // (yang sudah lebih dulu memprioritaskan DATA_ZOM_REFERENSI).
+        // Contoh nyata: titik "Bola" (Wajo) dikode PERALIHAN di data
+        // stasiun riil, tapi masuk kotak "lokal" di REFERENSI_REGIONAL_
+        // SULSEL — dua sumber berbeda pendapat. Sekarang KEDUANYA
+        // mengecek sumber data yang SAMA lebih dulu, jadi selalu sinkron.
+        if (typeof window.cariZonaDariDataReferensi === 'function') {
+            var dariStasiunRiil = window.cariZonaDariDataReferensi(lat, lon);
+            if (dariStasiunRiil && dariStasiunRiil.tipe) return dariStasiunRiil.tipe;
+        }
+
+        // [SULSEL-FIX] Cek dulu tabel regional yang lebih rinci —
+        // kalau cocok, pakai ini (konsisten dengan mesin penjadwalan)
+        // dan JANGAN lanjut ke 8 kondisi kotak umum di bawah.
+        var dariRegionalSulsel = cariDiReferensiRegionalSulsel(lat, lon);
+        if (dariRegionalSulsel) return dariRegionalSulsel;
 
         // [BARU] HST Basah: Kalimantan interior
         if (lat >= -2.0 && lat <= 4.0 && lon >= 109.0 && lon <= 118.0) {
@@ -537,6 +606,9 @@
             '  ║ [ZOM-5] Label tipe ZOM di catatan metodologi\n' +
             '  ║ [ZOM-6] Rekomendasi PPL per sub-zona\n' +
             '  ║ [FIX]   Race condition waitForV1() polling 100ms\n' +
+            '  ║ [MERGED] Konsistensi zona Sulsel/Sultra (eks patch\n' +
+            '  ║          fix_konsistensi_zona_sulsel_v1.js) — celah\n' +
+            '  ║          kotak lat/lon lama sudah tertutup\n' +
             '  ╚═══════════════════════════════════════════════╝',
             'color:#f59e0b;font-weight:bold;'
         );
