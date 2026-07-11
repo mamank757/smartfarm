@@ -170,6 +170,100 @@
     }
 
     // ============================================================
+    //  [MERGED — eks BUG-1 patch_bugfix_b1b3_v1.js]
+    //  Perbaiki label "📍 Zona Iklim" di RISIKO IKLIM
+    //  ------------------------------------------------------------
+    //  patch_risiko_iklim.js menyebut tentukanZonaIklim LOKAL (4 zona
+    //  lama) sebagai referensi di dalam closure-nya sendiri, bukan
+    //  window.tentukanZonaIklim — jadi override [FIX-B] di atas tidak
+    //  berdampak ke TEKS zona yang muncul di UI (walau kalkulasi skor
+    //  risiko 0-100 sudah benar sejak patch_skor_6faktor_v1.js). Fix
+    //  ini membaca ulang DOM #teksAnalisisFase setelah setiap analisis
+    //  dan mengganti teks zona dengan hasil klasifikasi 6-zona (V2).
+    // ============================================================
+
+    var LABEL_6ZONA_FIX = {
+        monsunal:       'MONSUNAL',
+        ekuatorial:     'EKUATORIAL',
+        peralihan:      'PERALIHAN',
+        lokal:          'LOKAL / ANTI-MONSUNAL',
+        hst_basah:      'PANTAI BASAH (HST)',
+        kering_ekstrem: 'SEMI-ARID / KERING EKSTREM'
+    };
+
+    function getZonaBenarUntukLabel(lat, lon) {
+        if (typeof window._deteksiZonaIklimV2 === 'function') {
+            return window._deteksiZonaIklimV2(lat, lon);
+        }
+        if (typeof window.tentukanZonaIklim === 'function' &&
+            window.tentukanZonaIklim.__satuSumber) {
+            return window.tentukanZonaIklim(lat, lon);
+        }
+        return null;
+    }
+
+    function perbaikiLabelZonaRisiko() {
+        var koord = (window._lokasiKalender && window._lokasiKalender.lat != null)
+            ? window._lokasiKalender
+            : null;
+        if (!koord) return;
+
+        var zonaBenar = getZonaBenarUntukLabel(koord.lat, koord.lon);
+        if (!zonaBenar) return;
+
+        var labelBenar = LABEL_6ZONA_FIX[zonaBenar] || zonaBenar.toUpperCase();
+        var kontainer  = document.getElementById('teksAnalisisFase');
+        if (!kontainer) return;
+
+        var diperbaiki = false;
+        kontainer.querySelectorAll('b').forEach(function (el) {
+            var teks = el.textContent || '';
+            var tampakZona = /^(MONSUNAL|EKUATORIAL|PERALIHAN|LOKAL|PANTAI|SEMI-ARID|ANTI-MONSUNAL|HST)/.test(teks.trim());
+            if (tampakZona && teks !== labelBenar) {
+                el.textContent = labelBenar;
+                diperbaiki = true;
+            }
+        });
+
+        if (diperbaiki) {
+            kontainer.querySelectorAll('div').forEach(function (div) {
+                var t = div.textContent || '';
+                if (t.includes('ZONA:') && !t.includes(labelBenar)) {
+                    div.innerHTML = div.innerHTML.replace(
+                        /ZONA:\s*[A-Z\/ \-]+/,
+                        'ZONA: ' + labelBenar + ' <span style="color:#d946ef;font-size:0.65em;">(V2)</span>'
+                    );
+                }
+            });
+            console.log(
+                '%c[fix6F] Label zona di RISIKO IKLIM diperbaiki → ' + labelBenar,
+                'color:#d946ef;'
+            );
+        }
+    }
+
+    function pasangLabelZonaFix(tick) {
+        tick = tick || 0;
+        if (typeof window.prosesAnalisisKalender !== 'function') {
+            if (tick >= 80) {
+                console.error('[fix6F] window.prosesAnalisisKalender tidak tersedia — label zona fix tidak terpasang.');
+                return;
+            }
+            setTimeout(function () { pasangLabelZonaFix(tick + 1); }, 100);
+            return;
+        }
+        if (window.prosesAnalisisKalender.__zonaLabelFixed) return;
+
+        var asli = window.prosesAnalisisKalender;
+        window.prosesAnalisisKalender = async function () {
+            await asli.apply(this, arguments);
+            setTimeout(perbaikiLabelZonaRisiko, 100);
+        };
+        window.prosesAnalisisKalender.__zonaLabelFixed = true;
+        console.log('%c✅ [fix6F] Label zona RISIKO IKLIM akan diperbarui ke klasifikasi 6-zona setelah setiap analisis', 'color:#10b981;font-weight:bold;');
+    }
+
+    // ============================================================
     //  DIAGNOSTIK — panggil window.cekIntegrasi6Faktor() di console
     // ============================================================
     window.cekIntegrasi6Faktor = async function () {
@@ -235,10 +329,12 @@
         pasangCacheSST();
         pasangZonaIklimSatuSumber();
         pasangUrutanKronologis();
+        pasangLabelZonaFix();
         window.__fixIntegrasi6FaktorAktif = true;
         console.log(
             '%c✅ patch_fix_integrasi_6faktor_v1.js aktif\n' +
-            'Ketik window.cekIntegrasi6Faktor() di console untuk memeriksa status 6 sumber data.',
+            'Ketik window.cekIntegrasi6Faktor() di console untuk memeriksa status 6 sumber data.\n' +
+            '[MERGED] Label zona RISIKO IKLIM (eks BUG-1 patch_bugfix_b1b3_v1.js) ikut dikelola di sini.',
             'color:#10b981;font-weight:bold;'
         );
     }

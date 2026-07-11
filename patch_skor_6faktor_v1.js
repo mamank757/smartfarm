@@ -450,6 +450,12 @@
 
         skor = Math.round(Math.max(0, Math.min(100, skor)));
 
+        // [MERGED — eks patch_enso_dominance_v1.js] Simpan wsTotal & ENSO
+        // terakhir agar perbarui6FaktorPanel() bisa mengoreksi labelnya
+        // saat ENSO dominan (lihat komentar di perbarui6FaktorPanel).
+        window._wsTotal_terakhir = wsTotal;
+        window._wsENSO_terakhir  = ensoVal;
+
         return {
             skor:           skor,
             statusCuaca:    statusCuaca,
@@ -488,6 +494,29 @@
             var hasil = _asliKalender.call(this, skorBulan, rawZOM, zona, ensoVal, iodVal);
 
             if (!Array.isArray(hasil)) return hasil;
+
+            // [MERGED — eks patch_fix_konsistensi_rawa_6faktor_v1.js]
+            // Untuk sawah RAWA, kandidat dipilih lewat model banjir khusus
+            // (threshold ZOM P65, lihat patch_sawah_rawa_v1.js) — BUKAN
+            // skor ENSO/IOD/SST/MJO/Fase Bulan biasa. Jangan tempeli tag
+            // "📊 Faktor 6F: ..." yang tidak relevan secara ilmiah untuk
+            // mode ini; tempelkan catatan yang benar sebagai gantinya.
+            var elJTORawa    = document.getElementById('selectJenisSawahJTO');
+            var elRisikoRawa = document.getElementById('selectJenisSawahRisiko');
+            var jenisSawahAktif6F = (elJTORawa && elJTORawa.value) || (elRisikoRawa && elRisikoRawa.value) || 'irigasi';
+
+            if (jenisSawahAktif6F === 'rawa') {
+                hasil.forEach(function (item) {
+                    if (item.alasan && item.alasan.indexOf('🌿 Model Rawa') === -1) {
+                        item.alasan = item.alasan +
+                            '\n🌿 Model Rawa: tanggal & varietas ditentukan dari threshold ' +
+                            'ZOM P65 (surut-banjir), bukan skor ENSO/IOD/SST/MJO iklim biasa.';
+                    }
+                });
+                hasil.sort(function (a, b) { return (b.nilaiTotal || 0) - (a.nilaiTotal || 0); });
+                console.log('%c[6F] Mode Rawa — tag "Faktor 6F" dilewati, catatan Model Rawa ditambahkan', 'color:#1D9E75;font-weight:bold;');
+                return hasil;
+            }
 
             var lat = (window._lokasiKalender && window._lokasiKalender.lat) || -5.0;
             var lon = (window._lokasiKalender && window._lokasiKalender.lon) || 120.0;
@@ -680,6 +709,37 @@ if (window.mjoData && window.mjoData.fase) {
                       : '⚖️ NETRAL';
         var warnaSkor = skor6F > 0.3 ? '#38b6ff' : (skor6F < -0.3 ? '#f59e0b' : '#10b981');
 
+        // [MERGED — eks patch_enso_dominance_v1.js]
+        // ROOT CAUSE: hitungSkor6Faktor() di atas menormalisasi ENSO ÷1.5
+        // dan SST ÷1.0. Saat KEDUANYA hit cap (ENSO kuat & SST kuat dengan
+        // tanda berlawanan), net effect bisa jadi kecil → label salah
+        // tampil NETRAL, padahal hitungRisikoDinamis() (dipakai chart,
+        // dengan amplifikasi ×5 + bobot bulanan) sudah benar menunjukkan
+        // BAHAYA/KRITIS. Chart TIDAK diubah di sini (sudah benar) — hanya
+        // label panel ini yang dikoreksi memakai wsTotal aktual saat ENSO
+        // cukup kuat untuk berpotensi mendominasi (|ONI| > 0.5).
+        var catatanEnsoDominan = '';
+        var wsTerakhir = window._wsTotal_terakhir;
+        if (wsTerakhir !== undefined && wsTerakhir !== null && Math.abs(ensoVal) > 0.5) {
+            var swsKoreksi = Math.tanh(wsTerakhir / 2.0);
+            if      (swsKoreksi >= 0.60)  { labelSkor = '🌊 BASAH EKSTREM';    warnaSkor = '#3b82f6'; }
+            else if (swsKoreksi >= 0.30)  { labelSkor = '🌧️ BASAH';            warnaSkor = '#38b6ff'; }
+            else if (swsKoreksi >= 0.10)  { labelSkor = '🌦️ CENDERUNG BASAH';  warnaSkor = '#34d399'; }
+            else if (swsKoreksi >= -0.10) { labelSkor = '⚖️ NETRAL';           warnaSkor = '#10b981'; }
+            else if (swsKoreksi >= -0.30) { labelSkor = '🌤️ CENDERUNG KERING'; warnaSkor = '#f59e0b'; }
+            else if (swsKoreksi >= -0.60) { labelSkor = '☀️ KERING';           warnaSkor = '#ef4444'; }
+            else                          { labelSkor = '🔥 KERING EKSTREM';   warnaSkor = '#7f1d1d'; }
+
+            catatanEnsoDominan =
+                '<div style="margin-top:6px;padding:4px 8px;background:rgba(239,68,68,0.12);' +
+                'border-left:2px solid #ef4444;border-radius:4px;' +
+                'font-size:0.68rem;color:#ef4444;line-height:1.5;">' +
+                '⚠️ ENSO Dominan (ONI ' + (ensoVal > 0 ? '+' : '') + ensoVal.toFixed(2) + '): ' +
+                'Skor di atas (-1 hingga +1) menyederhanakan dampak El Niño/La Niña. ' +
+                'Lihat chart risiko per fase untuk penilaian aktual (wsTotal = ' +
+                wsTerakhir.toFixed(2) + ').</div>';
+        }
+
         // [FIX-5] Argumen ke-5 (terbalik=true) untuk ENSO dan IOD
         isi.innerHTML =
             barFaktor('🌏 ENSO',      ensoVal,  BOBOT_6F.enso,  '°C (ONI)', true)  +
@@ -705,6 +765,7 @@ if (window.mjoData && window.mjoData.fase) {
                     'Sumber: Wheeler & Hendon (2004) · Peatman et al. (2014) · ' +
                     'Kohyama & Wallace (2016) · Hendon et al. (2007, 2012)' +
                 '</div>' +
+                catatanEnsoDominan +
             '</div>';
 
         panel.style.display = 'block';
@@ -807,6 +868,27 @@ if (window.mjoData && window.mjoData.fase) {
     // ============================================================
     //  BAGIAN 9 — INISIALISASI
     // ============================================================
+
+    // [MERGED — eks patch_enso_dominance_v1.js] Diagnostik konsol:
+    // simulasiWSTerpadu(-3.56, 1.80) → cek label yang akan tampil
+    // untuk kombinasi wsTotal & ENSO ONI tertentu, tanpa perlu
+    // menunggu data live.
+    window.simulasiWSTerpadu = function (wsTotal, ensoONI) {
+        var sws = Math.tanh(wsTotal / 2.0);
+        var info;
+        if      (sws >= 0.60)  info = '🌊 BASAH EKSTREM';
+        else if (sws >= 0.30)  info = '🌧️ BASAH';
+        else if (sws >= 0.10)  info = '🌦️ CENDERUNG BASAH';
+        else if (sws >= -0.10) info = '⚖️ NETRAL';
+        else if (sws >= -0.30) info = '🌤️ CENDERUNG KERING';
+        else if (sws >= -0.60) info = '☀️ KERING';
+        else                    info = '🔥 KERING EKSTREM';
+        console.log('%c=== SIMULASI LABEL PANEL 6-FAKTOR ===', 'color:#d946ef;font-weight:bold;');
+        console.log('wsTotal :', wsTotal, '| normWS:', sws.toFixed(4), '| Label:', info);
+        console.log('ENSO ONI:', ensoONI, '|', Math.abs(ensoONI) >= 1.5 ? 'KUAT' : Math.abs(ensoONI) >= 1.0 ? 'MODERAT' : 'LEMAH');
+        console.log('%c======================================', 'color:#d946ef;font-weight:bold;');
+        return { wsTotal: wsTotal, sws: sws, label: info };
+    };
 
     function init6Faktor() {
         injeksiKalenderTanam();

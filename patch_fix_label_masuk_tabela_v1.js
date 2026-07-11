@@ -347,9 +347,10 @@
 
     /* ============================================================
        BAGIAN B — Perbaiki label ringkasan "Masuk Lahan" di DOM
-       (dirender terpisah oleh patch_fix01_terapkan_tapin_tabela.js)
+       (dirender oleh override prosesJadwalOtomatis di
+       patch_jadwal_tapin_tabela_fix.js)
     ============================================================ */
-    /** Sama seperti getJenisSawah() di patch_bugfix_b1b3_v1.js — dipakai
+    /** Sama seperti getJenisSawah() di file-file lain — dipakai
      *  untuk memastikan koreksi ini TIDAK PERNAH menyentuh mode Rawa,
      *  karena Rawa tidak punya offset 15 hari antara Tapin & Tabela
      *  (lihat patch_sawah_rawa_v1.js — bangunKegiatanRawa memakai

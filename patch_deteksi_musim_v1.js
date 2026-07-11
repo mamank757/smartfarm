@@ -235,14 +235,58 @@
 
     function tambahHari(d, n) { var h = new Date(d); h.setDate(h.getDate() + n); return h; }
     function hariFaseBulan(tgl) { var s = (tgl.getTime() - EPOCH_BULAN_BARU.getTime()) / 86400000; return ((s % SIKLUS_SINODIS) + SIKLUS_SINODIS) % SIKLUS_SINODIS; }
-    function cariTglFaseBulan(acuan, faseMin, faseMax, offsetMulai, batasBulan) {
-        var mulai = tambahHari(acuan, offsetMulai || 0);
-        for (var i = 0; i <= 45; i++) {
+
+    // [FIX MOLOR TANGGAL TANAM] v3.0.2
+    // ------------------------------------------------------------
+    // SEBELUM: pencarian hanya MAJU dari acuan, dan hanya menerima
+    // hari yang PERSIS di bulan kalender yang sama dengan acuan
+    // (parameter batasBulan sebagai filter KERAS, bukan preferensi).
+    // Kalau jendela fase bulan yang cocok (mis. bulan sabit muda,
+    // fase 3–8) baru saja LEWAT beberapa hari sebelum acuan, kode
+    // lama TERPAKSA menunggu HAMPIR 1 SIKLUS PENUH (~29–30 hari)
+    // sampai kesempatan berikutnya — jadwal tanam bisa molor hampir
+    // sebulan penuh, BUKAN karena alasan agronomis (curah hujan/
+    // ENSO/IOD), tapi murni karena penguncian bulan kalender yang
+    // kaku pada pencarian fase bulan.
+    //
+    // CONTOH NYATA yang ditemukan (Bola, Wajo — pola 'timur'):
+    // onset Rendeng terdeteksi April, olah tanah 15 April, estimasi
+    // tanam mentah (+25 hari) = 10 Mei. Jendela fase bulan yang
+    // cocok sebenarnya ada di 2–6 Mei (SEBELUM 10 Mei) — tapi kode
+    // lama hanya mencari MAJU, jadi baru dapat hari yang cocok di
+    // 31 Mei (nyaris 1 siklus penuh kemudian). Padahal target panen
+    // minggu I Agustus butuh tanam jauh lebih awal.
+    //
+    // SESUDAH: cari hari yang cocok fase bulan dalam JENDELA
+    // TOLERANSI di sekitar acuan (boleh sedikit MUNDUR maupun MAJU),
+    // lalu pilih yang PALING DEKAT dengan acuan. Toleransi mundur
+    // dibatasi lebih pendek (maks 10 hari) daripada maju (maks 25
+    // hari, cukup untuk menjamin selalu ada 1 kecocokan penuh dalam
+    // siklus ~29,5 hari) — supaya tidak menyarankan tanam jauh
+    // sebelum lahan benar-benar siap (acuan = tglOlahTanah + jeda
+    // persemaian), tapi tetap menangkap jendela fase bulan yang
+    // "baru saja lewat" tanpa harus menunggu 1 siklus penuh.
+    function cariTglFaseBulan(acuan, faseMin, faseMax, offsetMulai, batasBulan, toleransiMundur, toleransiMaju) {
+        var mulai   = tambahHari(acuan, offsetMulai || 0);
+        var mundur  = (toleransiMundur !== undefined && toleransiMundur !== null) ? toleransiMundur : 10;
+        var maju    = (toleransiMaju   !== undefined && toleransiMaju   !== null) ? toleransiMaju   : 25;
+
+        var terbaik = null, skorTerbaik = Infinity;
+        for (var i = -mundur; i <= maju; i++) {
             var t = tambahHari(mulai, i);
-            if (batasBulan !== null && batasBulan !== undefined && t.getMonth() !== batasBulan) continue;
-            var f = hariFaseBulan(t); if (f >= faseMin && f <= faseMax) return t;
+            var f = hariFaseBulan(t);
+            if (f < faseMin || f > faseMax) continue;
+
+            // batasBulan kini PREFERENSI (bonus kedekatan skor), bukan
+            // filter keras — supaya hari di awal bulan berikutnya yang
+            // sebetulnya lebih dekat ke acuan tidak lagi dibuang begitu
+            // saja hanya karena beda nomor bulan kalender.
+            var lintasBulan = (batasBulan !== null && batasBulan !== undefined && t.getMonth() !== batasBulan);
+            var skor = Math.abs(i) + (i < 0 ? 0.5 : 0) + (lintasBulan ? 0.25 : 0);
+
+            if (skor < skorTerbaik) { skorTerbaik = skor; terbaik = t; }
         }
-        return mulai;
+        return terbaik || mulai;
     }
 
     function statusWaktuTanam(tglTanam, now) {

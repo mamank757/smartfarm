@@ -33,6 +33,14 @@
  *      ke depan masih relevan). Fase Generatif dan Panen tidak
  *      disentuh karena nilainya lebih banyak ditentukan bulan,
  *      bukan minggu.
+ *
+ * [MERGED v1.1] Menggabungkan guard sawah RAWA (dulu BUG-3 di
+ *   patch_bugfix_b1b3_v1.js — file itu sekarang dihapus, BUG-1
+ *   miliknya dipindah ke patch_fix_integrasi_6faktor_v1.js).
+ *   Sawah RAWA pakai model banjir sendiri (patch_sawah_rawa_v1.js);
+ *   delta Kelvin/Rossby di atas TIDAK relevan untuk risiko genangan
+ *   rawa, jadi dilewati sepenuhnya untuk mode itu — lihat
+ *   getJenisSawahGelombang() di BAGIAN 3.
  * ============================================================
  */
 
@@ -200,14 +208,25 @@
         var wrapper = document.createElement('div');
         wrapper.id = 'kotakGelombangEkuator';
         wrapper.style.cssText = 'margin-top:0;';
+
+        // Ringkasan status singkat untuk ditampilkan di summary accordion
+        // (tanpa perlu buka accordion dulu) supaya info penting tetap
+        // langsung terlihat sekilas.
+        var adaAktif = (kelvin && !kelvin.error && kelvin.aktif) ||
+                        (rossby && !rossby.error && rossby.aktif) ||
+                        (window.mjoData && window.mjoData.fase && parseFloat(window.mjoData.amplitudo || 0) >= 1.0);
+        var hintTeks = adaAktif ? '⚡ Ada gelombang aktif' : '✅ Tidak ada gelombang aktif';
+
         wrapper.innerHTML =
-            '<div class="info-box" style="border-left-color:#d946ef;margin-top:16px;">' +
-                '<strong>〰️ Gelombang Ekuatorial Aktif (1–2 Minggu)</strong>' +
-                '<div style="font-size:0.7rem;color:#64748b;margin-top:2px;">' +
-                'Pengaruh jangka pendek (hari–minggu) — lebih pendek dari MJO, relevan untuk RISIKO CUACA saja' +
+            '<details class="cuaca-accordion" style="border-left-color:#d946ef;">' +
+                '<summary>〰️ Gelombang Ekuatorial & MJO <span class="cuaca-accordion-hint">' + hintTeks + '</span></summary>' +
+                '<div class="cuaca-accordion-body">' +
+                    '<div style="font-size:0.7rem;color:#64748b;margin-bottom:4px;">' +
+                    'Pengaruh jangka pendek (hari–minggu) — lebih pendek dari siklus musiman, relevan untuk RISIKO CUACA saja' +
+                    '</div>' +
+                    isiMJO + isiKelvin + isiRossby +
                 '</div>' +
-            '</div>' +
-            isiMJO + isiKelvin + isiRossby;
+            '</details>';
 
         // Sisipkan setelah kotak Blast
         var kotakBlast = document.getElementById('boxBlastRisk');
@@ -224,6 +243,15 @@
     //  Besaran: maksimal ±8% dari indeksKelvin → tidak mendominasi
     // ============================================================
 
+    // ── [MERGED — eks BUG-3 patch_bugfix_b1b3_v1.js] ──
+    // Sama seperti getJenisSawah() di file-file lain: baca dropdown
+    // jenis sawah yang sedang aktif (Risiko Iklim / Kalender TNM).
+    function getJenisSawahGelombang() {
+        var elJTO    = document.getElementById('selectJenisSawahJTO');
+        var elRisiko = document.getElementById('selectJenisSawahRisiko');
+        return (elJTO && elJTO.value) || (elRisiko && elRisiko.value) || 'irigasi';
+    }
+
     function pasangKelvinKeRisikoDinamis(tick) {
         tick = tick || 0;
         if (typeof window.hitungRisikoDinamis !== 'function') {
@@ -236,6 +264,14 @@
         var asli = window.hitungRisikoDinamis;
         window.hitungRisikoDinamis = function (bulanIndex, fase, ensoVal, iodVal, baselineData) {
             var hasil = asli.apply(this, arguments);
+
+            // [MERGED — eks BUG-3] Sawah RAWA pakai model banjir khusus
+            // (patch_sawah_rawa_v1.js) — delta Kelvin/Rossby (konveksi
+            // jangka pendek untuk sawah irigasi/tadah hujan) TIDAK relevan
+            // secara ilmiah untuk risiko genangan rawa. Lewati sepenuhnya,
+            // kembalikan hasil dari lapisan di bawah (skor_6faktor, yang
+            // sudah rawa-aware) apa adanya.
+            if (getJenisSawahGelombang() === 'rawa') return hasil;
 
             // Hanya fase Tanam dan Vegetatif yang relevan dengan kejadian minggu ini
             if (fase !== 'Tanam' && fase !== 'Vegetatif') return hasil;

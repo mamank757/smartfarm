@@ -34,6 +34,34 @@
  *    <script src="patch_jadwal_tanam_otomatis.js"></script>
  *    <script src="patch_jadwal_manual_trigger.js"></script>
  *    <script src="patch_jadwal_tapin_tabela_fix.js"></script>
+ *
+ *  [MERGED v2.1] Menggabungkan patch_fix01_terapkan_tapin_tabela.js
+ *  (dulu file terpisah, sekarang dihapus dari index.html).
+ *  ------------------------------------------------------------
+ *  KENAPA DIGABUNG:
+ *  Override window.prosesJadwalOtomatis versi ASLI di bawah (v2.0)
+ *  ditulis untuk jalan LANGSUNG saat script di-parse:
+ *      var _prosesAsli = window.prosesJadwalOtomatis;
+ *      if (typeof _prosesAsli === 'function') { ... }
+ *  Masalahnya, window.prosesJadwalOtomatis BELUM TENTU ada di saat
+ *  itu (tergantung urutan & waktu inject patch_jadwal_tanam_otomatis.js
+ *  selesai jalan) — TANPA retry. Kalau belum ada, `if` di atas gagal
+ *  senyap dan seluruh koreksi Tapin/Tabela v2.0 tidak pernah terpasang.
+ *  patch_fix01_terapkan_tapin_tabela.js dulu dibuat sebagai lapisan
+ *  tambahan yang memasang ulang override yang SAMA tapi dengan POLLING
+ *  (retry tiap 100ms, maks 8 detik) — dan itulah yang benar-benar
+ *  aktif di production selama ini.
+ *
+ *  Sekarang override retry itu ditanam LANGSUNG di file ini (fungsi
+ *  pasangOverrideProsesJadwal di bawah), menggantikan percobaan
+ *  override v2.0 yang lama (yang praktis selalu gagal senyap). Tidak
+ *  ada lagi 2 file terpisah untuk 1 fungsi yang sama.
+ *
+ *  CATATAN KOMPATIBILITAS: override ini memanggil kegiatan lewat
+ *  window._bangunKegiatanFix (bukan bangunKegiatanFix() lokal secara
+ *  langsung) — SENGAJA, supaya patch yang dimuat lebih akhir dan
+ *  menimpa window._bangunKegiatanFix (misalnya koreksi arah offset
+ *  Tapin/Tabela) tetap otomatis terpakai tanpa perlu mengubah file ini.
  * ============================================================
  */
 
@@ -371,177 +399,147 @@
     }
 
     /* ============================================================
-       OVERRIDE prosesJadwalOtomatis
-       Setelah fungsi asli jalan (mengisi window._jtoData),
-       hitung ulang semua kegiatan dengan bangunKegiatanFix().
+       EKSPOR helper agar _jtoKirimWA & override di bawah berfungsi
     ============================================================ */
-    var _prosesAsli = window.prosesJadwalOtomatis;
-
-    if (typeof _prosesAsli === 'function') {
-        window.prosesJadwalOtomatis = async function () {
-            // Jalankan fungsi asli — menghasilkan window._jtoData & render HTML
-            await _prosesAsli.apply(this, arguments);
-
-            var multiJadwal = window._jtoData;
-            var metodeTanam = window._jtoMetodeTanam || 'tapin';
-            var teksEl      = document.getElementById('jtoTeks');
-
-            if (!multiJadwal || !multiJadwal.length || !teksEl) return;
-
-            // Hitung ulang kegiatan dengan logika yang benar
-            multiJadwal.forEach(function (jadwal) {
-                var skor = jadwal._skorBulan || new Array(12).fill(50);
-                jadwal.kegiatan = bangunKegiatanFix(jadwal.rekomendasi, skor, metodeTanam);
-            });
-
-            window._jtoData = multiJadwal;
-
-            // Re-render seluruh teksEl dengan HTML yang diperbarui
-            rerenderJTO(multiJadwal, teksEl);
-
-            console.log(
-                '%c✅ [TapinTabelaFix v2.0] Jadwal dihitung ulang\n' +
-                '   Tapin masuk lahan: ' + fmtP(multiJadwal[0] && multiJadwal[0].rekomendasi.tglTanam || new Date()) + '\n' +
-                '   Tabela sebar     : ' + OFFSET_STAGNASI_HARI + ' hari kemudian\n' +
-                '   Panen            : serentak ✅',
-                'color:#10b981; font-weight:bold;'
-            );
-        };
-    }
+    window._bangunKegiatanFix = bangunKegiatanFix;
+    window._OFFSET_STAGNASI   = OFFSET_STAGNASI_HARI;
 
     /* ============================================================
-       RENDER ULANG HTML
+       [MERGED — eks patch_fix01_terapkan_tapin_tabela.js]
+       OVERRIDE prosesJadwalOtomatis DENGAN RETRY
+       Dipasang dengan polling (bukan langsung saat parse) supaya
+       tidak gagal senyap jika window.prosesJadwalOtomatis /
+       window._bangunKegiatanFix belum terdaftar saat script ini
+       pertama kali jalan.
     ============================================================ */
-    function rerenderJTO(multiJadwal, teksEl) {
-        var warna = '#3b82f6';
-        var metodeTanam = window._jtoMetodeTanam || 'tapin';
-        var html = '';
-
-        // Header info iklim (salin dari yang sudah ada di DOM jika bisa)
-        var infoIklimEl = teksEl.querySelector('div[style*="rgba(6,182,212"]');
-        if (infoIklimEl) {
-            html += infoIklimEl.outerHTML;
-        }
-
-        multiJadwal.forEach(function (jadwal) {
-            var rek = jadwal.rekomendasi;
-            var keg = jadwal.kegiatan;
-            var opacity = rek.isLewat ? '0.55' : '1';
-
-            var badge = rek.isLewat
-                ? '<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;margin-left:10px;">📋 Blueprint</span>'
-                : rek.isBerjalan
-                    ? '<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.4);margin-left:10px;animation:jto-aktif-blink 1.5s ease-in-out infinite;">🟢 Aktif</span>'
-                    : '';
-
-            html +=
-                '<div style="margin-top:20px;margin-bottom:10px;font-size:15px;font-weight:bold;color:#fff;' +
-                'border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:6px;opacity:' + opacity + ';">' +
-                '🌾 ' + rek.musimNama.toUpperCase() + badge + '</div>';
-
-            // Tentukan label tanggal masuk lahan sesuai metode
-            var labelMasuk = (metodeTanam === 'tabela')
-                ? fmtL(H(rek.tglTanam, OFFSET_STAGNASI_HARI))
-                : fmtL(rek.tglTanam);
-            var labelTabela = (metodeTanam === 'tapin')
-                ? ' &nbsp;|&nbsp; <span style="color:#64748b;font-size:11px;">Tabela sebar: ' + fmtP(H(rek.tglTanam, OFFSET_STAGNASI_HARI)) + '</span>'
-                : '';
-
-            html +=
-                '<div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;' +
-                'padding:12px;margin-bottom:12px;opacity:' + opacity + ';">' +
-                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">' +
-                '<div><span style="color:#64748b;">Masuk Lahan' + (metodeTanam === 'tapin' ? ' (Tapin)' : ' (Tabela)') + '</span><br>' +
-                '<strong style="color:#10b981;font-size:13px;">' + labelMasuk + '</strong>' + labelTabela + '</div>' +
-                '<div><span style="color:#64748b;">Varietas</span><br>' +
-                '<strong style="color:#fff;font-size:13px;">' + (rek.labelVar || '-') + '</strong></div>' +
-                '</div>' +
-                '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);' +
-                'font-size:11px;color:#94a3b8;line-height:1.5;">💡 ' + rek.alasan + '</div>' +
-                '</div>';
-
-            // Kartu kegiatan
-            keg.forEach(function (k, i) {
-                html += buatKartuHTML(k, i + 1, rek.isLewat);
-            });
-        });
-
-        html +=
-            '<div style="margin-top:16px;background:rgba(100,116,139,0.1);border-radius:10px;padding:10px 12px;' +
-            'font-size:10px;color:#64748b;line-height:1.6;border:1px solid rgba(255,255,255,0.04);">' +
-            '⚠️ Rekomendasi 2 musim terdeteksi otomatis dari ZOM lokal BMKG. ' +
-            'Sesuaikan dengan kondisi lapangan dan pengamatan PHT mingguan. ' +
-            'Sumber: NOAA ENSO/IOD, ZOM BMKG, siklus sinodis bulan.</div>' +
-            '<button onclick="window._jtoKirimWA()" style="width:100%;margin-top:10px;padding:13px;' +
-            'background:#25D366;color:#fff;border:none;border-radius:12px;font-size:13px;' +
-            'font-weight:700;cursor:pointer;">📲 Kirim Jadwal ke WhatsApp ↗</button>';
-
-        teksEl.innerHTML = html;
-    }
-
-    function buatKartuHTML(k, nomor, isLewat) {
-        var now     = new Date();
-        var lewat   = isLewat || k.tglSelesai < now;
-        var w       = lewat ? '#64748b' : (k.risiko && k.risiko.warna ? k.risiko.warna : '#10b981');
-        var fb      = getNamaFase(getFaseBulan(k.tglMulai));
-
+    function renderKartuAktif(k, nomor, isLewat) {
+        var now   = new Date();
+        var lewat = isLewat || k.tglSelesai < now;
+        var w     = lewat ? '#64748b' : (k.risiko && k.risiko.warna ? k.risiko.warna : '#10b981');
         var badge = lewat
-            ? '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;white-space:nowrap;flex-shrink:0;">📋 Referensi</span>'
-            : '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;background:' + w + '22;color:' + w + ';white-space:nowrap;flex-shrink:0;">' + (k.risiko && k.risiko.level ? k.risiko.level : 'OK') + '</span>';
-
-        var tipsHTML = (k.tips || []).map(function (t) {
+            ? '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;">📋 Referensi</span>'
+            : '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;background:' + w + '22;color:' + w + ';">' + (k.risiko && k.risiko.level ? k.risiko.level : 'OK') + '</span>';
+        var tips = (k.tips || []).map(function (t) {
             return '<li style="margin-bottom:5px;color:' + (lewat ? '#475569' : '#cbd5e1') + ';line-height:1.5;">' + t + '</li>';
         }).join('');
-
-        var catatan = lewat
-            ? '<div style="background:#111c2e;border-radius:10px;padding:9px 11px;margin:10px 0;border-left:3px solid #334155;">' +
-              '<div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:2px;">📋 Data Proyeksi (Blueprint)</div>' +
-              '<div style="font-size:12px;color:#475569;">Kegiatan ini sudah terlewati. Ditampilkan sebagai referensi proyeksi.</div></div>'
-            : '<div style="background:#111c2e;border-radius:10px;padding:9px 11px;margin:10px 0;border-left:3px solid ' + w + ';">' +
-              '<div style="font-size:11px;font-weight:700;color:' + w + ';margin-bottom:2px;">Catatan Kondisi Iklim</div>' +
-              '<div style="font-size:12px;color:#cbd5e1;">' + (k.risiko && k.risiko.catatan ? k.risiko.catatan : '') + '</div></div>';
+        var catatan = '<div style="background:#111c2e;border-radius:10px;padding:9px 11px;margin:10px 0;border-left:3px solid ' + w + ';">' +
+            '<div style="font-size:11px;font-weight:700;color:' + w + ';margin-bottom:2px;">Catatan</div>' +
+            '<div style="font-size:12px;color:#cbd5e1;">' + (k.risiko && k.risiko.catatan ? k.risiko.catatan : '') + '</div></div>';
 
         return '<div style="background:#1b273a;border:0.5px solid rgba(255,255,255,0.07);border-radius:16px;margin-bottom:9px;overflow:hidden;">' +
             '<div style="padding:12px 14px;display:flex;align-items:flex-start;gap:12px;cursor:pointer;border-left:3px solid ' + w + ';" onclick="window._jtoToggle(this)">' +
             '<div style="width:34px;height:34px;border-radius:50%;background:#111c2e;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">' + k.ikon + '</div>' +
             '<div style="flex:1;min-width:0;">' +
             '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
-            '<div><div style="font-size:10px;color:#64748b;font-weight:600;margin-bottom:1px;">Kegiatan ' + nomor + '</div>' +
-            '<div style="font-size:14px;font-weight:700;color:' + (lewat ? '#64748b' : '#fff') + ';">' + k.nama + '</div></div>' +
-            badge + '</div>' +
-            '<div style="font-size:12px;color:#94a3b8;margin-top:3px;">' +
-            '<strong style="color:' + (lewat ? '#475569' : '#e2e8f0') + ';">' + fmtL(k.tglMulai) + '</strong>' +
-            ' s/d ' + fmtP(k.tglSelesai) + '</div>' +
-            '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + fb.ikon + ' ' + fb.nama + ' &nbsp;•&nbsp; ' + (k.deskripsi || '') + '</div>' +
-            '</div>' +
-            '<span class="jto-chevron" style="font-size:12px;color:#64748b;flex-shrink:0;margin-top:8px;transition:transform 0.2s;">▼</span>' +
-            '</div>' +
+            '<div><div style="font-size:10px;color:#64748b;font-weight:600;">Kegiatan ' + nomor + '</div>' +
+            '<div style="font-size:14px;font-weight:700;color:' + (lewat ? '#64748b' : '#fff') + ';">' + k.nama + '</div></div>' + badge + '</div>' +
+            '<div style="font-size:12px;color:#94a3b8;margin-top:3px;"><strong style="color:' + (lewat ? '#475569' : '#e2e8f0') + ';">' + fmtL(k.tglMulai) + '</strong> s/d ' + fmtP(k.tglSelesai) + '</div>' +
+            '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + (k.deskripsi || '') + '</div>' +
+            '</div><span class="jto-chevron" style="font-size:12px;color:#64748b;flex-shrink:0;margin-top:8px;">▼</span></div>' +
             '<div class="jto-detail" style="display:none;padding:0 14px 14px;border-top:0.5px solid rgba(255,255,255,0.05);">' +
             catatan +
-            '<div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Tips Lapangan</div>' +
-            '<ul style="margin:0;padding-left:15px;font-size:12px;">' + tipsHTML + '</ul>' +
-            '</div></div>';
+            '<div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:6px;text-transform:uppercase;">Tips Lapangan</div>' +
+            '<ul style="margin:0;padding-left:15px;font-size:12px;">' + tips + '</ul></div></div>';
     }
 
-    /* ============================================================
-       EKSPOR helper agar _jtoKirimWA tetap berfungsi
-    ============================================================ */
-    window._bangunKegiatanFix = bangunKegiatanFix;
-    window._OFFSET_STAGNASI   = OFFSET_STAGNASI_HARI;
+    function rerenderJTOAktif(multiJadwal, teksEl) {
+        var html = '';
+        multiJadwal.forEach(function (jadwal) {
+            var rek = jadwal.rekomendasi;
+            var keg = jadwal.kegiatan;
+            var opacity = rek.isLewat ? '0.55' : '1';
+            var badge = rek.isLewat
+                ? '<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;margin-left:10px;">📋 Blueprint</span>'
+                : rek.isBerjalan
+                    ? '<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.4);margin-left:10px;">🟢 Aktif</span>'
+                    : '';
+            html += '<div style="margin-top:20px;margin-bottom:10px;font-size:15px;font-weight:bold;color:#fff;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:6px;opacity:' + opacity + ';">🌾 ' + rek.musimNama.toUpperCase() + badge + '</div>';
 
-    /* ============================================================
-       KONFIRMASI
-    ============================================================ */
-    console.log(
-        '%c✅ patch_jadwal_tapin_tabela_fix.js v2.0 aktif\n' +
-        '\n  ╔══ LOGIKA TAPIN vs TABELA DIKOREKSI ════════╗\n' +
-        '  ║ ✅ Tapin masuk lahan  : LEBIH DULU          ║\n' +
-        '  ║ ✅ Tabela sebar       : ' + OFFSET_STAGNASI_HARI + ' hari SETELAH Tapin  ║\n' +
-        '  ║ ✅ Pengolahan lahan   : BERSAMAAN (sama)    ║\n' +
-        '  ║ ✅ Panen              : BERSAMAAN (sama)    ║\n' +
-        '  ║ 📚 IRRI Rice KB; BB Padi (2018) Sulsel      ║\n' +
-        '  ╚════════════════════════════════════════════╝',
-        'color:#10b981; font-weight:bold;'
-    );
+            var metodeTanam = window._jtoMetodeTanam || 'tapin';
+            var offset = window._OFFSET_STAGNASI || 8;
+            var labelMasuk = fmtL(rek.tglTanam);
+            var labelTabela = (metodeTanam === 'tapin')
+                ? ' &nbsp;|&nbsp; <span style="color:#64748b;font-size:11px;">Tabela sebar: ' + fmtP(new Date(rek.tglTanam.getTime() + offset * 86400000)) + '</span>'
+                : '';
+
+            html += '<div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;margin-bottom:12px;opacity:' + opacity + ';">' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">' +
+                '<div><span style="color:#64748b;">Masuk Lahan' + (metodeTanam === 'tapin' ? ' (Tapin)' : ' (Tabela)') + '</span><br>' +
+                '<strong style="color:#10b981;font-size:13px;">' + labelMasuk + '</strong>' + labelTabela + '</div>' +
+                '<div><span style="color:#64748b;">Varietas</span><br><strong style="color:#fff;font-size:13px;">' + (rek.labelVar || '-') + '</strong></div></div>' +
+                '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);font-size:11px;color:#94a3b8;line-height:1.5;">💡 ' + rek.alasan + '</div></div>';
+
+            keg.forEach(function (k, i) { html += renderKartuAktif(k, i + 1, rek.isLewat); });
+        });
+
+        html += '<div style="margin-top:16px;background:rgba(100,116,139,0.1);border-radius:10px;padding:10px 12px;font-size:10px;color:#64748b;line-height:1.6;border:1px solid rgba(255,255,255,0.04);">' +
+            '⚠️ Tapin ditanam ' + (window._OFFSET_STAGNASI || 8) + ' hari lebih awal dari Tabela agar panen serentak (kompensasi stagnasi transplanting).</div>' +
+            '<button onclick="window._jtoKirimWA()" style="width:100%;margin-top:10px;padding:13px;background:#25D366;color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;">📲 Kirim Jadwal ke WhatsApp ↗</button>';
+
+        teksEl.innerHTML = html;
+    }
+
+    function pasangOverrideProsesJadwal(tick) {
+        tick = tick || 0;
+        var asli = window.prosesJadwalOtomatis;
+
+        if (typeof asli !== 'function' || typeof window._bangunKegiatanFix !== 'function') {
+            if (tick >= 80) {
+                console.error('[TapinTabelaFix] window.prosesJadwalOtomatis / window._bangunKegiatanFix tidak tersedia setelah 8 detik — cek urutan <script>.');
+                return;
+            }
+            setTimeout(function () { pasangOverrideProsesJadwal(tick + 1); }, 100);
+            return;
+        }
+        if (asli.__tapinTabelaFixApplied) return;
+
+        window.prosesJadwalOtomatis = async function () {
+            await asli.apply(this, arguments);
+
+            // Jangan timpa kegiatan rawa dengan logika Tapin/Tabela irigasi
+            var elJTO = document.getElementById('selectJenisSawahJTO');
+            if (elJTO && elJTO.value === 'rawa') {
+                console.log('%c⏭️ [TapinTabelaFix] Mode Rawa aktif — overwrite Tapin/Tabela dilewati, kegiatan rawa dipertahankan.', 'color:#1D9E75;font-weight:bold;');
+                return;
+            }
+
+            var multiJadwal = window._jtoData;
+            var metodeTanam = window._jtoMetodeTanam || 'tapin';
+            var teksEl      = document.getElementById('jtoTeks');
+            if (!multiJadwal || !multiJadwal.length || !teksEl) return;
+
+            // Dipanggil lewat window._bangunKegiatanFix (bukan closure lokal)
+            // supaya patch yang menimpa window._bangunKegiatanFix belakangan
+            // (mis. koreksi arah offset Tapin/Tabela) otomatis terpakai.
+            multiJadwal.forEach(function (jadwal) {
+                var skor = jadwal._skorBulan || new Array(12).fill(50);
+                jadwal.kegiatan = window._bangunKegiatanFix(jadwal.rekomendasi, skor, metodeTanam);
+            });
+            window._jtoData = multiJadwal;
+            rerenderJTOAktif(multiJadwal, teksEl);
+
+            console.log('%c✅ [TapinTabelaFix] Jadwal Tapin/Tabela berhasil dihitung ulang (panen serentak)', 'color:#10b981;font-weight:bold;');
+        };
+        window.prosesJadwalOtomatis.__tapinTabelaFixApplied = true;
+
+        console.log(
+            '%c✅ patch_jadwal_tapin_tabela_fix.js v2.1 aktif\n' +
+            '\n  ╔══ LOGIKA TAPIN vs TABELA DIKOREKSI ════════╗\n' +
+            '  ║ ✅ Tapin masuk lahan  : LEBIH DULU          ║\n' +
+            '  ║ ✅ Tabela sebar       : ' + OFFSET_STAGNASI_HARI + ' hari SETELAH Tapin  ║\n' +
+            '  ║ ✅ Pengolahan lahan   : BERSAMAAN (sama)    ║\n' +
+            '  ║ ✅ Panen              : BERSAMAAN (sama)    ║\n' +
+            '  ║ ✅ Override terpasang via RETRY (eks fix01) ║\n' +
+            '  ║ 📚 IRRI Rice KB; BB Padi (2018) Sulsel      ║\n' +
+            '  ╚════════════════════════════════════════════╝',
+            'color:#10b981; font-weight:bold;'
+        );
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () { setTimeout(pasangOverrideProsesJadwal, 1500); });
+    } else {
+        setTimeout(pasangOverrideProsesJadwal, 1500);
+    }
 
 })();

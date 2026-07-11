@@ -35,8 +35,15 @@
     'use strict';
     // ============================================================
     //  1. TABEL BOBOT KORELASI PER ZONA PER BULAN
+    //  [MERGED — eks patch_fix_ekspor_bobot_iklim_v1.js] Sengaja
+    //  window.BOBOT_IKLIM (bukan `var` lokal) — tabel ini juga dipakai
+    //  patch_deteksi_musim_v1.js & patch_jadwal_tanam_otomatis.js lewat
+    //  referensi bare identifier `BOBOT_IKLIM` yang otomatis jatuh ke
+    //  window jika tidak ada `var` lokal di scope manapun. Dulu perlu
+    //  file terpisah untuk meng-copy ulang tabel ini ke window karena
+    //  `var` di sini membuatnya privat ke closure file ini saja.
     // ============================================================
-    var BOBOT_IKLIM = {
+    window.BOBOT_IKLIM = {
         monsunal: {
             enso: [0.15, 0.15, 0.12, 0.10, 0.18, 0.35,
                    0.45, 0.50, 0.45, 0.35, 0.20, 0.15],
@@ -278,6 +285,23 @@
         return _tentukanZonaIklimFallback(lat, lon);
     }
 
+    // [KONSISTENSI-FIX] Dipakai di SELURUH kode render bawah (namaZona,
+    // zonaLabel, baseline lookup) — bukan bare `tentukanZonaIklim(...)`.
+    // Kalau patch_fix_integrasi_6faktor_v1.js sudah memasang
+    // window.tentukanZonaIklim versi "satu sumber" (delegasi ke
+    // _deteksiZonaIklimV2 6-zona, yang sejak fix ini JUGA sudah
+    // memprioritaskan DATA_ZOM_REFERENSI di atas), pakai itu supaya
+    // label yang tampil di sini SELALU sama dengan Kalender TNM dan
+    // Kesimpulan Iklim Terpadu. Kalau belum terpasang (mis. urutan
+    // <script> berubah), jatuh ke versi lokal file ini sebagai jaring
+    // pengaman — sudah sama-sama memprioritaskan DATA_ZOM_REFERENSI juga.
+    function tentukanZonaIklimAktif(lat, lon) {
+        if (typeof window.tentukanZonaIklim === 'function' && window.tentukanZonaIklim.__satuSumber) {
+            return window.tentukanZonaIklim(lat, lon);
+        }
+        return tentukanZonaIklim(lat, lon);
+    }
+
     // Fallback bounding-box (dipertahankan sebagai jaring pengaman saja;
     // TIDAK lagi jadi acuan utama sejak DATA_ZOM_REFERENSI tersedia)
     function _tentukanZonaIklimFallback(lat, lon) {
@@ -310,7 +334,7 @@
     var AMPLIFIKASI_IKLIM = 5; 
     
     function hitungWetnessScore(baselineZOM, ensoVal, iodVal, lat, lon, bulanIndex) {
-        const zona   = tentukanZonaIklim(lat, lon);
+        const zona   = tentukanZonaIklimAktif(lat, lon);
         const w_enso = BOBOT_IKLIM[zona].enso[bulanIndex];
         const w_iod  = BOBOT_IKLIM[zona].iod[bulanIndex];
     
@@ -535,14 +559,14 @@
             }
     
             if (kabTerpilih && jarakTerdekat <= 150) {
-                namaZona = `WIL. ${kabTerpilih.kabupaten_kota.toUpperCase()} (${jarakTerdekat.toFixed(1)} km) — Zona: ${namaZonaTampil(tentukanZonaIklim(lokasi.lat, lokasi.lon))}`;
+                namaZona = `WIL. ${kabTerpilih.kabupaten_kota.toUpperCase()} (${jarakTerdekat.toFixed(1)} km) — Zona: ${namaZonaTampil(tentukanZonaIklimAktif(lokasi.lat, lokasi.lon))}`;
                 baselineData = [
                     parseFloat(kabTerpilih.jan), parseFloat(kabTerpilih.feb), parseFloat(kabTerpilih.mar), parseFloat(kabTerpilih.apr),
                     parseFloat(kabTerpilih.mei), parseFloat(kabTerpilih.jun), parseFloat(kabTerpilih.jul), parseFloat(kabTerpilih.agu),
                     parseFloat(kabTerpilih.sep), parseFloat(kabTerpilih.okt), parseFloat(kabTerpilih.nov), parseFloat(kabTerpilih.des)
                 ];
             } else {
-                const zona = tentukanZonaIklim(lokasi.lat, lokasi.lon);
+                const zona = tentukanZonaIklimAktif(lokasi.lat, lokasi.lon);
                 // Kata kunci per zona untuk mencocokkan nama pola di dbPola.
                 // 'lokal' menerima beberapa varian penulisan "anti monsunal"
                 // karena beberapa sumber data ZOM menamainya demikian, bukan "lokal".
@@ -592,7 +616,7 @@ const riskPanen = window.hitungRisikoDinamis(tglPanen.getMonth(),     'Panen',  
             renderKalenderChartV2(labels, dataSkor, dataStatus, dataTipe);
             loadGlobalClimateIndices();
     
-            const zonaHasil  = tentukanZonaIklim(lokasi.lat, lokasi.lon);
+            const zonaHasil  = tentukanZonaIklimAktif(lokasi.lat, lokasi.lon);
             const zonaLabel  = namaZonaTampil(zonaHasil);
             const acuanData  = cariZonaDariDataReferensi(lokasi.lat, lokasi.lon);
             const ketAcuan   = acuanData
