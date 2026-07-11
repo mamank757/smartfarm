@@ -202,8 +202,8 @@
         return (
             '<div class="form-group mixing-slot" data-slot="' + nomor + '" style="margin-top:' + (nomor === 1 ? '0' : '10px') + ';">' +
                 '<label>🧪 BAHAN ' + nomor + (nomor <= SLOT_MIN ? '' : ' (opsional)') + '</label>' +
-                '<input type="text" class="form-select patch-mix-slot-input" data-slot="' + nomor + '" list="apDatalistMixing" autocomplete="off" placeholder="Ketik merek atau bahan aktif..." style="margin-bottom:2px;">' +
-                '<input type="hidden" class="patch-mix-slot-id" data-slot="' + nomor + '">' +
+                '<input type="text" id="mixSlotInput' + nomor + '" name="mixSlotInput' + nomor + '" class="form-select patch-mix-slot-input" data-slot="' + nomor + '" list="apDatalistMixing" autocomplete="off" placeholder="Ketik merek atau bahan aktif..." style="margin-bottom:2px;">' +
+                '<input type="hidden" id="mixSlotId' + nomor + '" name="mixSlotId' + nomor + '" class="patch-mix-slot-id" data-slot="' + nomor + '">' +
                 '<div class="patch-mix-slot-feedback" data-slot="' + nomor + '" style="font-size:0.7rem;min-height:14px;margin-bottom:4px;color:var(--text-muted);"></div>' +
             '</div>'
         );
