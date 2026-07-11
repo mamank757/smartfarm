@@ -311,10 +311,22 @@
 
         // ── Ringkasan integrasi ───────────────────────────────
         html += divider('STATUS INTEGRASI');
+        // [MERGED — eks patch_fix_status_panel_flag_v1.js]
+        // Jangan cek properti custom (__sstMjoTersuntik / __kelvinTersuntik)
+        // langsung di fungsi window saat ini — fungsi itu dibungkus ULANG
+        // oleh patch-patch yang dimuat setelahnya (mis. patch_fix_konsistensi_
+        // rawa_6faktor_v1.js membungkus rekomendasiWindowTanam lagi, dan
+        // patch_bugfix_b1b3_v1.js / patch_enso_dominance_v1.js membungkus
+        // hitungRisikoDinamis lagi). Setiap pembungkusan membuat OBJEK FUNGSI
+        // BARU sehingga properti custom pada fungsi LAMA tidak ikut terbawa —
+        // walau secara fungsional Kelvin/Rossby & SST/MJO tetap bekerja di
+        // dalam rantai. Sumber kebenaran yang stabil adalah flag init
+        // level-window yang masing-masing file pasang SEKALI di akhir
+        // init()-nya sendiri, dan tidak pernah tertimpa wrapper berikutnya.
         var kalenderOk = typeof window.rekomendasiWindowTanam === 'function' &&
-            window.rekomendasiWindowTanam.__sstMjoTersuntik;
+            window.__kalenderTnmSstMjoV1Aktif === true;
         var risikoCuacaOk = typeof window.hitungRisikoDinamis === 'function' &&
-            window.hitungRisikoDinamis.__kelvinTersuntik;
+            window.__gelombangEkuatorV1Aktif === true;
         var zonaOk = typeof window.tentukanZonaIklim === 'function' &&
             window.tentukanZonaIklim.__satuSumber;
 
