@@ -425,6 +425,95 @@ body {
             border-bottom: 1px solid rgba(255,255,255,0.02);
             font-size: 0.85rem;
         }
+
+        /* ==== RISIKO CUACA — accordion ringkas & grid parameter ==== */
+        .cuaca-accordion {
+            background: #111c2e;
+            border-radius: 18px;
+            margin-top: 12px;
+            border-left: 4px solid var(--accent-green);
+            overflow: hidden;
+        }
+        .cuaca-accordion > summary {
+            padding: 14px 16px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-main);
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .cuaca-accordion > summary::-webkit-details-marker { display: none; }
+        .cuaca-accordion > summary::after {
+            content: '▾';
+            color: var(--text-muted);
+            transition: transform 0.2s ease;
+            font-size: 0.75rem;
+            flex-shrink: 0;
+        }
+        .cuaca-accordion[open] > summary::after { transform: rotate(180deg); }
+        .cuaca-accordion > summary .cuaca-accordion-hint {
+            font-size: 0.68rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-left: auto;
+            margin-right: 8px;
+        }
+        .cuaca-accordion-body {
+            padding: 0 16px 16px;
+        }
+
+        .param-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+        .param-cell {
+            background: rgba(255,255,255,0.03);
+            border-radius: 12px;
+            padding: 10px 12px;
+        }
+        .param-cell .param-label {
+            font-size: 0.66rem;
+            color: var(--text-muted);
+            margin-bottom: 3px;
+            line-height: 1.3;
+        }
+        .param-cell .param-val {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .cuaca-ringkasan-card {
+            background: #111c2e;
+            border-radius: 18px;
+            padding: 14px 16px;
+            margin-top: 12px;
+            border-left: 4px solid var(--accent-bwd);
+        }
+        .cuaca-ringkasan-row {
+            font-size: 0.82rem;
+        }
+        .cuaca-ringkasan-row + .cuaca-ringkasan-row {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px dashed rgba(255,255,255,0.06);
+        }
+        .cuaca-ringkasan-label {
+            display: block;
+            color: var(--text-muted);
+            font-size: 0.68rem;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            margin-bottom: 3px;
+        }
+        .cuaca-ringkasan-val {
+            color: var(--text-main);
+            font-weight: 600;
+        }
         .daily-item:last-child { border-bottom: none; }
         .daily-item .day { font-weight: 500; color: #ffffff; }
         .daily-item .icon { font-size: 1.3rem; text-align: center; }
@@ -617,6 +706,28 @@ body.light-mode .daily-item {
 }
 body.light-mode .daily-item .day,
 body.light-mode .daily-item .temp-range {
+    color: #0f172a !important;
+}
+
+/* === RISIKO CUACA — accordion & param grid (light-mode) === */
+body.light-mode .cuaca-accordion {
+    background: #f1f5f9 !important;
+    border-left-color: #059669 !important;
+}
+body.light-mode .cuaca-accordion > summary {
+    color: #0f172a !important;
+}
+body.light-mode .cuaca-ringkasan-card {
+    background: #f1f5f9 !important;
+    border-left-color: #059669 !important;
+}
+body.light-mode .cuaca-ringkasan-val {
+    color: #0f172a !important;
+}
+body.light-mode .param-cell {
+    background: rgba(15,23,42,0.04) !important;
+}
+body.light-mode .param-val {
     color: #0f172a !important;
 }
 
@@ -1493,88 +1604,69 @@ SMART FARMING - IoT
 </div>
 
                 <div id="weatherData" style="display: none; text-align: left;">
-                    <div class="info-box" style="border-left: 4px solid var(--accent-bwd); background: rgba(56, 182, 255, 0.02);">
-                        <strong>📍 Lokasi Koordinat</strong><br>
-                        <span id="lokasiSawah" style="font-size: 0.8rem; opacity: 0.6; font-weight: 600;">-</span><br>
-                        <span id="alamatDesa" style="color: var(--accent-green); font-weight: 700; font-size: 0.9rem; display: inline-block; margin-top: 4px;">Mencari alamat...</span>
-                    </div>
-
-                    <div id="prediksiHujan" class="info-box" style="border-left-color: var(--accent-soil); background: rgba(255, 215, 0, 0.02); display: none;">
-                        <strong>🔮 Prediksi Atmosfer (1 Jam Kedepan)</strong><br>
-                        <span id="hujanNext">-</span>
+                    <div class="cuaca-ringkasan-card">
+                        <div class="cuaca-ringkasan-row">
+                            <span class="cuaca-ringkasan-label">📍 LOKASI</span>
+                            <span class="cuaca-ringkasan-val">
+                                <span id="alamatDesa" style="color: var(--accent-green); display:block;">Mencari alamat...</span>
+                                <span id="lokasiSawah" style="font-size: 0.68rem; opacity: 0.6; font-weight: 500;">-</span>
+                            </span>
+                        </div>
+                        <div class="cuaca-ringkasan-row" id="prediksiHujan" style="display: none;">
+                            <span class="cuaca-ringkasan-label">🔮 PREDIKSI 1 JAM</span>
+                            <span class="cuaca-ringkasan-val" id="hujanNext">-</span>
+                        </div>
                     </div>
 
                     <div class="forecast-title">🕒 Prakiraan Cuaca Per Jam</div>
                     <div class="hourly-scroll" id="hourlyForecastContainer"></div>
 
-                    <div class="forecast-title">📅 Prakiraan 7 Hari Kedepan</div>
-                    <div class="daily-list" id="dailyForecastContainer"></div>
-                      
-                    <div class="info-box" style="border-left-color: var(--accent-green); padding: 16px; margin-top: 16px;">
-                        <strong>📊 Real-Time Parameter Lahan (Satelit)</strong>
-                        <table style="width: 100%; margin-top: 8px; border: none;">
-                            <tr>
-                                <td style="border: none; padding: 8px 0;">🌧️ Curah Hujan</td>
-                                <td class="row-val"><span id="rainNow">-</span></td>
-                            </tr>
-                            <tr>
-                                <td style="border: none; padding: 8px 0;">📊 Akumulasi 30 Hari</td>
-                                <td class="row-val"><span id="rainMonthly">-</span></td>
-                            </tr>
-                            <tr>
-                                <td style="border: none; padding: 8px 0;">🌡️ Suhu Udara</td>
-                                <td class="row-val"><span id="suhuNow">-</span></td>
-                            </tr>
-                            <tr>
-                                <td style="border: none; padding: 8px 0;">💧 Kelembapan</td>
-                                <td class="row-val"><span id="humidityNow">-</span></td>
-                            </tr>
-                            <tr>
-                                <td style="border: none; padding: 8px 0;">💨 Kecepatan Angin</td>
-                                <td class="row-val"><span id="windNow">-</span></td>
-                            </tr>
-                            <tr>
-                                <td style="border: none; padding: 8px 0;">⏲️ Tekanan Udara</td>
-                                <td class="row-val"><span id="pressNow">-</span></td>
-                            </tr>
-                            <tr>
-                                <td style="border: none; padding: 8px 0;">☁️ Suhu Udara Atas (850hPa)</td>
-                                <td class="row-val"><span id="tempUpper">-</span></td>
-                            </tr>
-                            <tr>
-                                <td style="border: none; padding: 8px 0;">💧 Dew Point Spread</td>
-                                <td class="row-val"><span id="dpSpread">-</span></td>
-                            </tr>
-                            <tr>
-                                <td style="border: none; padding: 8px 0;">⚡ Energi Badai (CAPE)</td>
-                                <td class="row-val"><span id="capeVal">-</span></td>
-                            </tr>
-                            <tr>
-                                <td style="border: none; padding: 8px 0;">🧭 Arah Angin</td>
-                                <td class="row-val"><span id="windDir">-</span></td>
-                            </tr>
-                        </table>
-                    </div>
+                    <details class="cuaca-accordion">
+                        <summary>📅 Prakiraan 7 Hari Kedepan</summary>
+                        <div class="cuaca-accordion-body">
+                            <div class="daily-list" id="dailyForecastContainer"></div>
+                        </div>
+                    </details>
 
-                    <div class="info-box" style="border-left-color: var(--accent-green); padding: 6px; margin-top: 16px; overflow: hidden;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin: 10px 10px 6px 10px;">
-        <strong>🛰️ Analisis Satelit Mikro Spasial Lahan</strong>
-        <button id="btnFullscreenPeta" onclick="masukFullscreenPeta()">
-            ⛶ FULLSCREEN
-        </button>
-    </div>
-    <!-- Placeholder — wrapper asli akan dipindah ke sini saat keluar fullscreen -->
-    <div id="placeholderRadarMap"></div>
-    <div id="wrapperRadarMap">
-        <iframe id="radarMap" width="100%" height="100%"
-            frameborder="0"
-            style="border:0; background:#060913; display:block;"
-            allowfullscreen
-            allow="fullscreen">
-        </iframe>
-    </div>
-</div>
-                      
+                    <details class="cuaca-accordion">
+                        <summary>📊 Parameter Satelit Lengkap</summary>
+                        <div class="cuaca-accordion-body">
+                            <div class="param-grid">
+                                <div class="param-cell"><div class="param-label">🌧️ Curah Hujan</div><div class="param-val"><span id="rainNow">-</span></div></div>
+                                <div class="param-cell"><div class="param-label">📊 Akumulasi 30 Hari</div><div class="param-val"><span id="rainMonthly">-</span></div></div>
+                                <div class="param-cell"><div class="param-label">🌡️ Suhu Udara</div><div class="param-val"><span id="suhuNow">-</span></div></div>
+                                <div class="param-cell"><div class="param-label">💧 Kelembapan</div><div class="param-val"><span id="humidityNow">-</span></div></div>
+                                <div class="param-cell"><div class="param-label">💨 Kecepatan Angin</div><div class="param-val"><span id="windNow">-</span></div></div>
+                                <div class="param-cell"><div class="param-label">⏲️ Tekanan Udara</div><div class="param-val"><span id="pressNow">-</span></div></div>
+                                <div class="param-cell"><div class="param-label">☁️ Suhu Udara Atas (850hPa)</div><div class="param-val"><span id="tempUpper">-</span></div></div>
+                                <div class="param-cell"><div class="param-label">💧 Dew Point Spread</div><div class="param-val"><span id="dpSpread">-</span></div></div>
+                                <div class="param-cell"><div class="param-label">⚡ Energi Badai (CAPE)</div><div class="param-val"><span id="capeVal">-</span></div></div>
+                                <div class="param-cell"><div class="param-label">🧭 Arah Angin</div><div class="param-val"><span id="windDir">-</span></div></div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="cuaca-accordion">
+                        <summary>🛰️ Analisis Satelit Mikro Spasial Lahan</summary>
+                        <div class="cuaca-accordion-body">
+                            <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
+                                <button id="btnFullscreenPeta" onclick="masukFullscreenPeta()">
+                                    ⛶ FULLSCREEN
+                                </button>
+                            </div>
+                            <!-- Placeholder — wrapper asli akan dipindah ke sini saat keluar fullscreen -->
+                            <div id="placeholderRadarMap"></div>
+                            <div id="wrapperRadarMap">
+                                <iframe id="radarMap" width="100%" height="100%"
+                                    frameborder="0"
+                                    style="border:0; background:#060913; display:block;"
+                                    allowfullscreen
+                                    allow="fullscreen">
+                                </iframe>
+                            </div>
+                        </div>
+                    </details>
+
                     <div class="info-box" id="boxBlastRisk" style="border-left-color: var(--red-alert); margin-top: 16px;">
                         <strong>⚠️ Risiko Penyakit Tanaman (Blast)</strong><br>
                         <span id="riskResult" style="display: block; margin-top: 4px;"></span>
@@ -5937,7 +6029,6 @@ async function cariHargaPestisida() {
     <script src="patch_kuota_harian.js"></script>
     <script src="patch_curah_hujan_era5.js"></script>
     <script src="patch_risiko_iklim.js"></script>
-    <script src="patch_fix_ekspor_bobot_iklim_v1.js"></script>
     <script src="patch_lokasi_cuaca_terpadu.js"></script>
     <script src="patch_konsistensi_cuaca_v2.js"></script>
 <script src="patch_peta_koordinat.js"></script>
@@ -6139,12 +6230,10 @@ async function cariHargaPestisida() {
     <script src="patch_fix_bobot_scoring_v1.js"></script>
     <script src="patch_jadwal_manual_trigger.js"></script>
     <script src="patch_jadwal_tapin_tabela_fix.js"></script>
-    <script src="patch_fix01_terapkan_tapin_tabela.js"></script>
     <script src="patch_riwayat_analisis.js"></script>  
     <script src="patch_perbaikan_kontras.js"></script> 
     <script src="patch_iklim_terpadu_v1.js"></script>
     <script src="patch_zom_kalibrasi_v2.js"></script>
-     <script src="patch_fix_konsistensi_zona_sulsel_v1.js"></script>
     <script>
 // Sinkronisasi Label Legenda HTML dengan GPS
 setInterval(function() {
@@ -6179,10 +6268,6 @@ setInterval(function() {
     <script src="patch_kalender_tnm_sst_mjo_v1.js"></script> 
     <script src="patch_gelombang_ekuator_v1.js"></script> 
     <script src="patch_status_panel_v1.js"></script> 
-    <script src="patch_fix_status_panel_flag_v1.js"></script>
-    <script src="patch_bugfix_b1b3_v1.js"></script>
-    <script src="patch_enso_dominance_v1.js"></script>
-    <script src="patch_fix_konsistensi_rawa_6faktor_v1.js"></script>
     <script src="patch_diagnostik_urutan_switchmode_v1.js"></script>
     <script src="patch_fix_label_masuk_tabela_v1.js"></script> 
     </body>
