@@ -581,18 +581,32 @@
         if (!boxBlast) return;
         if (document.getElementById('btnRefreshEkstrem')) return;
 
+        // [FIX] Sebelumnya tombol ini di-appendChild LANGSUNG ke dalam
+        // #boxBlastRisk (kotak Risiko Blast) — padahal tombol ini untuk
+        // memperbarui PERINGATAN EKSTREM (fitur cuaca ekstrem, tidak ada
+        // hubungan dengan risiko penyakit Blast). Akibatnya kotak Blast
+        // terlihat "tercampur" dengan fitur lain & desainnya beda sendiri
+        // dari kartu accordion lain di tab Risiko Cuaca. #boxBlastRisk
+        // tetap dipakai sebagai TITIK JANGKAR saja (karena selalu ada di
+        // DOM, sedangkan #boxPeringatanEkstrem hanya muncul saat ada
+        // peringatan aktif) — tombolnya sendiri disisipkan sebagai kartu
+        // TERPISAH (sibling) setelah kotak Blast, bukan anak di dalamnya.
+        var wrap = document.createElement('div');
+        wrap.className = 'cuaca-action-card';
+
         var btn = document.createElement('button');
         btn.id = 'btnRefreshEkstrem';
         btn.textContent = '⚡ Perbarui Peringatan Ekstrem';
         btn.style.cssText =
-            'width:100%;margin-top:12px;padding:11px;' +
+            'width:100%;padding:11px;' +
             'background:linear-gradient(135deg,#ef4444,#dc2626);' +
             'color:#fff;border:none;border-radius:12px;' +
             'font-weight:700;font-size:0.82rem;cursor:pointer;' +
             'font-family:"Plus Jakarta Sans",sans-serif;';
         btn.onclick = window.refreshPeringatanEkstrem;
 
-        boxBlast.appendChild(btn);
+        wrap.appendChild(btn);
+        boxBlast.parentNode.insertBefore(wrap, boxBlast.nextSibling);
     }
 
     // =========================================================================
