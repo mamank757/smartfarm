@@ -577,36 +577,54 @@
     // =========================================================================
 
     function tambahTombolShortcut() {
-        var boxBlast = document.getElementById('boxBlastRisk');
-        if (!boxBlast) return;
-        if (document.getElementById('btnRefreshEkstrem')) return;
+        var weatherData = document.getElementById('weatherData');
+        if (!weatherData) return;
 
-        // [FIX] Sebelumnya tombol ini di-appendChild LANGSUNG ke dalam
-        // #boxBlastRisk (kotak Risiko Blast) — padahal tombol ini untuk
-        // memperbarui PERINGATAN EKSTREM (fitur cuaca ekstrem, tidak ada
-        // hubungan dengan risiko penyakit Blast). Akibatnya kotak Blast
-        // terlihat "tercampur" dengan fitur lain & desainnya beda sendiri
-        // dari kartu accordion lain di tab Risiko Cuaca. #boxBlastRisk
-        // tetap dipakai sebagai TITIK JANGKAR saja (karena selalu ada di
-        // DOM, sedangkan #boxPeringatanEkstrem hanya muncul saat ada
-        // peringatan aktif) — tombolnya sendiri disisipkan sebagai kartu
-        // TERPISAH (sibling) setelah kotak Blast, bukan anak di dalamnya.
-        var wrap = document.createElement('div');
-        wrap.className = 'cuaca-action-card';
+        // [FIX POSISI] Tombol ini SATU PAKET dengan fitur "Peringatan Dini
+        // Ekstrem" (#boxPeringatanEkstrem, selalu disisipkan PALING ATAS
+        // weatherData — lihat renderBoxPeringatan()), BUKAN dengan Risiko
+        // Blast atau Gelombang Ekuatorial di tengah daftar. Sebelumnya
+        // tombol ini nempel permanen di dalam #boxBlastRisk (kotak lain,
+        // tidak berkaitan) dan tidak pernah dipindah lagi setelah pertama
+        // dibuat — akibatnya urutannya jadi acak tergantung kartu apa yang
+        // baru saja disisipkan patch lain (mis. Gelombang Ekuatorial).
+        //
+        // Sekarang: setiap kali dipanggil (lewat MutationObserver di bawah,
+        // yang memang sudah jalan tiap weatherData berubah), tombol selalu
+        // DIPOSISIKAN ULANG tepat setelah #boxPeringatanEkstrem — atau
+        // paling atas weatherData kalau box itu sedang tidak tampil (tidak
+        // ada peringatan aktif) — supaya urutannya konsisten:
+        //   [Peringatan Ekstrem (jika ada)] → [Tombol Perbarui] → kartu lain...
+        var wrap = document.getElementById('wrapBtnRefreshEkstrem');
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.id = 'wrapBtnRefreshEkstrem';
+            wrap.className = 'cuaca-action-card';
 
-        var btn = document.createElement('button');
-        btn.id = 'btnRefreshEkstrem';
-        btn.textContent = '⚡ Perbarui Peringatan Ekstrem';
-        btn.style.cssText =
-            'width:100%;padding:11px;' +
-            'background:linear-gradient(135deg,#ef4444,#dc2626);' +
-            'color:#fff;border:none;border-radius:12px;' +
-            'font-weight:700;font-size:0.82rem;cursor:pointer;' +
-            'font-family:"Plus Jakarta Sans",sans-serif;';
-        btn.onclick = window.refreshPeringatanEkstrem;
+            var btn = document.createElement('button');
+            btn.id = 'btnRefreshEkstrem';
+            btn.textContent = '⚡ Perbarui Peringatan Ekstrem';
+            btn.style.cssText =
+                'width:100%;padding:11px;' +
+                'background:linear-gradient(135deg,#ef4444,#dc2626);' +
+                'color:#fff;border:none;border-radius:12px;' +
+                'font-weight:700;font-size:0.82rem;cursor:pointer;' +
+                'font-family:"Plus Jakarta Sans",sans-serif;';
+            btn.onclick = window.refreshPeringatanEkstrem;
+            wrap.appendChild(btn);
+            weatherData.appendChild(wrap); // posisi sementara, diatur benar di bawah
+        }
 
-        wrap.appendChild(btn);
-        boxBlast.parentNode.insertBefore(wrap, boxBlast.nextSibling);
+        var boxPeringatan = document.getElementById('boxPeringatanEkstrem');
+        var ref = (boxPeringatan && boxPeringatan.parentNode === weatherData)
+            ? boxPeringatan.nextSibling
+            : weatherData.firstChild;
+
+        // Sudah di posisi yang benar — jangan mutasi DOM lagi, supaya
+        // MutationObserver di bawah tidak memicu ulang tanpa henti.
+        if (ref === wrap) return;
+
+        weatherData.insertBefore(wrap, ref);
     }
 
     // =========================================================================
