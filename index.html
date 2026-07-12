@@ -514,6 +514,28 @@ body {
             color: var(--text-main);
             font-weight: 600;
         }
+
+        .cuaca-highlight-card {
+            background: #111c2e;
+            border-radius: 18px;
+            padding: 14px 16px;
+            margin-top: 12px;
+            border-left: 4px solid var(--red-alert);
+        }
+        .cuaca-highlight-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+        .cuaca-action-card {
+            background: #111c2e;
+            border-radius: 18px;
+            padding: 10px;
+            margin-top: 12px;
+        }
         .daily-item:last-child { border-bottom: none; }
         .daily-item .day { font-weight: 500; color: #ffffff; }
         .daily-item .icon { font-size: 1.3rem; text-align: center; }
@@ -728,6 +750,13 @@ body.light-mode .param-cell {
     background: rgba(15,23,42,0.04) !important;
 }
 body.light-mode .param-val {
+    color: #0f172a !important;
+}
+body.light-mode .cuaca-highlight-card,
+body.light-mode .cuaca-action-card {
+    background: #f1f5f9 !important;
+}
+body.light-mode .cuaca-highlight-title {
     color: #0f172a !important;
 }
 
@@ -1667,10 +1696,9 @@ SMART FARMING - IoT
                         </div>
                     </details>
 
-                    <div class="info-box" id="boxBlastRisk" style="border-left-color: var(--red-alert); margin-top: 16px;">
-                        <strong>⚠️ Risiko Penyakit Tanaman (Blast)</strong><br>
-                        <span id="riskResult" style="display: block; margin-top: 4px;"></span>
-                        
+                    <div class="cuaca-highlight-card" id="boxBlastRisk">
+                        <div class="cuaca-highlight-title">⚠️ Risiko Penyakit Tanaman (Blast)</div>
+                        <span id="riskResult" style="display: block; margin-top: 8px;"></span>
                     </div>
                 </div> 
             </div> 
