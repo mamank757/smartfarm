@@ -139,7 +139,8 @@ body.light-mode #boxKalkulatorPanen .kp-result-circle{ background:#f1f5f9; }
     function htmlKonten() {
         return `
   <div class="kp-intro">
-       <span style="font-size:0.78rem;color:#cbd5e1;line-height:1.6;">
+    <strong style="color:${WARNA};display:block;margin-bottom:5px;">🌾 Kalkulator Prediksi Panen Padi</strong>
+    <span style="font-size:0.78rem;color:#cbd5e1;line-height:1.6;">
       Model multiplikatif kerusakan lapangan &mdash; potensi maksimum 10 Ton/Ha, target aman 8 Ton/Ha.
       Koefisien tiap faktor dikalibrasi dari studi hama/penyakit padi (rujukan di tiap kartu &amp; catatan di bawah).
     </span>
@@ -413,17 +414,19 @@ body.light-mode #boxKalkulatorPanen .kp-result-circle{ background:#f1f5f9; }
         btn.textContent = 'FAKTOR PANEN';
         btn.onclick = function () { window.switchMode('kalkulatorpanen'); };
 
-        // [POSISI] Disisipkan tepat SETELAH tab "RISIKO CUACA" (#tabCuaca),
-        // supaya tab ini konsisten muncul di urutan ke-3 — setelah
-        // "KALENDER TNM" (disisipkan patch lain di posisi paling awal)
-        // dan "RISIKO CUACA" (tab statis pertama di index.html), tapi
-        // SEBELUM "RISIKO IKLIM"/"BIAYA TANI" dst. #tabCuaca dipakai
-        // sebagai jangkar karena statis & selalu ada — lebih andal
-        // daripada menghitung index posisi (yang bisa berubah tergantung
-        // urutan patch lain selesai jalan).
-        var jangkar = document.getElementById('tabCuaca');
-        if (jangkar) {
-            tabContainer.insertBefore(btn, jangkar.nextSibling);
+        // [POSISI] Tab ini sekarang urutan ke-4 — SETELAH "KEPUTUSAN TANAM"
+        // kalau tab itu sudah ada, atau setelah "RISIKO CUACA" (#tabCuaca)
+        // kalau belum (nanti saat Tanam menyusul, ia juga menyisip tepat
+        // setelah #tabCuaca dan otomatis mendorong tab ini ke posisi
+        // berikutnya). Logika ini SENGAJA dibuat tidak bergantung urutan
+        // siapa jalan duluan antara kedua patch kalkulator — lihat logika
+        // cermin di patch_kalkulator_tanam.js.
+        var jangkarTanam = document.getElementById('tabKalkulatorTanam');
+        var jangkarCuaca = document.getElementById('tabCuaca');
+        if (jangkarTanam) {
+            tabContainer.insertBefore(btn, jangkarTanam.nextSibling);
+        } else if (jangkarCuaca) {
+            tabContainer.insertBefore(btn, jangkarCuaca.nextSibling);
         } else {
             tabContainer.appendChild(btn);
         }
