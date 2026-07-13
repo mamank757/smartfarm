@@ -411,7 +411,7 @@ body.light-mode #boxKalkulatorPanen .kp-result-circle{ background:#f1f5f9; }
         var btn = document.createElement('button');
         btn.className = 'tab-btn';
         btn.id = 'tabKalkulatorPanen';
-        btn.textContent = 'KALKULATOR PANEN';
+        btn.textContent = 'FAKTOR PANEN';
         btn.onclick = function () { window.switchMode('kalkulatorpanen'); };
 
         // [POSISI] Disisipkan tepat SETELAH tab "RISIKO CUACA" (#tabCuaca),
