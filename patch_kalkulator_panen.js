@@ -139,8 +139,7 @@ body.light-mode #boxKalkulatorPanen .kp-result-circle{ background:#f1f5f9; }
     function htmlKonten() {
         return `
   <div class="kp-intro">
-    <strong style="color:${WARNA};display:block;margin-bottom:5px;">🌾 Kalkulator Prediksi Panen Padi</strong>
-    <span style="font-size:0.78rem;color:#cbd5e1;line-height:1.6;">
+       <span style="font-size:0.78rem;color:#cbd5e1;line-height:1.6;">
       Model multiplikatif kerusakan lapangan &mdash; potensi maksimum 10 Ton/Ha, target aman 8 Ton/Ha.
       Koefisien tiap faktor dikalibrasi dari studi hama/penyakit padi (rujukan di tiap kartu &amp; catatan di bawah).
     </span>
