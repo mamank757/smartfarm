@@ -141,8 +141,7 @@ body.light-mode #boxKalkulatorTanam .kt-chart-wrap{ background:#fff; border-colo
     function htmlKonten() {
         return `
   <div class="kt-intro">
-    <strong style="color:${WARNA};display:block;margin-bottom:5px;">🗓️ Kalkulator Keputusan Tanam Padi</strong>
-    <span style="font-size:0.78rem;color:#cbd5e1;line-height:1.6;">
+        <span style="font-size:0.78rem;color:#cbd5e1;line-height:1.6;">
       Membandingkan 3 kategori varietas padi berdasarkan pemodelan curah hujan,
       durasi musim, dan hukum kelangkaan pasar gabah.
     </span>
@@ -646,7 +645,7 @@ body.light-mode #boxKalkulatorTanam .kt-chart-wrap{ background:#fff; border-colo
         var btn = document.createElement('button');
         btn.className = 'tab-btn';
         btn.id = 'tabKalkulatorTanam';
-        btn.textContent = 'KEPUTUSAN TANAM';
+        btn.textContent = 'FAKTOR TANAM';
         btn.onclick = function () { window.switchMode('kalkulatortanam'); };
 
         // [POSISI] Disisipkan tepat SETELAH tab "KALKULATOR PANEN" kalau
