@@ -10,6 +10,29 @@
  * - renderMacroChart tetap dipakai (canvas #macroClimateChart),
  *   tapi tiap seri (ENSO & IOD) kini punya garis solid (aktual)
  *   + garis putus-putus (proyeksi 3 bulan) seperti dashboard baru.
+ *
+ * [FIX v1.1] Grafik IOD zigzag/tidak urut — akar masalah & perbaikan:
+ *   GAS (lihat doGet di IOD_DATA) MENGGABUNGKAN histori NOAA PSL +
+ *   fallback manual dari Google Sheet saat NOAA telat update — kalau
+ *   ada bulan yang kebetulan tercatat di KEDUA sumber (mis. NOAA
+ *   sempat update sampai Agustus, lalu sheet manual JUGA punya entri
+ *   Agustus), teks gabungan berisi 2 baris untuk bulan yang sama.
+ *   Parser lama (1) membuang info tanggal (hanya ambil YYYY-MM) dan
+ *   (2) TIDAK menggabungkan/mengurutkan ulang — jadi 2 entri bulan
+ *   yang sama numpuk sebagai 2 titik terpisah dengan nilai berbeda,
+ *   dan urutan baris mentah dari GAS dipakai apa adanya (bisa tidak
+ *   kronologis kalau ada tumpang-tindih). Ini yang bikin garis IOD
+ *   di grafik naik-turun tajam & label sumbu-X tidak berurutan.
+ *
+ *   PERBAIKAN: parser sekarang (1) MEMPERTAHANKAN tanggal penuh
+ *   (bukan dipotong ke YYYY-MM), (2) deduplikasi PER BULAN — kalau
+ *   ada 2 entri untuk bulan yang sama, entri yang diproses BELAKANGAN
+ *   menang (fallback manual, yang menurut desain GAS-nya selalu
+ *   ditaruh SETELAH histori NOAA di teks gabungan, sehingga dianggap
+ *   lebih baru/otoritatif), dan (3) DIURUTKAN ULANG eksplisit
+ *   berdasarkan tanggal sebelum dipotong ke 18 bulan terakhir —
+ *   tidak lagi mengandalkan urutan baris mentah dari GAS.
+ *
  * ISI URL GAS ANDA DI SINI:
  */
 window.URL_GAS_ENSO_RAW = 'https://script.google.com/macros/s/AKfycbzMth4qWgEi0DuPSMEPbjQa1jcQTWE2UiaR8gRJ-8zZTBA-4joPHgA_-7gE2_butMk/exec';
@@ -152,40 +175,51 @@ window.URL_GAS_IOD_RAW  = 'https://script.google.com/macros/s/AKfycbzUIdK6UB7y3o
 
     // ============================================================
     //  FETCH IOD — dari GAS baru (format: YYYY-MM-DD,nilai)
+    //  [FIX v1.1] Lihat catatan lengkap di header file — parser
+    //  sekarang mempertahankan tanggal penuh, deduplikasi per bulan
+    //  (entri belakangan/fallback manual menang), dan diurutkan
+    //  ulang eksplisit sebelum dipotong ke 18 bulan terakhir.
     // ============================================================
     async function getIODAnomalyBaru() {
         try {
-            // Tambahkan { redirect: 'follow' } untuk mencegah isu CORS dari GAS
             var res = await fetch(window.URL_GAS_IOD_RAW, { redirect: 'follow' });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             var text = await res.text();
 
             var lines = text.split('\n');
-            var seriesFull = [], labelsFull = [];
+
+            // Kunci per BULAN (YYYY-MM) → { tanggal lengkap, nilai }.
+            // Kalau ada 2 baris untuk bulan yang sama (tumpang tindih
+            // histori NOAA vs fallback manual), baris yang diproses
+            // BELAKANGAN otomatis menimpa — dan GAS selalu menaruh
+            // fallback manual SETELAH histori NOAA dalam teks gabungan,
+            // jadi fallback manual (dianggap lebih baru) yang menang.
+            var mapBulan = {};
 
             lines.forEach(function (line) {
                 var l = line.trim();
-                // Abaikan baris kosong atau baris komentar (yang diawali #)
-                if (!l || l.startsWith('#')) return;
+                if (!l || l.charAt(0) === '#') return; // lewati baris komentar/pemisah dari GAS
 
-                // Pisahkan berdasarkan koma (karena output GAS formatnya Tanggal,Nilai)
                 var parts = l.split(',');
-                if (parts.length >= 2) {
-                    var val = parseFloat(parts[1]);
-                    // Pastikan nilainya valid dan bukan angka default gagal dari NOAA (-9999)
-                    if (!isNaN(val) && val !== -9999) {
-                        seriesFull.push(val);
-                        
-                        // Ambil bagian YYYY-MM dari format YYYY-MM-DD
-                        var dateParts = parts[0].split('-');
-                        if (dateParts.length >= 2) {
-                            labelsFull.push(dateParts[0] + '-' + dateParts[1]);
-                        } else {
-                            labelsFull.push(parts[0]);
-                        }
-                    }
-                }
+                if (parts.length < 2) return;
+
+                var tgl = parts[0].trim();
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(tgl)) return; // hanya terima YYYY-MM-DD utuh
+
+                var val = parseFloat(parts[1]);
+                if (isNaN(val) || val === -9999) return;
+
+                var kunciBulan = tgl.slice(0, 7); // 'YYYY-MM'
+                mapBulan[kunciBulan] = { tanggal: tgl, nilai: val };
             });
+
+            // Urutkan eksplisit berdasarkan kunci bulan (YYYY-MM) —
+            // JANGAN mengandalkan urutan baris mentah dari GAS, karena
+            // histori NOAA + fallback manual bisa tumpang tindih dan
+            // tidak selalu 100% kronologis setelah digabung.
+            var kunciTerurut = Object.keys(mapBulan).sort();
+            var labelsFull = kunciTerurut.map(function (k) { return mapBulan[k].tanggal; });
+            var seriesFull = kunciTerurut.map(function (k) { return mapBulan[k].nilai; });
 
             if (seriesFull.length === 0) throw new Error('Data IOD kosong/format tak dikenali');
 
@@ -439,7 +473,7 @@ window.URL_GAS_IOD_RAW  = 'https://script.google.com/macros/s/AKfycbzUIdK6UB7y3o
         };
         window.loadGlobalClimateIndices.__makroBaruAktif = true;
 
-        console.log('%c✅ patch_grafik_iklim_makro_baru.js aktif — sumber data & proyeksi Holt Damped Trend terpasang', 'color:#ff4a5a;font-weight:bold;');
+        console.log('%c✅ patch_grafik_iklim_makro_baru.js v1.1 aktif — parser IOD diperbaiki (dedup per bulan + urut ulang eksplisit)', 'color:#ff4a5a;font-weight:bold;');
     }
 
     if (document.readyState === 'loading') {
