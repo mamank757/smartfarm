@@ -151,11 +151,12 @@ window.URL_GAS_IOD_RAW  = 'https://script.google.com/macros/s/AKfycbzUIdK6UB7y3o
     }
 
     // ============================================================
-    //  FETCH IOD — dari GAS baru (data bulanan DMI)
+    //  FETCH IOD — dari GAS baru (format: YYYY-MM-DD,nilai)
     // ============================================================
     async function getIODAnomalyBaru() {
         try {
-            var res = await fetch(window.URL_GAS_IOD_RAW);
+            // Tambahkan { redirect: 'follow' } untuk mencegah isu CORS dari GAS
+            var res = await fetch(window.URL_GAS_IOD_RAW, { redirect: 'follow' });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             var text = await res.text();
 
@@ -163,16 +164,24 @@ window.URL_GAS_IOD_RAW  = 'https://script.google.com/macros/s/AKfycbzUIdK6UB7y3o
             var seriesFull = [], labelsFull = [];
 
             lines.forEach(function (line) {
-                var parts = line.trim().split(/\s+/);
-                if (parts.length >= 13) {
-                    var year = parseInt(parts[0]);
-                    if (!isNaN(year)) {
-                        for (var i = 1; i <= 12; i++) {
-                            var val = parseFloat(parts[i]);
-                            if (!isNaN(val) && val !== -99.99 && val > -99) {
-                                seriesFull.push(val);
-                                labelsFull.push(year + '-' + String(i).padStart(2, '0'));
-                            }
+                var l = line.trim();
+                // Abaikan baris kosong atau baris komentar (yang diawali #)
+                if (!l || l.startsWith('#')) return;
+
+                // Pisahkan berdasarkan koma (karena output GAS formatnya Tanggal,Nilai)
+                var parts = l.split(',');
+                if (parts.length >= 2) {
+                    var val = parseFloat(parts[1]);
+                    // Pastikan nilainya valid dan bukan angka default gagal dari NOAA (-9999)
+                    if (!isNaN(val) && val !== -9999) {
+                        seriesFull.push(val);
+                        
+                        // Ambil bagian YYYY-MM dari format YYYY-MM-DD
+                        var dateParts = parts[0].split('-');
+                        if (dateParts.length >= 2) {
+                            labelsFull.push(dateParts[0] + '-' + dateParts[1]);
+                        } else {
+                            labelsFull.push(parts[0]);
                         }
                     }
                 }
@@ -211,7 +220,6 @@ window.URL_GAS_IOD_RAW  = 'https://script.google.com/macros/s/AKfycbzUIdK6UB7y3o
             };
         }
     }
-
     // ============================================================
     //  PLUGIN ZONA LATAR (opsional, mempercantik seperti dashboard baru)
     // ============================================================
