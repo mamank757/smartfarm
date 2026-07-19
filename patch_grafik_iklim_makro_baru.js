@@ -13,7 +13,7 @@
  * ISI URL GAS ANDA DI SINI:
  */
 window.URL_GAS_ENSO_RAW = 'https://script.google.com/macros/s/AKfycbzMth4qWgEi0DuPSMEPbjQa1jcQTWE2UiaR8gRJ-8zZTBA-4joPHgA_-7gE2_butMk/exec';
-window.URL_GAS_IOD_RAW  = 'https://script.google.com/macros/s/AKfycbyaiXiZ57tTJvWlpD7yyL0ofWSAmrgoc7HMeJG_dA9hGmQeC6SJvDrIQ-XntM3EReHr/exec';
+window.URL_GAS_IOD_RAW  = 'https://script.google.com/macros/s/AKfycbzUIdK6UB7y3odFvX6XiXcgZ8ccm0qiLZp60FTiYq55KiV2p_1vsJVmNrpi-F63gjRxyg/exec';
 
 (function () {
     'use strict';
