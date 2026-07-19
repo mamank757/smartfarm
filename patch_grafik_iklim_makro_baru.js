@@ -247,6 +247,7 @@ window.URL_GAS_IOD_RAW  = 'https://script.google.com/macros/s/AKfycbzUIdK6UB7y3o
 
     // ============================================================
     //  OVERRIDE renderMacroChart — aktual (solid) + proyeksi (dash)
+    //  (Diperbarui: Penyatuan Timeline Kronologis Mingguan vs Bulanan)
     // ============================================================
     function renderMacroChartBaru(ensoObj, iodObj) {
         var ctx = document.getElementById('macroClimateChart');
@@ -255,56 +256,92 @@ window.URL_GAS_IOD_RAW  = 'https://script.google.com/macros/s/AKfycbzUIdK6UB7y3o
 
         if (window.macroChartInstance) window.macroChartInstance.destroy();
 
-        // Gabungkan label waktu (pakai yang lebih panjang sebagai sumbu X referensi)
-        var labelsGabungan = ensoObj.labels.length >= iodObj.labels.length ? ensoObj.labels : iodObj.labels;
-
-        function susunSeri(obj, totalLabel) {
-            var nAktual = obj.labelsAktual.length;
-            var nProy   = obj.labelsProyeksi.length;
-            var aktual  = obj.dataAktual.concat(new Array(totalLabel - nAktual).fill(null));
-            var proyeksi = new Array(Math.max(0, nAktual - 1)).fill(null)
-                .concat(nAktual > 0 ? [obj.dataAktual[nAktual - 1]] : [])
-                .concat(obj.dataProyeksi)
-                .concat(new Array(Math.max(0, totalLabel - nAktual - nProy)).fill(null));
-            return { aktual: aktual, proyeksi: proyeksi };
+        // 1. Helper konversi semua jenis label tanggal menjadi Object Date
+        function extractDate(lbl) {
+            var s = String(lbl).trim().toUpperCase();
+            // Cek format ENSO lama: DDMMMYYYY (misal: 25JUN2025)
+            var m = s.match(/^(\d{1,2})([A-Z]{3})(\d{4})$/);
+            if (m) {
+                var months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+                return new Date(Date.UTC(+m[3], months.indexOf(m[2]), +m[1]));
+            }
+            // Cek format baku YYYY-MM atau YYYY-MM-DD
+            var d = new Date(lbl);
+            if (!isNaN(d.getTime())) return d;
+            return null;
         }
 
-        var totalLabel = labelsGabungan.length;
-        var seriEnso = susunSeri(ensoObj, totalLabel);
-        var seriIod  = susunSeri(iodObj, totalLabel);
+        // 2. Kumpulkan semua titik waktu dari ENSO & IOD ke dalam satu Timeline
+        var timelineMS = [];
+        var mapEnsoAktual = {}, mapEnsoProy = {};
+        var mapIodAktual = {}, mapIodProy = {};
 
+        function prosesMapping(obj, mapAktual, mapProy) {
+            obj.labelsAktual.forEach(function(lbl, i) {
+                var d = extractDate(lbl);
+                if (d) {
+                    var ms = d.getTime();
+                    if (timelineMS.indexOf(ms) === -1) timelineMS.push(ms);
+                    mapAktual[ms] = obj.dataAktual[i];
+                }
+            });
+            obj.labelsProyeksi.forEach(function(lbl, i) {
+                var d = extractDate(lbl);
+                if (d) {
+                    var ms = d.getTime();
+                    if (timelineMS.indexOf(ms) === -1) timelineMS.push(ms);
+                    mapProy[ms] = obj.dataProyeksi[i];
+                }
+            });
+        }
+
+        prosesMapping(ensoObj, mapEnsoAktual, mapEnsoProy);
+        prosesMapping(iodObj, mapIodAktual, mapIodProy);
+
+        // 3. Urutkan timeline dari tanggal terlama ke terbaru
+        timelineMS.sort(function(a, b) { return a - b; });
+
+        // 4. Susun array akhir (X dan Y) yang sudah tersinkronisasi
+        var labelsGabungan = [];
+        var ensoAktualArr = [], ensoProyArr = [];
+        var iodAktualArr = [], iodProyArr = [];
+
+        timelineMS.forEach(function(ms) {
+            var dt = new Date(ms);
+            var tglStr = dt.getUTCFullYear() + '-' + String(dt.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dt.getUTCDate()).padStart(2, '0');
+            labelsGabungan.push(tglStr);
+
+            ensoAktualArr.push(mapEnsoAktual[ms] !== undefined ? mapEnsoAktual[ms] : null);
+            ensoProyArr.push(mapEnsoProy[ms] !== undefined ? mapEnsoProy[ms] : null);
+            iodAktualArr.push(mapIodAktual[ms] !== undefined ? mapIodAktual[ms] : null);
+            iodProyArr.push(mapIodProy[ms] !== undefined ? mapIodProy[ms] : null);
+        });
+
+        // 5. Render dengan Chart.js (Wajib gunakan spanGaps: true)
         window.macroChartInstance = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: labelsGabungan,
                 datasets: [
                     {
-                        label: 'ENSO (aktual)',
-                        data: seriEnso.aktual,
-                        borderColor: '#ff4a5a',
-                        backgroundColor: 'rgba(255,74,90,0.08)',
-                        borderWidth: 3, tension: 0.3, fill: true, spanGaps: false, pointRadius: 2
+                        label: 'ENSO (aktual)', data: ensoAktualArr,
+                        borderColor: '#ff4a5a', backgroundColor: 'rgba(255,74,90,0.08)',
+                        borderWidth: 3, tension: 0.3, fill: true, spanGaps: true, pointRadius: 2
                     },
                     {
-                        label: 'ENSO (proyeksi)',
-                        data: seriEnso.proyeksi,
-                        borderColor: '#ff4a5a',
-                        borderWidth: 2, borderDash: [6, 4],
-                        tension: 0.3, fill: false, spanGaps: false, pointRadius: 0
+                        label: 'ENSO (proyeksi)', data: ensoProyArr,
+                        borderColor: '#ff4a5a', borderWidth: 2, borderDash: [6, 4],
+                        tension: 0.3, fill: false, spanGaps: true, pointRadius: 0
                     },
                     {
-                        label: 'IOD (aktual)',
-                        data: seriIod.aktual,
-                        borderColor: '#ffcc00',
-                        backgroundColor: 'rgba(255,204,0,0.08)',
-                        borderWidth: 3, tension: 0.3, fill: true, spanGaps: false, pointRadius: 2
+                        label: 'IOD (aktual)', data: iodAktualArr,
+                        borderColor: '#ffcc00', backgroundColor: 'rgba(255,204,0,0.08)',
+                        borderWidth: 3, tension: 0.3, fill: true, spanGaps: true, pointRadius: 2
                     },
                     {
-                        label: 'IOD (proyeksi)',
-                        data: seriIod.proyeksi,
-                        borderColor: '#ffcc00',
-                        borderWidth: 2, borderDash: [6, 4],
-                        tension: 0.3, fill: false, spanGaps: false, pointRadius: 0
+                        label: 'IOD (proyeksi)', data: iodProyArr,
+                        borderColor: '#ffcc00', borderWidth: 2, borderDash: [6, 4],
+                        tension: 0.3, fill: false, spanGaps: true, pointRadius: 0
                     }
                 ]
             },
@@ -313,11 +350,7 @@ window.URL_GAS_IOD_RAW  = 'https://script.google.com/macros/s/AKfycbzUIdK6UB7y3o
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { display: false },
-                    zoneBackground: {
-                        upper: 0.5, lower: -0.5,
-                        upperColor: 'rgba(215,48,39,0.06)',
-                        lowerColor: 'rgba(49,54,149,0.06)'
-                    }
+                    zoneBackground: { upper: 0.5, lower: -0.5, upperColor: 'rgba(215,48,39,0.06)', lowerColor: 'rgba(49,54,149,0.06)' }
                 },
                 scales: {
                     y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', font: { size: 9 } } },
